@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { IconUsers, IconActivity, IconMail, IconBrandWhatsapp, IconPhone } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
@@ -18,6 +19,7 @@ const CHANNEL_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const {
     activeAgent, dashboardStats, dashboardRecentLeads,
     dashboardRecentActivity, setDashboard, setLoading, openDrawer, setPage,
@@ -74,7 +76,7 @@ export default function Dashboard() {
               <IconUsers size={16} style={{ color: "var(--color-accent2)" }} />
               Recent leads
             </div>
-            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-white text-slate-700 shadow-sm transition-all duration-200 ease-out hover:bg-slate-50 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-slate-500 !shadow-none hover:!bg-slate-100 hover:!text-slate-900" onClick={() => setPage("leads")}>
+            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-white text-slate-700 shadow-sm transition-all duration-200 ease-out hover:bg-slate-50 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-slate-500 !shadow-none hover:!bg-slate-100 hover:!text-slate-900" onClick={() => router.push(`/leads/${activeAgent?._id || "default"}`)}>
               View all →
             </button>
           </div>

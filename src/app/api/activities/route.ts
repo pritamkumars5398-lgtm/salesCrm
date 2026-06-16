@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agentId");
   const channel = searchParams.get("channel");
-  const range   = searchParams.get("range"); // "today" | "week" | "all"
+  const range = searchParams.get("range"); // "today" | "week" | "all"
 
   const filter: Record<string, unknown> = {};
   if (agentId) filter.agentId = agentId;

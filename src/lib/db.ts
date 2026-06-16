@@ -13,7 +13,6 @@ interface MongooseCache {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var _mongooseCache: MongooseCache | undefined;
 }
 
@@ -35,7 +34,7 @@ export async function connectDB(): Promise<typeof mongoose> {
       })
       .catch((err) => {
         console.error("[Database] Failed to connect to MongoDB Atlas:", err);
-        cached.promise = null; // Reset promise so a retry can be attempted later
+        cached.promise = null;
         throw err;
       });
   }

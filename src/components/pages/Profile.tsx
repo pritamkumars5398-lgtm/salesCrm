@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconUser, IconMail, IconLock, IconLogout, IconCheck, IconBuildingSkyscraper,
   IconShield,
@@ -22,6 +23,7 @@ function getInitials(name: string) {
 }
 
 export default function Profile() {
+  const router = useRouter();
   const { userName, userEmail, logout, setPage } = useAppStore();
 
   const [name, setName]         = useState(userName);
@@ -186,7 +188,7 @@ export default function Profile() {
                   <p style={{ fontSize: 12, color: "var(--color-text3)", margin: "3px 0 0" }}>End your current session</p>
                 </div>
                 <button
-                  onClick={() => { logout(); setPage("dashboard"); }}
+                  onClick={() => { logout(); router.push("/"); }}
                   style={{
                     display: "flex", alignItems: "center", gap: 7,
                     padding: "8px 16px", borderRadius: 9,

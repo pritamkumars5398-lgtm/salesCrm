@@ -243,7 +243,7 @@ export default function Leads({ onAddLead }: Props) {
                   className="accent-[#6c63ff] cursor-pointer"
                 />
               </th>
-              {["Name", "Company", "Source", "Channels", "Status", "Action"].map((h) => (
+              {["Name", "Company", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap"
@@ -257,7 +257,7 @@ export default function Leads({ onAddLead }: Props) {
           <tbody>
             {leads.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
+                <td colSpan={8} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
                   No leads found. Add your first lead or sync Apify.
                 </td>
               </tr>
@@ -309,6 +309,20 @@ export default function Leads({ onAddLead }: Props) {
                   </div>
                 </td>
                 <td className="px-4 py-3"><StatusPill status={lead.status} /></td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {lead.createdAt ? (
+                    <div>
+                      <div className="text-[12px] font-medium" style={{ color: "var(--color-text2)" }}>
+                        {new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text3)" }}>
+                        {new Date(lead.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: "var(--color-text3)", fontSize: 11 }}>—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex gap-1.5 items-center flex-nowrap">
                     {lead.status === "new" && (

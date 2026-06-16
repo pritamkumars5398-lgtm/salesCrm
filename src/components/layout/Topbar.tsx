@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
+  const router = useRouter();
   const { currentPage, activeAgent, userName, setPage } = useAppStore();
 
   const initials = getInitials(userName || "U");
@@ -91,7 +93,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
 
         {/* Profile avatar — navigates to profile page */}
         <button
-          onClick={() => setPage("profile")}
+          onClick={() => router.push(`/profile/${activeAgent?._id || "default"}`)}
           title={`${userName} — View profile`}
           style={{
             width: 32, height: 32, borderRadius: "50%",

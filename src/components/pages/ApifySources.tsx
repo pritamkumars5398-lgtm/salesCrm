@@ -30,30 +30,28 @@ const SCRAPERS: ScraperDef[] = [
     Icon: IconMap,
     iconBg: "rgba(16,185,129,0.1)",
     iconColor: "#10b981",
-    defaultActorId: "nwua9Gu5YrADL7ZD",
-    actorLink: "https://apify.com/compass/google-maps-scraper",
+    defaultActorId: "nwua9Gu5YrADL7ZDj",
+    actorLink: "https://apify.com/compass/crawler-google-places",
     fields: [
       { label: "Search Keyword", key: "gmKeyword", placeholder: "e.g. Carpenter, Plumber, Electrician", hint: "Combined with location → search query" },
       { label: "Location", key: "gmLocation", placeholder: "e.g. Lucknow, Mumbai, Delhi NCR" },
       { label: "Max Results", key: "gmMaxResults", placeholder: "25", hint: "Max businesses to scrape per run (1–100)" },
-      { label: "Actor ID", key: "gmActorId", placeholder: "nwua9Gu5YrADL7ZD", hint: "Leave blank to use default stable actor" },
+      { label: "Actor ID", key: "gmActorId", placeholder: "nwua9Gu5YrADL7ZDj", hint: "Leave blank to use default stable actor" },
     ],
   },
   {
     type: "linkedin",
     label: "LinkedIn Scraper",
-    description: "Scrape LinkedIn company pages or people profiles. Great for B2B outreach targeting specific roles or industries.",
+    description: "Scrape LinkedIn people profiles by keyword. No session cookie required. Great for B2B outreach targeting specific roles or industries.",
     Icon: IconBrandLinkedin,
     iconBg: "rgba(10,102,194,0.1)",
     iconColor: "#0a66c2",
-    defaultActorId: "",
-    actorLink: "https://apify.com/apify/linkedin-scraper",
+    defaultActorId: "M2FMdjRVeF1HPGFcc",
+    actorLink: "https://apify.com/harvestapi/linkedin-profile-search",
     fields: [
-      { label: "Search Keywords", key: "liKeywords", placeholder: "e.g. Furniture manufacturer Lucknow", hint: "People or company search terms" },
-      { label: "Country", key: "liCountry", placeholder: "e.g. India, US", hint: "Filter results by country" },
-      { label: "Target", key: "liTarget", placeholder: "", options: ["Companies", "People"], hint: "What to scrape" },
-      { label: "Max Results", key: "liMaxResults", placeholder: "20" },
-      { label: "Actor ID", key: "liActorId", placeholder: "Paste Apify LinkedIn actor ID", hint: "Find actors at apify.com/store" },
+      { label: "Actor ID", key: "liActorId", placeholder: "M2FMdjRVeF1HPGFcc", hint: "Default: harvestapi/linkedin-profile-search (no cookie needed)" },
+      { label: "Search Keywords", key: "liKeywords", placeholder: "e.g. interior designer Lucknow, CEO furniture manufacturer", hint: "People search query — role + location works best" },
+      { label: "Max Results", key: "liMaxResults", placeholder: "20", hint: "Max profiles to return" },
     ],
   },
   {
@@ -66,10 +64,10 @@ const SCRAPERS: ScraperDef[] = [
     defaultActorId: "",
     actorLink: "https://apify.com/store?search=justdial",
     fields: [
-      { label: "Category / Keyword", key: "jdCategory", placeholder: "e.g. Carpenters, Furniture Shops, Interior Designers" },
+      { label: "Category / Keyword", key: "jdCategory", placeholder: "e.g. Carpenters, Furniture Shops, Interior Designers", hint: "Combined with city → sent as search query" },
       { label: "City", key: "jdCity", placeholder: "e.g. Lucknow, Kanpur, Agra" },
-      { label: "Max Results", key: "jdMaxResults", placeholder: "30" },
-      { label: "Actor ID", key: "jdActorId", placeholder: "Paste Apify JustDial actor ID", hint: "Find actors at apify.com/store" },
+      { label: "Max Results", key: "jdMaxResults", placeholder: "30", hint: "Min 10 — actor requirement" },
+      { label: "Actor ID", key: "jdActorId", placeholder: "Paste Apify JustDial actor ID", hint: "codingfrontend/justdial-business-lead-extractor works — needs RESIDENTIAL proxy plan" },
     ],
   },
   {
@@ -151,28 +149,31 @@ function Field({
 // ─── Scraper Card ────────────────────────────────────────────────────────────
 
 function ScraperCard({
-  def, values, setValues, isActive, onSetActive, onSave, savedKey,
+  def, values, setValues, isActive, isEnabled, onSetActive, onToggleEnabled, onSave, savedKey,
 }: {
   def: ScraperDef;
   values: Record<string, string>;
   setValues: (patch: Record<string, string>) => void;
   isActive: boolean;
+  isEnabled: boolean;
   onSetActive: () => void;
+  onToggleEnabled: (v: boolean) => void;
   onSave: (fields: string[]) => void;
   savedKey: string | null;
 }) {
-  const [open, setOpen] = useState(isActive);
+  const [open, setOpen] = useState(isActive && isEnabled);
   const isSaved = savedKey === def.type;
 
   return (
     <div
       style={{
-        border: `1px solid ${isActive ? "rgba(79,70,229,0.3)" : "var(--color-bg4)"}`,
+        border: `1px solid ${isActive && isEnabled ? "rgba(79,70,229,0.3)" : "var(--color-bg4)"}`,
         borderRadius: 14,
         overflow: "hidden",
-        background: "var(--color-bg2)",
-        boxShadow: isActive ? "0 0 0 3px rgba(79,70,229,0.07)" : "none",
-        transition: "box-shadow 0.2s, border-color 0.2s",
+        background: isEnabled ? "var(--color-bg2)" : "var(--color-bg)",
+        boxShadow: isActive && isEnabled ? "0 0 0 3px rgba(79,70,229,0.07)" : "none",
+        transition: "box-shadow 0.2s, border-color 0.2s, opacity 0.2s",
+        opacity: isEnabled ? 1 : 0.55,
       }}
     >
       {/* Card header */}
@@ -197,7 +198,7 @@ function ScraperCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>{def.label}</p>
-            {isActive && (
+            {isActive && isEnabled && (
               <span style={{
                 display: "flex", alignItems: "center", gap: 4,
                 fontSize: 10.5, fontWeight: 700,
@@ -208,9 +209,40 @@ function ScraperCard({
                 <IconCircleFilled size={6} /> Active
               </span>
             )}
+            {!isEnabled && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 700,
+                padding: "2px 8px", borderRadius: 99,
+                background: "rgba(239,68,68,0.08)", color: "#ef4444",
+                border: "1px solid rgba(239,68,68,0.15)",
+              }}>
+                Disabled
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: "2px 0 0", lineHeight: 1.4 }}>{def.description}</p>
         </div>
+        {/* Toggle */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleEnabled(!isEnabled); }}
+          style={{
+            width: 38, height: 22, borderRadius: 11,
+            background: isEnabled ? "#4f46e5" : "#cbd5e1",
+            border: "none", cursor: "pointer", padding: 0,
+            position: "relative", flexShrink: 0,
+            transition: "background 0.2s",
+          }}
+        >
+          <span style={{
+            position: "absolute",
+            top: 3, left: isEnabled ? 19 : 3,
+            width: 16, height: 16, borderRadius: "50%",
+            background: "#fff",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            transition: "left 0.2s ease",
+            display: "block",
+          }} />
+        </button>
         <span style={{ color: "var(--color-text3)", flexShrink: 0 }}>
           {open ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
         </span>
@@ -283,8 +315,11 @@ export default function ApifySources() {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [tokenSaved, setTokenSaved] = useState(false);
 
+  const enabledKey = (type: ScraperType) => `${type}Enabled`;
+
   const allSettingKeys = [
     "apifyToken", "activeScraperType",
+    ...SCRAPERS.map((s) => enabledKey(s.type)),
     ...SCRAPERS.flatMap((s) => s.fields.map((f) => f.key)),
   ];
 
@@ -301,6 +336,10 @@ export default function ApifySources() {
         if (!filtered.gmKeyword && data.industry) filtered.gmKeyword = data.industry;
         if (!filtered.gmLocation && data.leadLocation) filtered.gmLocation = data.leadLocation;
         if (!filtered.gmMaxResults) filtered.gmMaxResults = "25";
+        // Default all scrapers to enabled
+        SCRAPERS.forEach((s) => {
+          if (filtered[enabledKey(s.type)] === undefined) filtered[enabledKey(s.type)] = "true";
+        });
         setValues(filtered);
       });
   }, [activeAgent?._id]);
@@ -345,6 +384,20 @@ export default function ApifySources() {
     setSavedKey(type);
     setTimeout(() => setSavedKey(null), 2500);
     showToast("Scraper config saved");
+  }
+
+  async function handleToggleEnabled(type: ScraperType, enabled: boolean) {
+    const key = enabledKey(type);
+    patchValues({ [key]: String(enabled) });
+    await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentId: activeAgent?._id,
+        settings: { [key]: String(enabled) },
+      }),
+    });
+    showToast(`${SCRAPERS.find((s) => s.type === type)?.label} ${enabled ? "enabled" : "disabled"}`);
   }
 
   const activeType = (values.activeScraperType ?? "google-maps") as ScraperType;
@@ -424,7 +477,9 @@ export default function ApifySources() {
             values={values}
             setValues={patchValues}
             isActive={activeType === def.type}
+            isEnabled={values[enabledKey(def.type)] !== "false"}
             onSetActive={() => handleSetActive(def.type)}
+            onToggleEnabled={(v) => handleToggleEnabled(def.type, v)}
             onSave={(keys) => handleSaveCard(def.type, keys)}
             savedKey={savedKey}
           />

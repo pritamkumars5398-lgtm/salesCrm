@@ -36,6 +36,8 @@ export default function ConversationDrawer() {
   const { open, lead, channel } = drawer;
   const [agentOn, setAgentOn] = useState(true);
   const [replyText, setReplyText] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -61,9 +63,10 @@ export default function ConversationDrawer() {
   }
 
   async function sendReply() {
-    if (!replyText.trim() || !lead || !activeAgent) return;
+    if (!replyText.trim() || !lead || !activeAgent || sending) return;
     const content = replyText.trim();
     setReplyText("");
+    setSending(true);
 
     appendMessage(lead._id, channel, {
       role: "agent",
@@ -72,6 +75,7 @@ export default function ConversationDrawer() {
     });
 
     try {
+      // Save to conversation history
       await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,9 +87,37 @@ export default function ConversationDrawer() {
           content,
         }),
       });
-      showToast("Message sent");
+
+      // Actually send if email channel and lead has an email address
+      if (channel === "email") {
+        if (!lead.email) {
+          showToast("Lead has no email address", "error");
+        } else {
+          const subject = emailSubject.trim() || `Hi ${lead.fullName.split(" ")[0]}, a message for you`;
+          const res = await fetch("/api/email/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: activeAgent._id,
+              to:      lead.email,
+              subject,
+              body:    content,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast(data.error ?? "Email send failed", "error");
+          } else {
+            showToast(`Email sent to ${lead.email}`);
+          }
+        }
+      } else {
+        showToast("Message saved");
+      }
     } catch {
       showToast("Failed to send", "error");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -199,6 +231,19 @@ export default function ConversationDrawer() {
                 Agent paused — you are replying manually
               </div>
             )}
+            {channel === "email" && (
+              <input
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Subject line..."
+                className="w-full rounded-[10px] px-3 py-2 text-[12.5px] outline-none border mb-2"
+                style={{
+                  background: "var(--color-bg3)",
+                  borderColor: "rgba(0,0,0,0.1)",
+                  color: "var(--color-text)",
+                }}
+              />
+            )}
             <div className="flex gap-2 items-end">
               <textarea
                 ref={textareaRef}
@@ -218,8 +263,9 @@ export default function ConversationDrawer() {
               />
               <button
                 onClick={sendReply}
+                disabled={sending}
                 className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center flex-shrink-0 transition-colors"
-                style={{ background: "#6c63ff", color: "#fff" }}
+                style={{ background: sending ? "var(--color-bg4)" : "#6c63ff", color: "#fff", cursor: sending ? "wait" : "pointer" }}
               >
                 <IconSend size={16} />
               </button>
