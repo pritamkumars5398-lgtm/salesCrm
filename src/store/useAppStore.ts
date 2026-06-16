@@ -87,7 +87,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   logout: () => {
     localStorage.removeItem("sa_user");
-    set({ isAuthed: false, userName: "", userEmail: "" });
+    set({ isAuthed: false, userName: "", userEmail: "", agents: [], activeAgent: null, leads: [] });
   },
 
   currentPage: "dashboard",

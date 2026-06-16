@@ -121,15 +121,18 @@ export default function Home({ params }: PageProps) {
   }, [agentIdParam, agents, activeAgent?._id, pageParam, setActiveAgent, router]);
 
   useEffect(() => {
-    // Restore or seed auth — runs client-side only, no SSR mismatch
     const stored = localStorage.getItem("sa_user");
-    if (stored) {
+    if (!stored) {
+      setMounted(true);
+      return; // not logged in — show Landing
+    }
+    try {
       const user = JSON.parse(stored);
       login(user.name, user.email);
-    } else {
-      const demo = { name: "hello", email: "hello@gmail.com" };
-      localStorage.setItem("sa_user", JSON.stringify(demo));
-      login(demo.name, demo.email);
+    } catch {
+      localStorage.removeItem("sa_user");
+      setMounted(true);
+      return;
     }
     setMounted(true);
 
