@@ -1,0 +1,114 @@
+"use client";
+import { IconPlus, IconRefresh } from "@tabler/icons-react";
+import { useAppStore } from "@/store/useAppStore";
+
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: "Dashboard",
+  leads:     "Leads",
+  sequence:  "Sequence builder",
+  crm:       "CRM pipeline",
+  calendar:  "Calendar",
+  activity:  "Activity log",
+  settings:  "Settings",
+  crons:     "Schedules",
+  profile:   "Profile",
+};
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
+
+function avatarColor(name: string) {
+  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
+  const i = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length;
+  return colors[i];
+}
+
+interface Props {
+  onAddLead: () => void;
+  onSyncApify: () => void;
+  syncing?: boolean;
+}
+
+export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
+  const { currentPage, activeAgent, userName, setPage } = useAppStore();
+
+  const initials = getInitials(userName || "U");
+  const bgColor  = avatarColor(userName || "U");
+
+  return (
+    <header
+      className="flex items-center justify-between px-6 flex-shrink-0 z-10 border-b"
+      style={{
+        height: 54,
+        background: "rgba(255,255,255,0.7)", backdropFilter: "blur(12px)",
+        borderColor: "#e2e8f0",
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-[14px] font-medium">{PAGE_TITLES[currentPage] ?? currentPage}</span>
+        {activeAgent && (
+          <span className="text-[12px] font-mono" style={{ color: "var(--color-text3)" }}>
+            / {activeAgent.name}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2.5">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-50 text-emerald-600 text-[10px] font-semibold tracking-wide uppercase">
+          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: "#22c97a" }} />
+          Agent running
+        </span>
+
+        <button
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-150 hover:bg-slate-50"
+          style={{ padding: "6px 12px" }}
+          onClick={onAddLead}
+        >
+          <IconPlus size={14} /> Add lead
+        </button>
+
+        <button
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold text-white transition-all duration-150"
+          style={{
+            padding: "6px 12px",
+            background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+            border: "none",
+            opacity: syncing ? 0.7 : 1,
+            cursor: syncing ? "not-allowed" : "pointer",
+          }}
+          onClick={onSyncApify}
+          disabled={syncing}
+        >
+          <IconRefresh size={14} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Syncing…" : "Sync Apify"}
+        </button>
+
+        {/* Profile avatar — navigates to profile page */}
+        <button
+          onClick={() => setPage("profile")}
+          title={`${userName} — View profile`}
+          style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: bgColor,
+            border: currentPage === "profile" ? "2px solid #6366f1" : "2px solid transparent",
+            color: "#fff", fontSize: 12, fontWeight: 700,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "border-color 0.15s, box-shadow 0.15s",
+            outline: "none",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = `0 0 0 3px ${bgColor}33`)}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = "none")}
+        >
+          {initials}
+        </button>
+      </div>
+    </header>
+  );
+}

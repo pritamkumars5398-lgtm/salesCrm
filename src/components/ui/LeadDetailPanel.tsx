@@ -1,0 +1,329 @@
+"use client";
+import { useEffect, useState } from "react";
+import {
+  IconX, IconMail, IconPhone, IconBrandWhatsapp, IconMessage,
+  IconPlayerPlay, IconMessageCircle, IconBuilding,
+  IconBriefcase, IconUser, IconCalendar, IconLink,
+} from "@tabler/icons-react";
+import { useAppStore } from "@/store/useAppStore";
+import type { Lead, Channel } from "@/store/types";
+import StatusPill from "@/components/ui/Pill";
+
+const CHANNEL_META: Record<string, { label: string; Icon: React.ElementType; color: string; bg: string }> = {
+  email:    { label: "Email",     Icon: IconMail,           color: "#4dabf7", bg: "rgba(77,171,247,0.12)" },
+  whatsapp: { label: "WhatsApp",  Icon: IconBrandWhatsapp,  color: "#22c97a", bg: "rgba(34,201,122,0.12)" },
+  sms:      { label: "SMS",       Icon: IconMessage,        color: "#cc99ff", bg: "rgba(204,153,255,0.12)" },
+  call:     { label: "Voice call",Icon: IconPhone,          color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
+};
+
+const STAGE_STEPS = ["new", "contacted", "replied", "qualified", "closed"];
+const STAGE_LABELS: Record<string, string> = {
+  new: "New", contacted: "Contacted", replied: "Replied", qualified: "Qualified", closed: "Closed",
+};
+
+function avatarColor(name: string) {
+  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#dc2626"];
+  const i = name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
+  return colors[i];
+}
+
+function initials(name: string) {
+  return name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+}
+
+interface Props {
+  lead: Lead;
+  onClose: () => void;
+  onStartOutreach: (lead: Lead) => void;
+}
+
+export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Props) {
+  const { openDrawer } = useAppStore();
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  function handleClose() {
+    setVisible(false);
+    setTimeout(onClose, 280);
+  }
+
+  const bg  = avatarColor(lead.fullName);
+  const ini = initials(lead.fullName);
+  const stageIdx = STAGE_STEPS.indexOf(lead.pipelineStage ?? "new");
+
+  function Row({ Icon, label, value, href }: { Icon: React.ElementType; label: string; value: string; href?: string }) {
+    if (!value) return null;
+    return (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <span
+          style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+            background: "var(--color-bg3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginTop: 1,
+          }}
+        >
+          <Icon size={14} style={{ color: "var(--color-text3)" }} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", margin: "0 0 2px" }}>
+            {label}
+          </p>
+          {href ? (
+            <a href={href} style={{ fontSize: 13, color: "#4f46e5", textDecoration: "none", wordBreak: "break-all" }}>{value}</a>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--color-text)", margin: 0, wordBreak: "break-all" }}>{value}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={handleClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 40,
+          background: "rgba(15,23,42,0.3)",
+          backdropFilter: "blur(2px)",
+          opacity: visible ? 1 : 0,
+          transition: "opacity 0.25s ease",
+        }}
+      />
+
+      {/* Panel */}
+      <div
+        style={{
+          position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50,
+          width: 400,
+          background: "var(--color-bg2)",
+          borderLeft: "1px solid var(--color-bg4)",
+          boxShadow: "-12px 0 40px rgba(0,0,0,0.1)",
+          display: "flex", flexDirection: "column",
+          overflowY: "auto",
+          transform: visible ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "20px 20px 16px",
+            borderBottom: "1px solid var(--color-bg4)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <p style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", margin: 0 }}>
+            Lead details
+          </p>
+          <button
+            onClick={handleClose}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--color-text3)", display: "flex", borderRadius: 6 }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg4)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
+          >
+            <IconX size={16} />
+          </button>
+        </div>
+
+        {/* Identity */}
+        <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+            <div
+              style={{
+                width: 54, height: 54, borderRadius: "50%",
+                background: bg,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontSize: 18, fontWeight: 800,
+                flexShrink: 0, boxShadow: `0 4px 14px ${bg}44`,
+              }}
+            >
+              {ini}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text)", margin: "0 0 3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {lead.fullName}
+              </p>
+              <p style={{ fontSize: 12.5, color: "var(--color-text3)", margin: 0 }}>
+                {[lead.jobTitle, lead.company].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+          </div>
+
+          {/* Status + source row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <StatusPill status={lead.status} />
+            <span
+              style={{
+                fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99,
+                background: "var(--color-bg3)", color: "var(--color-text3)",
+                border: "1px solid var(--color-bg4)",
+              }}
+            >
+              {lead.source === "Apify" ? "Apify (Google Maps)" : lead.source}
+            </span>
+            <span
+              style={{
+                fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99,
+                background: lead.agentEnabled ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.08)",
+                color: lead.agentEnabled ? "#059669" : "#ef4444",
+                border: `1px solid ${lead.agentEnabled ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.15)"}`,
+              }}
+            >
+              Agent {lead.agentEnabled ? "enabled" : "disabled"}
+            </span>
+          </div>
+        </div>
+
+        {/* Pipeline progress */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+            Pipeline stage
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+            {STAGE_STEPS.map((s, i) => {
+              const done    = i <= stageIdx;
+              const current = i === stageIdx;
+              return (
+                <div key={s} style={{ display: "flex", alignItems: "center", flex: i < STAGE_STEPS.length - 1 ? 1 : 0 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                    <div
+                      style={{
+                        width: 20, height: 20, borderRadius: "50%",
+                        background: done ? "#4f46e5" : "var(--color-bg4)",
+                        border: current ? "2px solid #4f46e5" : "2px solid transparent",
+                        boxSizing: "border-box",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: current ? "0 0 0 3px rgba(79,70,229,0.15)" : "none",
+                      }}
+                    >
+                      {done && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                    </div>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, color: done ? "#4f46e5" : "var(--color-text3)", whiteSpace: "nowrap" }}>
+                      {STAGE_LABELS[s]}
+                    </span>
+                  </div>
+                  {i < STAGE_STEPS.length - 1 && (
+                    <div
+                      style={{
+                        flex: 1, height: 2, marginBottom: 14,
+                        background: i < stageIdx ? "#4f46e5" : "var(--color-bg4)",
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Contact info */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
+            Contact information
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Row Icon={IconUser}     label="Full name"  value={lead.fullName} />
+            <Row Icon={IconMail}     label="Email"      value={lead.email}    href={lead.email ? `mailto:${lead.email}` : undefined} />
+            <Row Icon={IconPhone}    label="Phone"      value={lead.phone}    href={lead.phone ? `tel:${lead.phone}` : undefined} />
+            <Row Icon={IconBriefcase} label="Job title" value={lead.jobTitle} />
+            <Row Icon={IconBuilding} label="Company"    value={lead.company} />
+          </div>
+        </div>
+
+        {/* Channels */}
+        {(lead.channels ?? []).length > 0 && (
+          <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+              Outreach channels
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(lead.channels ?? []).map((ch) => {
+                const meta = CHANNEL_META[ch];
+                if (!meta) return null;
+                return (
+                  <div
+                    key={ch}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 14px", borderRadius: 10,
+                      background: "var(--color-bg3)", border: "1px solid var(--color-bg4)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ width: 28, height: 28, borderRadius: 7, background: meta.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <meta.Icon size={14} style={{ color: meta.color }} />
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text)" }}>{meta.label}</span>
+                    </div>
+                    <button
+                      onClick={() => { handleClose(); openDrawer(lead, ch as Channel); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "5px 12px", borderRadius: 7,
+                        background: "var(--color-bg2)", border: "1px solid var(--color-bg4)",
+                        fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <IconMessageCircle size={12} /> View convo
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Meta */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
+            Meta
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Row Icon={IconLink}     label="Source"     value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
+            <Row Icon={IconCalendar} label="Added"      value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: "16px 20px", marginTop: "auto", flexShrink: 0 }}>
+          {lead.status === "new" && (
+            <button
+              onClick={() => { onStartOutreach(lead); handleClose(); }}
+              style={{
+                width: "100%", padding: "11px 20px", borderRadius: 10,
+                background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                color: "#fff", fontSize: 13, fontWeight: 700,
+                border: "none", cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(79,70,229,0.28)",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <IconPlayerPlay size={15} /> Start outreach
+            </button>
+          )}
+          <button
+            onClick={handleClose}
+            style={{
+              width: "100%", padding: "9px 20px", borderRadius: 10,
+              background: "var(--color-bg3)", color: "var(--color-text2)",
+              fontSize: 13, fontWeight: 600,
+              border: "1px solid var(--color-bg4)", cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
