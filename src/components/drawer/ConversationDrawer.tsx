@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   IconX, IconRobot, IconBrandWhatsapp, IconMail, IconMessage, IconPhone, IconSend,
-  IconAlertCircle,
+  IconAlertCircle, IconCalendarCheck,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel } from "@/store/types";
@@ -38,6 +38,7 @@ export default function ConversationDrawer() {
   const [replyText, setReplyText] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
+  const [marking, setMarking] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -60,6 +61,25 @@ export default function ConversationDrawer() {
     });
     updateLead(lead._id, { agentEnabled: checked });
     if (!checked) updateLead(lead._id, { status: "in_outreach" });
+  }
+
+  async function markAsBooked() {
+    if (!lead || marking) return;
+    setMarking(true);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/mark-booked`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Failed");
+      updateLead(lead._id, { status: "meeting_booked" });
+      showToast(`✅ Meeting booked for ${lead.fullName}!`, "success");
+    } catch {
+      showToast("Failed to mark as booked", "error");
+    } finally {
+      setMarking(false);
+    }
   }
 
   async function sendReply() {
@@ -149,6 +169,17 @@ export default function ConversationDrawer() {
                 {lead.company}
               </div>
             </div>
+            {lead.status === "replied" && (
+              <button
+                onClick={markAsBooked}
+                disabled={marking}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105 flex-shrink-0"
+                style={{ padding: "5px 10px", background: marking ? "#9ca3af" : "linear-gradient(135deg,#22c97a,#10b981)", cursor: marking ? "wait" : "pointer" }}
+              >
+                <IconCalendarCheck size={13} />
+                {marking ? "Booking..." : "Mark Booked"}
+              </button>
+            )}
             <button
               onClick={closeDrawer}
               className="p-1 rounded-md transition-colors"

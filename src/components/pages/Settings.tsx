@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  IconBrain, IconBrandWhatsapp, IconPhone, IconMail, IconMessage, IconCheck, IconBuilding, IconDatabase,
+  IconBrain, IconBrandWhatsapp, IconPhone, IconMail, IconMessage, IconCheck, IconBuilding, IconDatabase, IconCalendar,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import ApifySources from "@/components/pages/ApifySources";
@@ -115,6 +115,19 @@ const CARDS: SettingCard[] = [
       { label: "Provider", key: "smsProvider", placeholder: "", options: ["Twilio SMS", "MSG91", "Plivo"] },
       { label: "API Key", key: "smsApiKey", type: "password", placeholder: "Enter API key" },
       { label: "From Number", key: "smsFrom", placeholder: "+91xxxxxxxxxx", hint: "Must be registered with provider" },
+    ],
+  },
+  {
+    key: "calendly",
+    title: "Calendly",
+    description: "Booking links & auto webhook sync",
+    Icon: IconCalendar,
+    iconBg: "rgba(0,111,243,0.1)",
+    iconColor: "#006ff3",
+    fields: [
+      { label: "Calendly Event Link", key: "calendlyLink", placeholder: "https://calendly.com/your-name/30min", hint: "Paste your public booking page URL" },
+      { label: "Personal Access Token", key: "calendlyApiToken", type: "password", placeholder: "eyJhbGci...", hint: "From calendly.com/integrations/api_webhooks" },
+      { label: "Webhook Signing Secret", key: "calendlyWebhookSecret", type: "password", placeholder: "Signing secret from webhook creation", hint: "Used to verify incoming webhook payloads" },
     ],
   },
 ];

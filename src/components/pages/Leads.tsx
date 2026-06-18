@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconMail, IconBrandWhatsapp, IconMessage, IconPhone,
-  IconCheck, IconX, IconEye,
+  IconCheck, IconX, IconEye, IconCalendarCheck,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
@@ -77,13 +77,49 @@ export default function Leads({ onAddLead }: Props) {
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
   async function startOutreach(lead: Lead) {
-    await fetch(`/api/leads/${lead._id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "in_outreach" }),
-    });
-    updateLead(lead._id, { status: "in_outreach" });
-    showToast(`Outreach started for ${lead.fullName}`);
+    showToast(`Generating AI outreach for ${lead.firstName}...`);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/outreach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderName: activeAgent?.name || "our team" }),
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "Failed to start outreach");
+      
+      updateLead(lead._id, { status: "in_outreach" });
+      
+      if (data.emailSent) {
+        showToast(`AI email sent to ${lead.fullName}!`, "success");
+      } else if (data.emailError) {
+        if (data.emailError.includes("Email not configured")) {
+          showToast(`⚠️ Please configure your Email/SMTP in Settings first!`, "error");
+        } else {
+          showToast(`AI generated, but email failed: ${data.emailError}`, "error");
+        }
+      } else {
+        showToast(`Outreach started for ${lead.fullName}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Error: ${msg}`, "error");
+    }
+  }
+
+  async function markAsBooked(lead: Lead) {
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/mark-booked`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Failed");
+      updateLead(lead._id, { status: "meeting_booked" });
+      showToast(`✅ Meeting booked for ${lead.fullName}!`, "success");
+    } catch {
+      showToast("Failed to mark as booked", "error");
+    }
   }
 
   function toggleSelect(id: string) {
@@ -95,17 +131,34 @@ export default function Leads({ onAddLead }: Props) {
   }
 
   async function bulkStartOutreach() {
-    await Promise.all(
-      Array.from(selected).map((id) =>
-        fetch(`/api/leads/${id}`, {
-          method: "PUT",
+    showToast(`Starting AI outreach for ${selected.size} leads...`);
+    let errors = 0;
+    const promises = Array.from(selected).map(async (id) => {
+      try {
+        const res = await fetch(`/api/leads/${id}/outreach`, {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "in_outreach" }),
-        })
-      )
-    );
-    selected.forEach((id) => updateLead(id, { status: "in_outreach" }));
-    showToast(`Outreach started for ${selected.size} leads`);
+          body: JSON.stringify({ senderName: activeAgent?.name || "our team" }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+           updateLead(id, { status: "in_outreach" });
+           if (data.emailError) errors++;
+        } else {
+           errors++;
+        }
+      } catch (err) {
+        errors++;
+        console.error("Bulk outreach error for lead", id, err);
+      }
+    });
+    
+    await Promise.all(promises);
+    if (errors > 0) {
+      showToast(`Completed with ${errors} errors (Check Settings if email failed)`, "error");
+    } else {
+      showToast(`Successfully sent ${selected.size} AI emails!`, "success");
+    }
     setSelected(new Set());
   }
 
@@ -332,6 +385,15 @@ export default function Leads({ onAddLead }: Props) {
                         onClick={() => startOutreach(lead)}
                       >
                         <IconPlayerPlay size={12} /> Start
+                      </button>
+                    )}
+                    {lead.status === "replied" && (
+                      <button
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"
+                        style={{ padding: "5px 10px", background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
+                        onClick={() => markAsBooked(lead)}
+                      >
+                        <IconCalendarCheck size={12} /> Mark Booked
                       </button>
                     )}
                     <button
