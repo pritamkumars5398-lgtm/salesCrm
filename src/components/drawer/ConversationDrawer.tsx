@@ -114,7 +114,7 @@ export default function ConversationDrawer() {
           showToast("Lead has no email address", "error");
         } else {
           const subject = emailSubject.trim() || `Hi ${lead.fullName.split(" ")[0]}, a message for you`;
-          const res = await fetch("/api/email/send", {
+          const res = await fetch("/api/email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

@@ -27,16 +27,23 @@ async function getEmailConfig(agentId: string): Promise<EmailConfig | null> {
   const provider = m.emailProvider || "SMTP";
 
   if (provider === "SMTP") {
-    if (!m.smtpHost || !m.smtpUser || !m.smtpPass) return null;
+    const host = m.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
+    const port = parseInt(m.smtpPort || process.env.SMTP_PORT || "587", 10);
+    // From Address doubles as the SMTP login when no explicit username is set,
+    // so email works from the Settings UI alone (no .env required).
+    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || m.smtpUser || process.env.SMTP_USER || "";
+    const user = m.smtpUser || process.env.SMTP_USER || fromAddr;
+    const pass = m.smtpPass || process.env.SMTP_PASS || "";
+    if (!user || !pass) return null;
     return {
       provider,
       apiKey: "",
-      smtpHost: m.smtpHost,
-      smtpPort: parseInt(m.smtpPort ?? "587", 10),
-      smtpUser: m.smtpUser,
-      smtpPass: m.smtpPass,
-      fromName: m.smtpFromName || m.smtpUser,
-      fromAddress: m.smtpFrom || m.smtpUser,
+      smtpHost: host,
+      smtpPort: port,
+      smtpUser: user,
+      smtpPass: pass,
+      fromName: m.smtpFromName || process.env.SMTP_FROM_NAME || user,
+      fromAddress: fromAddr,
     };
   }
 

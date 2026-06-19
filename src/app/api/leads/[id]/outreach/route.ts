@@ -24,10 +24,12 @@ async function getEmailConfig(agentId: string) {
     // Check DB first, fallback to .env
     const host = m.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
     const port = parseInt(m.smtpPort || process.env.SMTP_PORT || "465", 10);
-    const user = m.smtpUser || process.env.SMTP_USER;
+    // From Address doubles as the SMTP login when no explicit username is set,
+    // so email works from the Settings UI alone (no .env required).
+    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || m.smtpUser || process.env.SMTP_USER;
+    const user = m.smtpUser || process.env.SMTP_USER || fromAddr;
     const pass = m.smtpPass || process.env.SMTP_PASS;
     const fromName = m.smtpFromName || process.env.SMTP_FROM_NAME || user || "SalesAgent";
-    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || user;
 
     if (!host || !user || !pass) return null;
     return {

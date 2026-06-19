@@ -9,7 +9,7 @@
 # next.js
 /.next/
 /out/
-
+reset_leads.js
 # production
 /build
 
