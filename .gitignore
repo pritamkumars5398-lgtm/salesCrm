@@ -12,7 +12,7 @@
 reset_leads.js
 # production
 /build
-
+echo "reset_leads.js"
 # misc
 .DS_Store
 *.pem
