@@ -234,6 +234,26 @@ export default function ConversationDrawer() {
             showToast(`Email sent to ${lead.email}`);
           }
         }
+      } else if (role === "agent" && channel === "whatsapp") {
+        if (!lead.phone) {
+          showToast("Lead has no phone number", "error");
+        } else {
+          const waSendRes = await fetch("/api/whatsapp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: activeAgent._id,
+              to:      lead.phone,
+              text:    content,
+            }),
+          });
+          const data = await waSendRes.json();
+          if (!waSendRes.ok) {
+            showToast(data.error ?? "WhatsApp send failed", "error");
+          } else {
+            showToast(`WhatsApp message sent to ${lead.phone}`);
+          }
+        }
       } else {
         showToast(role === "agent" ? "Message saved" : "Client message simulated");
       }

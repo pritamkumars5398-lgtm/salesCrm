@@ -30,7 +30,7 @@ interface MiniUsage {
 
 const OUTREACH_CHANNELS = [
   { key: "email",    label: "Email",     Icon: IconMail,           color: "#4dabf7", enabledKey: "emailEnabled",    valueKey: "smtpFrom"     },
-  { key: "whatsapp", label: "WhatsApp",  Icon: IconBrandWhatsapp,  color: "#22c97a", enabledKey: "whatsappEnabled", valueKey: "waPhone"      },
+  { key: "whatsapp", label: "WhatsApp",  Icon: IconBrandWhatsapp,  color: "#22c97a", enabledKey: "whatsappEnabled", valueKey: "waSessionId"  },
   { key: "sms",      label: "SMS",       Icon: IconMessage,        color: "#cc99ff", enabledKey: "smsEnabled",      valueKey: "smsFrom"      },
   { key: "voice",    label: "Voice",     Icon: IconPhone,          color: "#f5a623", enabledKey: "voiceEnabled",    valueKey: "voiceProvider"},
 ] as const;
@@ -290,9 +290,9 @@ export default function Sidebar() {
                 <button
                   onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
                   className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                    currentPage === "superadmin" ? "text-[var(--color-accent2)]" : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
+                    (currentPage as string) === "superadmin" ? "text-[var(--color-accent2)]" : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
                   }`}
-                  style={currentPage === "superadmin" ? { background: "rgba(108,99,255,0.12)" } : undefined}
+                  style={(currentPage as string) === "superadmin" ? { background: "rgba(108,99,255,0.12)" } : undefined}
                 >
                   <IconShield size={16} />
                   Superadmin

@@ -67,8 +67,9 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     iconColor: "#22c97a",
     togglable: true,
     fields: [
-      { label: "Provider", key: "waProvider", placeholder: "", options: ["Twilio", "360dialog", "Meta Business API"] },
-      { label: "API Key", key: "waApiKey", type: "password", placeholder: "Enter API key" },
+      { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb"] },
+      { label: "API Key", key: "waApiKey", type: "password", placeholder: "wire_..." },
+      { label: "Session ID", key: "waSessionId", placeholder: "ws_..." },
     ],
   },
   {
