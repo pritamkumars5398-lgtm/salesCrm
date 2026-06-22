@@ -14,6 +14,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: Request) {
   await connectDB();
   const body = await req.json();
+  const existing = await Agent.findOne({ name: body.name, userEmail: body.userEmail });
+  if (existing) {
+    return NextResponse.json(existing, { status: 200 });
+  }
   const agent = await Agent.create({ name: body.name, userEmail: body.userEmail });
   return NextResponse.json(agent, { status: 201 });
 }
