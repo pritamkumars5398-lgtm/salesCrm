@@ -4,6 +4,7 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import type { Page } from "@/store/types";
+import { VALID_PAGES } from "@/lib/constants/pages";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import ConversationDrawer from "@/components/drawer/ConversationDrawer";
@@ -21,9 +22,10 @@ import Activity from "@/components/pages/Activity";
 import Settings from "@/components/pages/Settings";
 import Crons from "@/components/pages/Crons";
 import Plans from "@/components/pages/Plans";
+import Superadmin from "@/components/pages/Superadmin";
 
-// Intercept fetch calls on the frontend to log API calls
-if (typeof window !== "undefined" && !(window as any).__fetch_intercepted__) {
+// Intercept fetch calls on the frontend to log API calls (dev only)
+if (process.env.NODE_ENV === "development" && typeof window !== "undefined" && !(window as any).__fetch_intercepted__) {
   (window as any).__fetch_intercepted__ = true;
   const originalFetch = window.fetch;
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
@@ -90,7 +92,7 @@ export default function Home({ params }: PageProps) {
   const agentIdParam = resolvedParams.agentId;
 
   const router = useRouter();
-  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login } = useAppStore();
+  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail } = useAppStore();
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -98,8 +100,7 @@ export default function Home({ params }: PageProps) {
   // Sync route param changes to Zustand store
   useEffect(() => {
     if (pageParam && currentPage !== pageParam) {
-      const validPages = ["dashboard", "leads", "sequence", "crm", "calendar", "activity", "settings", "crons", "profile", "plans"];
-      if (validPages.includes(pageParam)) {
+      if ((VALID_PAGES as string[]).includes(pageParam)) {
         setPage(pageParam as Page);
       }
     }
@@ -126,8 +127,9 @@ export default function Home({ params }: PageProps) {
       setMounted(true);
       return; // not logged in — show Landing
     }
+    let user: { name: string; email: string };
     try {
-      const user = JSON.parse(stored);
+      user = JSON.parse(stored);
       login(user.name, user.email);
     } catch {
       localStorage.removeItem("sa_user");
@@ -136,16 +138,29 @@ export default function Home({ params }: PageProps) {
     }
     setMounted(true);
 
-    fetch("/api/agents")
+    fetch(`/api/agents?email=${encodeURIComponent(user.email)}`)
       .then((r) => r.json())
       .then(async (agentsList) => {
         let finalAgents = agentsList;
         if (agentsList.length === 0) {
+          const onboardingRaw = localStorage.getItem("sa_onboarding");
+          let onboarding: any = null;
+          if (onboardingRaw) {
+            try {
+              onboarding = JSON.parse(onboardingRaw);
+            } catch (e) {
+              console.error("[onboarding parse error]", e);
+            }
+          }
+
+          const agentName = onboarding?.businessName || "Carpenter Agent";
+
           const a = await fetch("/api/agents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "Carpenter Agent" }),
+            body: JSON.stringify({ name: agentName, userEmail: user.email }),
           }).then((r) => r.json());
+
           // Seed settings + demo leads
           await Promise.all([
             fetch("/api/settings", {
@@ -155,8 +170,8 @@ export default function Home({ params }: PageProps) {
                 agentId: a._id,
                 settings: {
                   businessType:      "Other",
-                  industry:          "carpenter",
-                  gmKeyword:         "carpenter",
+                  industry:          agentName.toLowerCase(),
+                  gmKeyword:         agentName.toLowerCase(),
                   gmLocation:        "Lucknow",
                   gmMaxResults:      "25",
                   gmActorId:         "nwua9Gu5YrADL7ZD",
@@ -172,6 +187,13 @@ export default function Home({ params }: PageProps) {
                   emailEnabled:      "true",
                   smsEnabled:        "true",
                   voiceEnabled:      "true",
+                  // Seeded onboarding values
+                  businessWebsite:   onboarding?.businessWebsite || "",
+                  businessPhone:     onboarding?.businessPhone || "",
+                  businessServices:  onboarding?.businessServices || "",
+                  docLink:           onboarding?.docLink || "",
+                  customPrompt:      onboarding?.customPrompt || "",
+                  followUpDays:      onboarding?.followUpDays || "3",
                 },
               }),
             }),
@@ -181,6 +203,8 @@ export default function Home({ params }: PageProps) {
               body: JSON.stringify({ agentId: a._id }),
             }),
           ]);
+
+          localStorage.removeItem("sa_onboarding");
           finalAgents = [{ ...a, leadCount: 10 }];
         }
         
@@ -309,6 +333,16 @@ export default function Home({ params }: PageProps) {
             {currentPage === "crons" && <Crons />}
             {currentPage === "profile" && <Profile />}
             {currentPage === "plans" && <Plans />}
+            {currentPage === "superadmin" && (
+              userEmail?.toLowerCase() === "admin@salesagent.ai" ? (
+                <Superadmin />
+              ) : (
+                <div style={{ padding: 40, fontFamily: "var(--font-sans)", color: "var(--color-text)" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: "#ef4444", marginBottom: 6 }}>Access Denied</h3>
+                  <p style={{ fontSize: 13, color: "var(--color-text3)" }}>You do not have permissions to view the superadmin dashboard.</p>
+                </div>
+              )
+            )}
           </div>
 
           {/* Conversation drawer */}

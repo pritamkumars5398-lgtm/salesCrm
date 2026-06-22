@@ -31,13 +31,27 @@ export default function Crons() {
     action: "start_outreach",
   });
   const [isCustom, setIsCustom] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeAgent) return;
+    setLoading(true);
     fetch(`/api/crons?agentId=${activeAgent._id}`)
       .then((r) => r.json())
-      .then(setCronJobs);
+      .then(setCronJobs)
+      .finally(() => setLoading(false));
   }, [activeAgent?._id]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading schedules...</div>
+        </div>
+      </div>
+    );
+  }
 
   async function createJob() {
     if (!activeAgent || !form.name.trim()) return;

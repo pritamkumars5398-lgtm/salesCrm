@@ -16,14 +16,28 @@ export default function Activity() {
   const { activeAgent, activities, setActivities } = useAppStore();
   const [channel, setChannel] = useState("all");
   const [range, setRange] = useState("today");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeAgent) return;
+    setLoading(true);
     const params = new URLSearchParams({ agentId: activeAgent._id, channel, range });
     fetch(`/api/activities?${params}`)
       .then((r) => r.json())
-      .then(setActivities);
+      .then(setActivities)
+      .finally(() => setLoading(false));
   }, [activeAgent?._id, channel, range]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading activities...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">

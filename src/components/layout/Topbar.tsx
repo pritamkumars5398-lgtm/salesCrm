@@ -2,33 +2,8 @@
 import { useRouter } from "next/navigation";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
-
-const PAGE_TITLES: Record<string, string> = {
-  dashboard: "Dashboard",
-  leads:     "Leads",
-  sequence:  "Sequence builder",
-  crm:       "CRM pipeline",
-  calendar:  "Calendar",
-  activity:  "Activity log",
-  settings:  "Settings",
-  crons:     "Schedules",
-  profile:   "Profile",
-};
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join("");
-}
-
-function avatarColor(name: string) {
-  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
-  const i = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length;
-  return colors[i];
-}
+import { avatarColor, getInitials } from "@/lib/utils/avatar";
+import { PAGE_TITLES } from "@/lib/constants/pages";
 
 interface Props {
   onAddLead: () => void;
@@ -38,7 +13,7 @@ interface Props {
 
 export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const router = useRouter();
-  const { currentPage, activeAgent, userName, setPage } = useAppStore();
+  const { currentPage, activeAgent, userName } = useAppStore();
 
   const initials = getInitials(userName || "U");
   const bgColor  = avatarColor(userName || "U");

@@ -3,10 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Usage } from "@/lib/models/Usage";
 import { Setting } from "@/lib/models/Setting";
 import { PLANS, type PlanId } from "@/lib/plans";
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7); // "YYYY-MM"
-}
+import { currentMonth } from "@/lib/utils/date";
 
 export async function GET(req: Request) {
   await connectDB();
@@ -16,18 +13,29 @@ export async function GET(req: Request) {
 
   const month = currentMonth();
 
-  const [usage, planRow] = await Promise.all([
+  const [usage, planRow, customLimitsRow] = await Promise.all([
     Usage.findOne({ agentId, month }).lean(),
     Setting.findOne({ agentId, key: "plan" }).lean(),
+    Setting.findOne({ agentId, key: "custom_limits" }).lean(),
   ]);
 
   const planId = (planRow?.value ?? "free") as PlanId;
   const plan = PLANS[planId];
 
+  let limits = { ...plan.limits };
+  if (customLimitsRow?.value) {
+    try {
+      const parsed = JSON.parse(customLimitsRow.value);
+      limits = { ...limits, ...parsed };
+    } catch (e) {
+      console.error("Failed to parse custom limits", e);
+    }
+  }
+
   return NextResponse.json({
     month,
     planId,
-    plan: { name: plan.name, priceINR: plan.priceINR, color: plan.color, limits: plan.limits },
+    plan: { name: plan.name, priceINR: plan.priceINR, color: plan.color, limits },
     usage: {
       leadsScraped: usage?.leadsScraped ?? 0,
       messagesSent: usage?.messagesSent ?? 0,

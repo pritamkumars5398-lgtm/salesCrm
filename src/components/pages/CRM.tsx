@@ -1,26 +1,33 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
 import StatusPill from "@/components/ui/Pill";
-
-const STAGES = [
-  { key: "new",       label: "New",       pillClass: "pill-gray" },
-  { key: "contacted", label: "Contacted", pillClass: "pill-blue" },
-  { key: "replied",   label: "Replied",   pillClass: "pill-amber" },
-  { key: "qualified", label: "Qualified", pillClass: "pill-green" },
-  { key: "closed",    label: "Closed",    pillClass: "pill-green" },
-];
+import { CRM_STAGES as STAGES } from "@/lib/constants/crm";
 
 export default function CRM() {
   const { activeAgent, leads, setLeads, openDrawer, showToast } = useAppStore();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeAgent) return;
+    setLoading(true);
     fetch(`/api/leads?agentId=${activeAgent._id}`)
       .then((r) => r.json())
-      .then(setLeads);
+      .then(setLeads)
+      .finally(() => setLoading(false));
   }, [activeAgent?._id]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading pipeline...</div>
+        </div>
+      </div>
+    );
+  }
 
   async function moveLead(leadId: string, stage: string) {
     await fetch(`/api/leads/${leadId}`, {

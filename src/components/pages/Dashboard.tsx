@@ -1,38 +1,42 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconUsers, IconActivity, IconMail, IconBrandWhatsapp, IconPhone } from "@tabler/icons-react";
+import { IconUsers, IconActivity } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
 import StatusPill from "@/components/ui/Pill";
 import { formatDistanceToNow } from "date-fns";
+import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 
-const CHANNEL_ICONS: Record<string, React.ElementType> = {
-  email: IconMail, whatsapp: IconBrandWhatsapp, sms: IconMail, call: IconPhone,
-};
-const CHANNEL_STYLE: Record<string, { bg: string; color: string }> = {
-  email:    { bg: "rgba(77,171,247,0.1)",  color: "#4dabf7" },
-  whatsapp: { bg: "rgba(34,201,122,0.1)",  color: "#22c97a" },
-  sms:      { bg: "rgba(204,153,255,0.1)", color: "#cc99ff" },
-  call:     { bg: "rgba(245,166,35,0.1)",  color: "#f5a623" },
-  system:   { bg: "rgba(108,99,255,0.12)", color: "var(--color-accent2)" },
-};
+const SYSTEM_STYLE = { bg: "rgba(108,99,255,0.12)", color: "var(--color-accent2)" };
 
 export default function Dashboard() {
   const router = useRouter();
   const {
     activeAgent, dashboardStats, dashboardRecentLeads,
-    dashboardRecentActivity, setDashboard, setLoading, openDrawer, setPage,
+    dashboardRecentActivity, setDashboard, openDrawer,
   } = useAppStore();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeAgent) return;
-    setLoading("dashboard", true);
+    setLoading(true);
     fetch(`/api/dashboard?agentId=${activeAgent._id}`)
       .then((r) => r.json())
       .then(setDashboard)
-      .finally(() => setLoading("dashboard", false));
+      .finally(() => setLoading(false));
   }, [activeAgent?._id]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading dashboard...</div>
+        </div>
+      </div>
+    );
+  }
 
   const stats = dashboardStats;
 
@@ -127,8 +131,9 @@ export default function Dashboard() {
               </p>
             )}
             {dashboardRecentActivity.map((act) => {
-              const style = CHANNEL_STYLE[act.channel] ?? CHANNEL_STYLE.system;
-              const Icon = CHANNEL_ICONS[act.channel] ?? IconActivity;
+              const cfg = CHANNEL_CONFIG[act.channel as keyof typeof CHANNEL_CONFIG];
+              const style = cfg ?? SYSTEM_STYLE;
+              const Icon = cfg?.Icon ?? IconActivity;
               return (
                 <div
                   key={act._id}

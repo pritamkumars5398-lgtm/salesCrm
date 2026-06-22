@@ -1,166 +1,12 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconBrain, IconBrandWhatsapp, IconPhone, IconMail, IconMessage,
-  IconChartBar, IconCalendar, IconRobot, IconArrowRight, IconX,
+  IconChartBar, IconCalendar, IconRobot, IconArrowRight,
   IconSparkles, IconUsers, IconListCheck, IconLayoutKanban, IconCheck,
 } from "@tabler/icons-react";
-
-interface AuthModalProps {
-  mode: "login" | "signup";
-  onClose: () => void;
-  onAuth: (name: string, email: string) => void;
-}
-
-function AuthModal({ mode: initialMode, onClose, onAuth }: AuthModalProps) {
-  const [mode, setMode] = useState(initialMode);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!email || !password) { setError("All fields are required."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-
-    if (mode === "signup") {
-      if (!name) { setError("Name is required."); return; }
-      localStorage.setItem("sa_user", JSON.stringify({ name, email, password }));
-      onAuth(name, email);
-    } else {
-      const stored = localStorage.getItem("sa_user");
-      if (!stored) {
-        // Auto-create on first login (demo mode)
-        const autoName = email.split("@")[0];
-        localStorage.setItem("sa_user", JSON.stringify({ name: autoName, email, password }));
-        onAuth(autoName, email);
-        return;
-      }
-      const user = JSON.parse(stored);
-      if (user.email !== email) { setError("Email not found."); return; }
-      onAuth(user.name, user.email);
-    }
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid var(--color-bg4)",
-    background: "var(--color-bg)",
-    color: "var(--color-text)",
-    fontSize: 13,
-    outline: "none",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(15,23,42,0.45)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full"
-        style={{
-          maxWidth: 420,
-          background: "var(--color-bg2)",
-          borderRadius: 20,
-          padding: "36px 36px 32px",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
-          border: "1px solid var(--color-bg4)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Close */}
-        <button
-          onClick={onClose}
-          style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", cursor: "pointer", color: "var(--color-text3)", padding: 4 }}
-        >
-          <IconX size={18} />
-        </button>
-
-        {/* Brand */}
-        <div className="flex items-center gap-2 mb-6">
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1" }} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text)" }}>
-            Sales<span style={{ color: "#6366f1" }}>Agent</span>
-          </span>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex mb-6" style={{ borderBottom: "1px solid var(--color-bg4)" }}>
-          {(["signup", "login"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setError(""); }}
-              style={{
-                flex: 1,
-                paddingBottom: 12,
-                fontSize: 13,
-                fontWeight: 600,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: mode === m ? "#4f46e5" : "var(--color-text3)",
-                borderBottom: mode === m ? "2px solid #4f46e5" : "2px solid transparent",
-                marginBottom: -1,
-              }}
-            >
-              {m === "signup" ? "Create account" : "Log in"}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {mode === "signup" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Full name</label>
-              <input style={inputStyle} placeholder="Rajesh Kumar" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
-            <input style={inputStyle} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
-            <input style={inputStyle} type="password" placeholder="Min. 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
-
-          {error && (
-            <p style={{ fontSize: 12, color: "#ef4444", margin: 0 }}>{error}</p>
-          )}
-
-          <button
-            type="submit"
-            style={{
-              marginTop: 4,
-              padding: "11px 20px",
-              borderRadius: 10,
-              background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 700,
-              border: "none",
-              cursor: "pointer",
-              boxShadow: "0 4px 14px rgba(79,70,229,0.3)",
-              width: "100%",
-            }}
-          >
-            {mode === "signup" ? "Create free account →" : "Log in →"}
-          </button>
-        </form>
-
-        <p style={{ fontSize: 11.5, color: "var(--color-text3)", textAlign: "center", marginTop: 16 }}>
-          By continuing you agree to our Terms & Privacy Policy.
-        </p>
-      </div>
-    </div>
-  );
-}
+import AuthModal from "@/components/ui/AuthModal";
 
 const FEATURES = [
   { Icon: IconBrain,        color: "#6366f1", bg: "rgba(99,102,241,0.1)",  title: "AI-Powered Brain",      desc: "Plug in Claude, GPT-4o, or Gemini. The agent understands context, crafts personalized messages, and adapts tone per lead." },
@@ -195,10 +41,10 @@ const STATS = [
 ];
 
 export default function Landing({ onAuth }: { onAuth: (name: string, email: string) => void }) {
-  const [authMode, setAuthMode] = useState<"login" | "signup" | null>(null);
-
-  const openSignup = () => setAuthMode("signup");
-  const openLogin  = () => setAuthMode("login");
+  const router = useRouter();
+ 
+  const openSignup = () => router.push("/signup");
+  const openLogin  = () => router.push("/login");
 
   return (
     <div style={{ fontFamily: "var(--font-sans)", background: "var(--color-bg)", color: "var(--color-text)", overflowX: "hidden" }}>
@@ -630,15 +476,6 @@ export default function Landing({ onAuth }: { onAuth: (name: string, email: stri
           Log in →
         </button>
       </footer>
-
-      {/* Auth modal */}
-      {authMode && (
-        <AuthModal
-          mode={authMode}
-          onClose={() => setAuthMode(null)}
-          onAuth={(name, email) => { setAuthMode(null); onAuth(name, email); }}
-        />
-      )}
     </div>
   );
 }

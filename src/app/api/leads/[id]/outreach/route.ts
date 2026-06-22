@@ -49,7 +49,18 @@ async function getEmailConfig(agentId: string) {
   };
 }
 
-async function generateEmailAI(lead: {
+async function getLLMConfig(agentId: string) {
+  const keys = ["llmProvider", "llmApiKey"];
+  const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
+  const m: Record<string, string> = {};
+  rows.forEach((r) => { m[r.key] = r.value; });
+  return {
+    provider: m.llmProvider || "Groq (Llama 3)",
+    apiKey: m.llmApiKey || "",
+  };
+}
+
+async function generateEmailAI(agentId: string, lead: {
   fullName: string;
   firstName: string;
   lastName: string;
@@ -58,10 +69,43 @@ async function generateEmailAI(lead: {
   source?: string;
   senderName?: string;
 }): Promise<{ subject: string; body: string }> {
-  const apiKey = process.env.GROQ_API_KEY ?? "";
+  // Fetch settings config
+  const configKeys = [
+    "llmProvider", "llmApiKey",
+    "businessWebsite", "businessPhone", "businessServices",
+    "docLink", "customPrompt"
+  ];
+  const settingsRows = await Setting.find({ agentId, key: { $in: configKeys } }).lean();
+  const settingsMap: Record<string, string> = {};
+  settingsRows.forEach((r) => { settingsMap[r.key] = r.value; });
+
+  const apiKey = settingsMap.llmApiKey || process.env.GROQ_API_KEY || "";
   const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
-  if (!apiKey) throw new Error("GROQ_API_KEY is not set in environment.");
+  if (!apiKey) throw new Error("GROQ_API_KEY is not set in environment or Settings.");
+
+  const businessWebsite = settingsMap.businessWebsite || "";
+  const businessPhone = settingsMap.businessPhone || "";
+  const businessServices = settingsMap.businessServices || "";
+  const docLink = settingsMap.docLink || "";
+  const customPrompt = settingsMap.customPrompt || "";
+
+  let businessContext = "";
+  if (businessServices) {
+    businessContext += `Our Business Services: ${businessServices}\n`;
+  }
+  if (businessWebsite) {
+    businessContext += `Our Website: ${businessWebsite}\n`;
+  }
+  if (businessPhone) {
+    businessContext += `Our Phone Number: ${businessPhone}\n`;
+  }
+  if (docLink) {
+    businessContext += `Our Resource Document Link: ${docLink} (You can share this link if it fits contextually)\n`;
+  }
+  if (customPrompt) {
+    businessContext += `Important Custom Guidelines/Instructions you must follow:\n${customPrompt}\n`;
+  }
 
   const sourcePhrase =
     lead.source === "LinkedIn" ? "on LinkedIn"
@@ -71,7 +115,7 @@ async function generateEmailAI(lead: {
             : "recently";
 
   const prompt = `You are a sales outreach expert. Write a short, warm, personalized cold outreach email.
-
+${businessContext ? `Business context and instructions:\n${businessContext}\n` : ""}
 Lead details:
 - Name: ${lead.fullName}
 - Job title: ${lead.jobTitle || "N/A"}
@@ -86,12 +130,12 @@ Rules:
    - Do not compliment.
 Do not praise.
 Do not invent facts.
-   - Para 2: one plain sentence on what you help businesses like theirs with. No hype, no superlatives ("best", "revolutionary", "#1"), no statistics you can't back up.
+   - Para 2: one plain sentence on what you help businesses like theirs with using our services/business description. No hype, no superlatives.
    - Para 3: soft CTA — ask if they're open to a quick 15-min chat. No pressure.
 3. Address ${lead.firstName} by first name and if the first name appears to be a business name,
 use "Hi there," instead of addressing them by name.
 4. Do NOT use generic openers like "I hope this email finds you well".
-5. Avoid spammy patterns: no multiple links, no URLs at all, no phone numbers, no "click here", no excessive punctuation, no markdown, no bullet lists.
+5. Avoid spammy patterns: no multiple links, no URLs at all except our Website or Resource Document Link if contextually relevant, no phone numbers, no "click here", no excessive punctuation, no markdown, no bullet lists.
 6. End the body with a sign-off on its own line: "Best,\\n${lead.senderName || "our team"}". Use exactly that name — do NOT invent a name like "Agent 1".
 7. Keep total body under 120 words. Plain sentences only.
 8. Return ONLY valid JSON (no markdown fences):
@@ -239,7 +283,7 @@ export async function POST(
   let subject: string;
   let emailBody: string;
   try {
-    ({ subject, body: emailBody } = await generateEmailAI({
+    ({ subject, body: emailBody } = await generateEmailAI(agentId, {
       fullName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
       firstName: lead.firstName,
       lastName: lead.lastName,

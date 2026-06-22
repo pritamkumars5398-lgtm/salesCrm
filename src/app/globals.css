@@ -25,3 +25,21 @@
   --radius-md: 12px;
   --radius-lg: 16px;
 }
+
+.form-input {
+  width: 100%;
+  background-color: var(--color-bg3);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: all 0.15s ease-in-out;
+}
+
+.form-input:focus {
+  border-color: var(--color-accent);
+  background-color: var(--color-bg2);
+}

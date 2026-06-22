@@ -1,115 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Setting } from "@/lib/models/Setting";
 import nodemailer from "nodemailer";
-
-interface EmailConfig {
-  provider: string;
-  apiKey: string;
-  smtpHost: string;
-  smtpPort: number;
-  smtpUser: string;
-  smtpPass: string;
-  fromName: string;
-  fromAddress: string;
-}
-
-async function getEmailConfig(agentId: string): Promise<EmailConfig | null> {
-  const keys = [
-    "emailProvider", "emailApiKey",
-    "smtpHost", "smtpPort", "smtpUser", "smtpPass",
-    "smtpFromName", "smtpFrom",
-  ];
-  const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
-  const m: Record<string, string> = {};
-  rows.forEach((r) => { m[r.key] = r.value; });
-
-  const provider = m.emailProvider || "SMTP";
-
-  if (provider === "SMTP") {
-    const host = m.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
-    const port = parseInt(m.smtpPort || process.env.SMTP_PORT || "587", 10);
-    // From Address doubles as the SMTP login when no explicit username is set,
-    // so email works from the Settings UI alone (no .env required).
-    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || m.smtpUser || process.env.SMTP_USER || "";
-    const user = m.smtpUser || process.env.SMTP_USER || fromAddr;
-    const pass = m.smtpPass || process.env.SMTP_PASS || "";
-    if (!user || !pass) return null;
-    return {
-      provider,
-      apiKey: "",
-      smtpHost: host,
-      smtpPort: port,
-      smtpUser: user,
-      smtpPass: pass,
-      fromName: m.smtpFromName || process.env.SMTP_FROM_NAME || user,
-      fromAddress: fromAddr,
-    };
-  }
-
-  if (!m.emailApiKey) return null;
-  return {
-    provider,
-    apiKey: m.emailApiKey,
-    smtpHost: "", smtpPort: 587, smtpUser: "", smtpPass: "",
-    fromName: m.smtpFromName || "SalesAgent",
-    fromAddress: m.smtpFrom || "",
-  };
-}
-
-async function sendViaSMTP(cfg: EmailConfig, to: string, subject: string, html: string) {
-  const transporter = nodemailer.createTransport({
-    host: cfg.smtpHost,
-    port: cfg.smtpPort,
-    secure: cfg.smtpPort === 465,
-    auth: { user: cfg.smtpUser, pass: cfg.smtpPass },
-  });
-  await transporter.sendMail({
-    from: `"${cfg.fromName}" <${cfg.fromAddress}>`,
-    to,
-    subject,
-    html,
-    text: html.replace(/<[^>]+>/g, ""),
-  });
-}
-
-async function sendViaResend(apiKey: string, from: string, to: string, subject: string, html: string) {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, html }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-async function sendViaSendGrid(apiKey: string, from: string, to: string, subject: string, html: string) {
-  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: from },
-      subject,
-      content: [{ type: "text/html", value: html }],
-    }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-async function sendViaMailgun(apiKey: string, from: string, to: string, subject: string, html: string) {
-  // Mailgun domain is derived from the from address
-  const domain = from.split("@")[1];
-  const formData = new URLSearchParams({ from, to, subject, html });
-  const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: formData.toString(),
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
+import { getEmailConfig, sendEmail } from "@/lib/email-service";
 
 export async function POST(req: Request) {
   await connectDB();
@@ -132,22 +24,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const html = emailBody.replace(/\n/g, "<br>");
   const from = `"${cfg.fromName}" <${cfg.fromAddress}>`;
 
   try {
-    if (cfg.provider === "SMTP") {
-      await sendViaSMTP(cfg, to, subject, html);
-    } else if (cfg.provider === "Resend") {
-      await sendViaResend(cfg.apiKey, cfg.fromAddress, to, subject, html);
-    } else if (cfg.provider === "SendGrid") {
-      await sendViaSendGrid(cfg.apiKey, cfg.fromAddress, to, subject, html);
-    } else if (cfg.provider === "Mailgun") {
-      await sendViaMailgun(cfg.apiKey, cfg.fromAddress, to, subject, html);
-    } else {
-      return NextResponse.json({ error: `Unknown provider: ${cfg.provider}` }, { status: 400 });
-    }
-
+    await sendEmail(cfg, to, subject, emailBody);
     return NextResponse.json({ ok: true, provider: cfg.provider, from, to });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

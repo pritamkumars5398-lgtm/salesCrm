@@ -4,46 +4,8 @@ import { Lead } from "@/lib/models/Lead";
 import { Activity } from "@/lib/models/Activity";
 import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
-import nodemailer from "nodemailer";
-
-async function getEmailConfig(agentId: string) {
-  const keys = [
-    "emailProvider", "emailApiKey",
-    "smtpHost", "smtpPort", "smtpUser", "smtpPass",
-    "smtpFromName", "smtpFrom",
-  ];
-  const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
-  const m: Record<string, string> = {};
-  rows.forEach((r) => { m[r.key] = r.value; });
-
-  const provider = m.emailProvider || "SMTP";
-
-  if (provider === "SMTP") {
-    const host = m.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
-    const port = parseInt(m.smtpPort || process.env.SMTP_PORT || "465", 10);
-    const user = m.smtpUser || process.env.SMTP_USER;
-    const pass = m.smtpPass || process.env.SMTP_PASS;
-    const fromName = m.smtpFromName || process.env.SMTP_FROM_NAME || user || "SalesAgent";
-    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || user;
-
-    if (!host || !user || !pass) return null;
-    return { provider, apiKey: "", smtpHost: host, smtpPort: port, smtpUser: user, smtpPass: pass, fromName, fromAddress: fromAddr };
-  }
-  if (!m.emailApiKey) return null;
-  return { provider, apiKey: m.emailApiKey, smtpHost: "", smtpPort: 587, smtpUser: "", smtpPass: "", fromName: m.smtpFromName || "SalesAgent", fromAddress: m.smtpFrom || "" };
-}
-
-async function sendEmail(cfg: any, to: string, subject: string, body: string) {
-  const html = body.replace(/\n/g, "<br>");
-  if (cfg.provider === "SMTP") {
-    const transporter = nodemailer.createTransport({
-      host: cfg.smtpHost, port: cfg.smtpPort, secure: cfg.smtpPort === 465,
-      auth: { user: cfg.smtpUser, pass: cfg.smtpPass },
-    });
-    await transporter.sendMail({ from: `"${cfg.fromName}" <${cfg.fromAddress}>`, to, subject, html, text: body });
-    return;
-  }
-}
+import { getEmailConfig, sendEmail } from "@/lib/email-service";
+import { eventEmitter } from "@/lib/events";
 
 async function handleInterested(lead: any, agentId: string) {
   const calendlySetting = await Setting.findOne({ agentId, key: "calendlyLink" }).lean();
@@ -61,7 +23,12 @@ Write a very short (2-3 sentences max) email thanking them for their interest an
 Return ONLY valid JSON:
 {"subject": "...", "body": "..."}`;
 
-  const apiKey = process.env.GROQ_API_KEY ?? "";
+  const llmKeys = ["llmProvider", "llmApiKey"];
+  const llmRows = await Setting.find({ agentId, key: { $in: llmKeys } }).lean();
+  const llmMap: Record<string, string> = {};
+  llmRows.forEach((r) => { llmMap[r.key] = r.value; });
+
+  const apiKey = llmMap.llmApiKey || process.env.GROQ_API_KEY || "";
   const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
   try {
@@ -95,6 +62,7 @@ Return ONLY valid JSON:
     if (convo) {
       convo.messages.push({ role: "agent", content: `Subject: ${parsed.subject}\n\n${parsed.body}`, timestamp: new Date() });
       await convo.save();
+      eventEmitter.emit("message", { leadId: lead._id.toString() });
     }
   } catch (err) {
     console.error("AI Follow up failed", err);
@@ -122,6 +90,24 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       event: "Lead clicked 'Not Interested'", detail: "Lead opted out via email button."
     });
 
+    // Record the client's unsubscribe reply in the email conversation
+    let convo = await Conversation.findOne({ leadId: lead._id, channel: "email" });
+    if (!convo) {
+      convo = await Conversation.create({
+        leadId: lead._id,
+        agentId,
+        channel: "email",
+        messages: [],
+      });
+    }
+    convo.messages.push({
+      role: "lead",
+      content: "No, I'm not interested in this. Please unsubscribe me.",
+      timestamp: new Date(),
+    });
+    await convo.save();
+    eventEmitter.emit("message", { leadId: lead._id.toString() });
+
     return new NextResponse(`
       <html><body style="font-family:sans-serif; text-align:center; padding: 50px; color:#333;">
         <h2>Thank you for your time.</h2>
@@ -139,6 +125,24 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       agentId, leadId: lead._id, leadName: lead.fullName, channel: "email",
       event: "Lead clicked 'Interested'", detail: "Lead clicked the interested button in the email."
     });
+
+    // Record the client's interest reply in the email conversation
+    let convo = await Conversation.findOne({ leadId: lead._id, channel: "email" });
+    if (!convo) {
+      convo = await Conversation.create({
+        leadId: lead._id,
+        agentId,
+        channel: "email",
+        messages: [],
+      });
+    }
+    convo.messages.push({
+      role: "lead",
+      content: "I'm interested! Please send me the details and calendar link.",
+      timestamp: new Date(),
+    });
+    await convo.save();
+    eventEmitter.emit("message", { leadId: lead._id.toString() });
 
     // Fire the AI scheduling email asynchronously so we can return the webpage immediately
     handleInterested(lead, agentId);

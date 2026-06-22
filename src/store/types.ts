@@ -1,4 +1,4 @@
-export type Page = "dashboard" | "leads" | "sequence" | "crm" | "calendar" | "activity" | "settings" | "crons" | "profile" | "plans";
+export type Page = "dashboard" | "leads" | "sequence" | "crm" | "calendar" | "activity" | "settings" | "crons" | "profile" | "plans" | "superadmin";
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | "closed";
 

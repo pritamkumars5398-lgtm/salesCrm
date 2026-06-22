@@ -9,13 +9,27 @@ export default function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [provider, setProvider] = useState("cal.com");
   const [apiKey, setApiKey] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!activeAgent) return;
+    setLoading(true);
     fetch(`/api/meetings?agentId=${activeAgent._id}`)
       .then((r) => r.json())
-      .then(setMeetings);
+      .then(setMeetings)
+      .finally(() => setLoading(false));
   }, [activeAgent?._id]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading calendar...</div>
+        </div>
+      </div>
+    );
+  }
 
   const daysInMonth = getDaysInMonth(currentMonth);
   const startDay = getDay(startOfMonth(currentMonth));

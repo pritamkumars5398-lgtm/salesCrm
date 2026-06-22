@@ -5,8 +5,7 @@ import { Lead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
 import { Usage } from "@/lib/models/Usage";
 import { PLANS, type PlanId } from "@/lib/plans";
-
-function currentMonth() { return new Date().toISOString().slice(0, 7); }
+import { currentMonth } from "@/lib/utils/date";
 
 const DEFAULT_GM_ACTOR = "nwua9Gu5YrADL7ZDj";
 const DEFAULT_LI_ACTOR = "M2FMdjRVeF1HPGFcc";

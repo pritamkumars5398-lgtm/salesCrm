@@ -72,35 +72,35 @@ export default function AddLeadModal({ open, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>First name</label>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" placeholder="Rahul" value={form.firstName} onChange={(e) => set("firstName", e.target.value)} />
+              <input className="form-input" placeholder="Rahul" value={form.firstName} onChange={(e) => set("firstName", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Last name</label>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" placeholder="Sharma" value={form.lastName} onChange={(e) => set("lastName", e.target.value)} />
+              <input className="form-input" placeholder="Sharma" value={form.lastName} onChange={(e) => set("lastName", e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Job title</label>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" placeholder="CTO" value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
+              <input className="form-input" placeholder="CTO" value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Company</label>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" placeholder="TechCorp India" value={form.company} onChange={(e) => set("company", e.target.value)} />
+              <input className="form-input" placeholder="TechCorp India" value={form.company} onChange={(e) => set("company", e.target.value)} />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Email</label>
-            <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" type="email" placeholder="rahul@techcorp.in" value={form.email} onChange={(e) => set("email", e.target.value)} />
+            <input className="form-input" type="email" placeholder="rahul@techcorp.in" value={form.email} onChange={(e) => set("email", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Phone / WhatsApp</label>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" placeholder="+91xxxxxxxxxx" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+              <input className="form-input" placeholder="+91xxxxxxxxxx" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Source</label>
-              <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" value={form.source} onChange={(e) => set("source", e.target.value)}>
+              <select className="form-input" value={form.source} onChange={(e) => set("source", e.target.value)}>
                 {["Manual","LinkedIn","Google Maps","Apify","Referral"].map((s) => <option key={s}>{s}</option>)}
               </select>
             </div>

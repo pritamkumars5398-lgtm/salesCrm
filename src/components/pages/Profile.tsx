@@ -188,7 +188,12 @@ export default function Profile() {
                   <p style={{ fontSize: 12, color: "var(--color-text3)", margin: "3px 0 0" }}>End your current session</p>
                 </div>
                 <button
-                  onClick={() => { logout(); router.push("/"); }}
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to log out?")) {
+                      logout();
+                      router.push("/");
+                    }
+                  }}
                   style={{
                     display: "flex", alignItems: "center", gap: 7,
                     padding: "8px 16px", borderRadius: 9,

@@ -2,37 +2,21 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
-  IconPlayerPlay, IconMail, IconBrandWhatsapp, IconMessage, IconPhone,
-  IconCheck, IconX, IconEye, IconCalendarCheck,
+  IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
 import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
-
-const STATUS_TABS = [
-  { label: "All leads",      value: "all" },
-  { label: "New",            value: "new" },
-  { label: "In outreach",    value: "in_outreach" },
-  { label: "Replied",        value: "replied" },
-  { label: "Meeting booked", value: "meeting_booked" },
-];
+import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
+import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = {
-  email:    { Icon: IconMail,           cls: "text-[#4dabf7] bg-[rgba(77,171,247,0.1)]" },
-  whatsapp: { Icon: IconBrandWhatsapp,  cls: "text-[#22c97a] bg-[rgba(34,201,122,0.1)]" },
-  sms:      { Icon: IconMessage,        cls: "text-[#cc99ff] bg-[rgba(204,153,255,0.1)]" },
-  call:     { Icon: IconPhone,          cls: "text-[#f5a623] bg-[rgba(245,166,35,0.1)]" },
-};
-
-const SOURCE_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  "Google Maps": { label: "Google Maps",  color: "#10b981", bg: "rgba(16,185,129,0.1)",  dot: "#10b981" },
-  "LinkedIn":    { label: "LinkedIn",     color: "#0a66c2", bg: "rgba(10,102,194,0.1)",  dot: "#0a66c2" },
-  "JustDial":    { label: "JustDial",     color: "#f58220", bg: "rgba(245,130,32,0.1)",  dot: "#f58220" },
-  "Apify":       { label: "Apify (Google Maps)", color: "#6366f1", bg: "rgba(99,102,241,0.1)", dot: "#6366f1" },
-  "Manual":      { label: "Manual",       color: "#94a3b8", bg: "rgba(148,163,184,0.1)", dot: "#94a3b8" },
-  "Referral":    { label: "Referral",     color: "#f43f5e", bg: "rgba(244,63,94,0.1)",   dot: "#f43f5e" },
+  email:    { Icon: CHANNEL_CONFIG.email.Icon,    cls: "text-[#4dabf7] bg-[rgba(77,171,247,0.1)]" },
+  whatsapp: { Icon: CHANNEL_CONFIG.whatsapp.Icon, cls: "text-[#22c97a] bg-[rgba(34,201,122,0.1)]" },
+  sms:      { Icon: CHANNEL_CONFIG.sms.Icon,      cls: "text-[#cc99ff] bg-[rgba(204,153,255,0.1)]" },
+  call:     { Icon: CHANNEL_CONFIG.call.Icon,     cls: "text-[#f5a623] bg-[rgba(245,166,35,0.1)]" },
 };
 
 function SourceBadge({ source }: { source: string }) {
@@ -62,19 +46,36 @@ export default function Leads({ onAddLead }: Props) {
   const [channelFilter, setChannelFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchLeads = useCallback(async () => {
     if (!activeAgent) return;
-    const params = new URLSearchParams({ agentId: activeAgent._id });
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (sourceFilter !== "all") params.set("source", sourceFilter);
-    if (channelFilter !== "all") params.set("channel", channelFilter);
-    if (search) params.set("q", search);
-    const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
-    setLeads(data);
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ agentId: activeAgent._id });
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
+      if (channelFilter !== "all") params.set("channel", channelFilter);
+      if (search) params.set("q", search);
+      const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
+      setLeads(data);
+    } finally {
+      setLoading(false);
+    }
   }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, search]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading leads...</div>
+        </div>
+      </div>
+    );
+  }
 
   async function startOutreach(lead: Lead) {
     showToast(`Generating AI outreach for ${lead.firstName}...`);
@@ -228,8 +229,8 @@ export default function Leads({ onAddLead }: Props) {
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
-          style={{ width: "auto", padding: "7px 10px" }}
+          className="form-input"
+          style={{ width: "auto" }}
         >
           <option value="all">All sources</option>
           <option value="Google Maps">Google Maps</option>
@@ -242,8 +243,8 @@ export default function Leads({ onAddLead }: Props) {
         <select
           value={channelFilter}
           onChange={(e) => setChannelFilter(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
-          style={{ width: "auto", padding: "7px 10px" }}
+          className="form-input"
+          style={{ width: "auto" }}
         >
           <option value="all">All channels</option>
           <option value="email">Email</option>
