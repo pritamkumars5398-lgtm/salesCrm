@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:ngrok": "bash ./scripts/dev-with-ngrok.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -15,6 +16,7 @@
     "cronstrue": "^2.50.0",
     "date-fns": "^4.1.0",
     "imapflow": "^1.4.2",
+    "localtunnel": "^2.0.2",
     "mailparser": "^3.9.11",
     "mongoose": "^8.15.0",
     "next": "^15.3.3",
@@ -25,6 +27,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@ngrok/ngrok": "^1.7.0",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",

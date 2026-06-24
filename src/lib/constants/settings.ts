@@ -70,6 +70,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb"] },
       { label: "API Key", key: "waApiKey", type: "password", placeholder: "wire_..." },
       { label: "Session ID", key: "waSessionId", placeholder: "ws_..." },
+      { label: "Webhook URL", key: "waWebhookUrl", type: "webhook-url", hint: "Copy this and paste in your WireWeb dashboard" },
     ],
   },
   {

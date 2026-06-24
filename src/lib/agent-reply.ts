@@ -146,6 +146,34 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
       if (emailConfig) {
         await sendEmail(emailConfig, lead.email, parsed.subject || "Follow up", parsed.body);
       }
+    } else if (channel === "whatsapp") {
+      const keys = ["waApiKey", "waSessionId"];
+      const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
+      const m: Record<string, string> = {};
+      rows.forEach((r) => { m[r.key] = r.value; });
+
+      if (m.waApiKey && m.waSessionId) {
+        // Clean phone number
+        let phone = lead.phone ? lead.phone.replace(/\D/g, "") : "";
+        if (phone && phone.length === 10) phone = "91" + phone;
+        // Fallback to whatsappLid if we don't have a clean phone
+        const targetNumber = phone || lead.whatsappLid;
+        
+        if (targetNumber) {
+          await fetch("https://app.wireweb.co.in/api/v1/messages", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${m.waApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionId: m.waSessionId,
+              to: targetNumber,
+              text: parsed.body,
+            }),
+          });
+        }
+      }
     }
 
     // 8. Log activity

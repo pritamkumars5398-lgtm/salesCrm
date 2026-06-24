@@ -19,6 +19,7 @@ export interface ILead extends Document {
   sequenceId?: Types.ObjectId;
   pipelineStage: "new" | "contacted" | "replied" | "qualified" | "closed";
   agentEnabled: boolean;
+  whatsappLid?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +40,7 @@ const LeadSchema = new Schema<ILead>(
     sequenceId:    { type: Schema.Types.ObjectId, ref: "Sequence" },
     pipelineStage: { type: String, enum: ["new", "contacted", "replied", "qualified", "closed"], default: "new" },
     agentEnabled:  { type: Boolean, default: true },
+    whatsappLid:   { type: String, trim: true },
   },
   { timestamps: true }
 );

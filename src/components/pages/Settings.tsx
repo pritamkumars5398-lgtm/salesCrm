@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { IconDatabase, IconEye, IconEyeOff } from "@tabler/icons-react";
+import { IconDatabase, IconEye, IconEyeOff, IconCopy } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { GENERAL_CARDS, INTEGRATION_CARDS, type SettingsCard } from "@/lib/constants/settings";
 import SettingsNavItem from "@/components/settings/SettingsNavItem";
@@ -150,6 +150,28 @@ export default function Settings() {
                       value={values[f.key] ?? ""}
                       onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
                     />
+                  ) : f.type === "webhook-url" ? (
+                    <div className="w-full flex items-start gap-2">
+                      <div
+                        className="form-input bg-slate-50 dark:bg-slate-900/50 cursor-default flex-1"
+                        style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
+                      >
+                        {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`;
+                          navigator.clipboard.writeText(url);
+                          showToast("Webhook URL copied to clipboard!");
+                        }}
+                        className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-slate-500 hover:text-slate-700"
+                        style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+                        title="Copy to clipboard"
+                      >
+                        <IconCopy size={16} />
+                      </button>
+                    </div>
                   ) : (
                     <input
                       className="form-input"
