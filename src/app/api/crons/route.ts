@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { CronJob } from "@/lib/models/CronJob";
+import { computeNextRun } from "@/lib/utils/cron";
 
 export async function GET(req: Request) {
   await connectDB();
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   await connectDB();
   const body = await req.json();
-  const job = await CronJob.create(body);
+  const nextRunAt = computeNextRun(body.cronExpression);
+  const job = await CronJob.create({ ...body, nextRunAt });
   return NextResponse.json(job, { status: 201 });
 }

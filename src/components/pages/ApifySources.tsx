@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   IconMap, IconBrandLinkedin, IconSearch, IconCode, IconCheck,
-  IconChevronDown, IconChevronUp, IconKey, IconPlayerPlay, IconCircleFilled,
+  IconChevronDown, IconChevronUp, IconKey, IconPlayerPlay, IconCircleFilled, IconCopy,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -310,10 +310,11 @@ function ScraperCard({
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ApifySources() {
-  const { activeAgent, showToast } = useAppStore();
+  const { activeAgent, agents, showToast } = useAppStore();
   const [values, setValues] = useState<Record<string, string>>({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [tokenSaved, setTokenSaved] = useState(false);
+  const [copySourceAgentId, setCopySourceAgentId] = useState("");
 
   const enabledKey = (type: ScraperType) => `${type}Enabled`;
 
@@ -400,6 +401,31 @@ export default function ApifySources() {
     showToast(`${SCRAPERS.find((s) => s.type === type)?.label} ${enabled ? "enabled" : "disabled"}`);
   }
 
+  async function handleCopyApifySettings(mode: "token" | "all") {
+    if (!activeAgent || !copySourceAgentId) return;
+    const sourceAgent = agents.find((a) => a._id === copySourceAgentId);
+    if (!sourceAgent) return;
+
+    try {
+      const res = await fetch(`/api/settings?agentId=${copySourceAgentId}`);
+      if (!res.ok) throw new Error("Failed to fetch settings");
+      const sourceData = await res.json() as Record<string, string>;
+
+      if (mode === "token") {
+        patchValues({ apifyToken: sourceData.apifyToken ?? "" });
+        showToast(`Apify token loaded from ${sourceAgent.name}. Click Save to apply.`);
+      } else {
+        const keysToCopy = allSettingKeys;
+        const patch: Record<string, string> = {};
+        keysToCopy.forEach((k) => { if (k in sourceData) patch[k] = sourceData[k]; });
+        patchValues(patch);
+        showToast(`All Apify config loaded from ${sourceAgent.name}. Save each scraper to apply.`);
+      }
+    } catch {
+      showToast("Error copying settings", "error");
+    }
+  }
+
   const activeType = (values.activeScraperType ?? "google-maps") as ScraperType;
 
   return (
@@ -462,6 +488,85 @@ export default function ApifySources() {
           </button>
         </div>
       </div>
+
+      {/* Copy settings from another agent */}
+      {agents.length > 1 && (
+        <div
+          style={{
+            background: "var(--color-bg2)",
+            border: "1px solid var(--color-bg4)",
+            borderRadius: 14,
+            padding: "16px 20px",
+            marginBottom: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <IconCopy size={15} style={{ color: "#6366f1" }} />
+            </span>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Copy Settings from Another Agent</p>
+              <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Load Apify token or full scraper config from another agent</p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <select
+              value={copySourceAgentId}
+              onChange={(e) => setCopySourceAgentId(e.target.value)}
+              style={{
+                flex: 1, minWidth: 140, padding: "8px 12px", borderRadius: 9,
+                border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
+                color: "var(--color-text)", fontSize: 12.5, outline: "none", fontFamily: "inherit",
+              }}
+            >
+              <option value="">Select agent…</option>
+              {agents
+                .filter((a) => a._id !== activeAgent?._id)
+                .map((a) => (
+                  <option key={a._id} value={a._id}>{a.name}</option>
+                ))}
+            </select>
+
+            <button
+              disabled={!copySourceAgentId}
+              onClick={() => handleCopyApifySettings("token")}
+              style={{
+                padding: "8px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 600,
+                border: "1px solid var(--color-bg4)", background: "var(--color-bg2)",
+                color: "var(--color-text2)", cursor: copySourceAgentId ? "pointer" : "not-allowed",
+                opacity: copySourceAgentId ? 1 : 0.5, transition: "opacity 0.15s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Token only
+            </button>
+
+            <button
+              disabled={!copySourceAgentId}
+              onClick={() => handleCopyApifySettings("all")}
+              style={{
+                padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700,
+                border: "none", background: "linear-gradient(135deg,#4f46e5,#6366f1)",
+                color: "#fff", cursor: copySourceAgentId ? "pointer" : "not-allowed",
+                opacity: copySourceAgentId ? 1 : 0.5, transition: "opacity 0.15s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              All Apify config
+            </button>
+          </div>
+
+          {copySourceAgentId && (
+            <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>
+              Settings are loaded locally — click <strong>Save</strong> on each scraper card (or <strong>Save</strong> on the token) to persist them.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Section label */}
       <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>

@@ -37,10 +37,12 @@ const OUTREACH_CHANNELS = [
 
 export default function Sidebar() {
   const router = useRouter();
-  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, addAgent, showToast, userEmail } =
+  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, showToast, userEmail } =
     useAppStore();
   const [miniUsage, setMiniUsage] = useState<MiniUsage | null>(null);
   const [outreach, setOutreach] = useState<Record<string, string>>({});
+  const [agentStats, setAgentStats] = useState<Record<string, { newCount: number; inOutreachCount: number; totalCount: number }>>({});
+  const [liveInOutreach, setLiveInOutreach] = useState(0);
 
   useEffect(() => {
     if (!activeAgent) return;
@@ -56,7 +58,35 @@ export default function Sidebar() {
       .then((r) => r.json())
       .then((d) => setOutreach(d))
       .catch(() => {});
+    fetch(`/api/crons?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((d) => setCronJobs(d))
+      .catch(() => {});
+    // Live in-outreach count from DB (not stale store)
+    fetch(`/api/dashboard?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((d) => setLiveInOutreach(d.stats?.inOutreach ?? 0))
+      .catch(() => {});
   }, [activeAgent?._id]);
+
+  // Fetch per-agent stats for all agents (to detect "done" agents)
+  useEffect(() => {
+    if (!userEmail) return;
+    fetch(`/api/agents/summary?userEmail=${encodeURIComponent(userEmail)}`)
+      .then((r) => r.json())
+      .then((rows: { agentId: string; newCount: number; inOutreachCount: number; totalCount: number }[]) => {
+        const m: Record<string, { newCount: number; inOutreachCount: number; totalCount: number }> = {};
+        rows.forEach((r) => { m[r.agentId] = r; });
+        setAgentStats(m);
+      })
+      .catch(() => {});
+  }, [userEmail, agents.length]);
+
+  const enabledCronsCount = cronJobs.filter((j) => j.enabled).length;
+  // Use live DB count; fall back to store count if dashboard hasn't loaded yet
+  const inOutreachCount   = liveInOutreach || leads.filter((l) => l.status === "in_outreach").length;
+  const totalLeadCount    = activeAgent ? (agentStats[activeAgent._id]?.totalCount ?? leads.length) : leads.length;
+  const outreachPct       = totalLeadCount > 0 ? Math.round((inOutreachCount / totalLeadCount) * 100) : 0;
 
   async function handleNewAgent() {
     const name = prompt("Agent name:");
@@ -144,30 +174,86 @@ export default function Sidebar() {
             Agents
           </div>
           <div className="px-2.5 pb-2 flex flex-col gap-0.5">
-            {agents.map((agent) => (
-              <button
-                key={agent._id}
-                onClick={() => router.push(`/${currentPage}/${agent._id}`)}
-                className={`flex items-center gap-2 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                  activeAgent?._id === agent._id
-                    ? "text-[var(--color-accent2)]"
-                    : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
-                }`}
-                style={activeAgent?._id === agent._id ? { background: "rgba(108,99,255,0.12)" } : undefined}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ background: agent.status === "active" ? "#22c97a" : "var(--color-text3)" }}
-                />
-                {agent.name}
-                <span
-                  className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-mono"
-                  style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}
-                >
-                  {agent.leadCount}
-                </span>
-              </button>
-            ))}
+            {agents.map((agent) => {
+              const isActive      = activeAgent?._id === agent._id;
+              const stats         = agentStats[agent._id];
+              const hasOutreach   = isActive && inOutreachCount > 0;
+              // Agent is "done" when it has leads but none are new (all have been processed)
+              const isDone        = !isActive && stats && stats.totalCount > 0 && stats.newCount === 0;
+              const agentInOut    = isActive ? inOutreachCount : (stats?.inOutreachCount ?? 0);
+
+              return (
+                <div key={agent._id} className="flex flex-col">
+                  <button
+                    onClick={() => router.push(`/${currentPage}/${agent._id}`)}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-[10px] text-[13px] transition-all duration-200 cursor-pointer w-full text-left`}
+                    style={{
+                      background:  isActive ? "rgba(108,99,255,0.12)" : undefined,
+                      color:       isActive ? "var(--color-accent2)" : isDone ? "var(--color-text3)" : "var(--color-text2)",
+                      opacity:     isDone ? 0.55 : 1,
+                      boxShadow:   hasOutreach ? "inset 3px 0 0 #22c97a"
+                                 : agentInOut > 0 && !isActive ? "inset 3px 0 0 rgba(34,201,122,0.4)"
+                                 : undefined,
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ background: isDone ? "#cbd5e1" : agent.status === "active" ? "#22c97a" : "var(--color-text3)" }}
+                    />
+                    <span className="truncate flex-1 text-left">{agent.name}</span>
+
+                    <span className="ml-auto flex items-center gap-1 flex-shrink-0">
+                      {isDone && (
+                        <span className="text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide"
+                          style={{ background: "rgba(100,116,139,0.1)", color: "var(--color-text3)" }}>
+                          done
+                        </span>
+                      )}
+                      {!isActive && agentInOut > 0 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
+                          style={{ background: "rgba(34,201,122,0.1)", color: "#22c97a" }}>
+                          {agentInOut}
+                        </span>
+                      )}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+                        style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}>
+                        {agent.leadCount}
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* Outreach progress bar — active agent with in-outreach leads */}
+                  {hasOutreach && (
+                    <div className="mx-2.5 mb-1">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[9.5px] font-semibold" style={{ color: "#22c97a" }}>
+                          {inOutreachCount} in outreach
+                        </span>
+                        <span className="text-[9.5px]" style={{ color: "var(--color-text3)" }}>{outreachPct}%</span>
+                      </div>
+                      <div style={{ height: 3, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${outreachPct}%`,
+                          borderRadius: 99,
+                          background: "linear-gradient(90deg,#22c97a,#10b981)",
+                          position: "relative",
+                          overflow: "hidden",
+                          transition: "width 0.5s ease",
+                        }}>
+                          <span style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.45) 50%,transparent 100%)",
+                            animation: "shimmer 1.4s infinite",
+                          }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button
               onClick={handleNewAgent}
               className="flex items-center gap-1.5 px-2.5 py-2 rounded-[10px] text-[12px] border border-dashed transition-colors duration-150 mt-1 w-full"
@@ -196,9 +282,30 @@ export default function Sidebar() {
               >
                 <Icon size={16} className="flex-shrink-0" />
                 {label}
+
+                {/* Leads: total + in-outreach badge */}
                 {id === "leads" && (
-                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-mono" style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}>
-                    {leadCount}
+                  <span className="ml-auto flex items-center gap-1">
+                    {inOutreachCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold"
+                        style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>
+                        {inOutreachCount} live
+                      </span>
+                    )}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+                      style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}>
+                      {leadCount}
+                    </span>
+                  </span>
+                )}
+
+                {/* Schedules: pulsing dot when active crons exist */}
+                {id === "crons" && enabledCronsCount > 0 && (
+                  <span className="ml-auto relative flex items-center justify-center w-4 h-4">
+                    <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full opacity-60"
+                      style={{ background: "#22c97a" }} />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5"
+                      style={{ background: "#22c97a" }} />
                   </span>
                 )}
               </button>

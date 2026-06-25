@@ -24,6 +24,7 @@ export interface Lead {
   status: LeadStatus;
   pipelineStage: string;
   agentEnabled: boolean;
+  website?: string;
   createdAt: string;
 }
 
@@ -52,6 +53,7 @@ export interface CronJob {
   nextRunAt?: string;
   runCount: number;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Activity {

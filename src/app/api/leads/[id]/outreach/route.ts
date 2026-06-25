@@ -256,6 +256,72 @@ async function sendEmail(cfg: Awaited<ReturnType<typeof getEmailConfig>>, to: st
   throw new Error(`Unsupported provider: ${cfg.provider}`);
 }
 
+// ── WhatsApp helpers ──────────────────────────────────────────────────────────
+
+async function getWhatsAppConfig(agentId: string) {
+  const rows = await Setting.find({ agentId, key: { $in: ["waApiKey", "waSessionId"] } }).lean();
+  const m: Record<string, string> = {};
+  rows.forEach((r) => { m[r.key] = r.value; });
+  if (!m.waApiKey || !m.waSessionId) return null;
+  return { apiKey: m.waApiKey, sessionId: m.waSessionId };
+}
+
+async function generateWhatsAppAI(agentId: string, lead: {
+  fullName: string; firstName: string; company?: string;
+  source?: string; senderName?: string;
+}): Promise<string> {
+  const configKeys = ["llmApiKey", "businessServices", "businessWebsite", "customPrompt"];
+  const rows = await Setting.find({ agentId, key: { $in: configKeys } }).lean();
+  const m: Record<string, string> = {};
+  rows.forEach((r) => { m[r.key] = r.value; });
+
+  const apiKey = m.llmApiKey || process.env.GROQ_API_KEY || "";
+  if (!apiKey) throw new Error("GROQ_API_KEY not set");
+
+  const services = m.businessServices || "";
+  const website  = m.businessWebsite  || "";
+  const custom   = m.customPrompt     || "";
+
+  const prompt = `Write a short, friendly WhatsApp outreach message (under 80 words).
+Lead: ${lead.fullName}${lead.company ? `, ${lead.company}` : ""}.
+${services ? `We offer: ${services}.` : ""}
+${website  ? `Our website: ${website}.` : ""}
+${custom   ? `Instructions: ${custom}` : ""}
+Sender name: ${lead.senderName || "our team"}.
+
+Rules:
+- Conversational, warm, not salesy. Address them by first name (${lead.firstName}).
+- One soft CTA asking if they'd like a quick chat.
+- No HTML, no links, no emojis unless natural.
+- End with: "– ${lead.senderName || "our team"}"
+- Return ONLY the message text, no JSON, no quotes.`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 200,
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq error: ${await res.text()}`);
+  const json = await res.json();
+  return (json.choices?.[0]?.message?.content ?? "").trim();
+}
+
+async function sendWhatsAppMessage(config: { apiKey: string; sessionId: string }, to: string, text: string) {
+  let phone = to.replace(/\D/g, "");
+  if (phone.length === 10) phone = "91" + phone;
+  const res = await fetch("https://app.wireweb.co.in/api/v1/messages", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId: config.sessionId, to: phone, text }),
+  });
+  if (!res.ok) throw new Error(`WhatsApp API error: ${await res.text()}`);
+}
+
 // ── route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(
@@ -272,47 +338,42 @@ export async function POST(
 
   const agentId = String(lead.agentId);
   const body = await req.json().catch(() => ({}));
-
-  // Load email config up front so we can sign the email with the configured
-  // "From Name" (e.g. "Coding Of World") instead of a placeholder.
   const cfg = await getEmailConfig(agentId);
-  const senderName: string =
-    cfg?.fromName || body.senderName || "our team";
+  const senderName: string = cfg?.fromName || body.senderName || "our team";
 
-  // 1️⃣  Generate AI email
-  let subject: string;
-  let emailBody: string;
-  try {
-    ({ subject, body: emailBody } = await generateEmailAI(agentId, {
-      fullName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
-      firstName: lead.firstName,
-      lastName: lead.lastName,
-      jobTitle: lead.jobTitle,
-      company: lead.company,
-      source: lead.source,
-      senderName,
-    }));
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `AI generation failed: ${msg}` }, { status: 502 });
-  }
+  const useWhatsApp = !lead.email && !!(lead.phone || (lead as any).whatsappLid);
 
-  // 2️⃣  Send via configured email provider (non-blocking if not configured)
-  let emailSent = false;
-  let emailError: string | null = null;
+  // ── Branch A: lead has email → send email ────────────────────────────────
+  if (!useWhatsApp) {
+    let subject: string;
+    let emailBody: string;
+    try {
+      ({ subject, body: emailBody } = await generateEmailAI(agentId, {
+        fullName:  lead.fullName || `${lead.firstName} ${lead.lastName}`,
+        firstName: lead.firstName,
+        lastName:  lead.lastName,
+        jobTitle:  lead.jobTitle,
+        company:   lead.company,
+        source:    lead.source,
+        senderName,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: `AI generation failed: ${msg}` }, { status: 502 });
+    }
 
-  if (lead.email) {
-    if (cfg) {
-      try {
-        // Build base URL for the buttons
-        const protocol = req.headers.get("x-forwarded-proto") || "http";
-        const host = req.headers.get("host") || "localhost:3001";
-        const baseUrl = `${protocol}://${host}`;
+    let emailSent = false;
+    let emailError: string | null = null;
 
-        const interestedUrl = `${baseUrl}/api/leads/${params.id}/response?action=interested`;
-        const notInterestedUrl = `${baseUrl}/api/leads/${params.id}/response?action=not_interested`;
-
-        const htmlButtons = `
+    if (lead.email) {
+      if (cfg) {
+        try {
+          const protocol = req.headers.get("x-forwarded-proto") || "http";
+          const host = req.headers.get("host") || "localhost:3001";
+          const baseUrl = `${protocol}://${host}`;
+          const interestedUrl    = `${baseUrl}/api/leads/${params.id}/response?action=interested`;
+          const notInterestedUrl = `${baseUrl}/api/leads/${params.id}/response?action=not_interested`;
+          const htmlButtons = `
 <br><br>
 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eaeaea; font-family: sans-serif;">
   <p style="font-size: 13px; color: #666;">Are you open to a quick chat?</p>
@@ -320,62 +381,92 @@ export async function POST(
     <a href="${interestedUrl}" style="display: inline-block; padding: 10px 18px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">Yes, I'm interested</a>
     <a href="${notInterestedUrl}" style="display: inline-block; padding: 10px 18px; background-color: #f1f5f9; color: #475569; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid #cbd5e1;">Not right now</a>
   </div>
-</div>
-`;
-        await sendEmail(cfg, lead.email, subject, emailBody, htmlButtons);
-        emailSent = true;
-      } catch (err: unknown) {
-        emailError = err instanceof Error ? err.message : String(err);
+</div>`;
+          await sendEmail(cfg, lead.email, subject, emailBody, htmlButtons);
+          emailSent = true;
+        } catch (err: unknown) {
+          emailError = err instanceof Error ? err.message : String(err);
+        }
+      } else {
+        emailError = "Email not configured in Settings — email skipped.";
       }
     } else {
-      emailError = "Email not configured in Settings — email skipped.";
+      emailError = "Lead has no email address.";
     }
-  } else {
-    emailError = "Lead has no email address.";
+
+    await Lead.findByIdAndUpdate(params.id, { status: "in_outreach", pipelineStage: "contacted" });
+
+    try {
+      await Activity.create({
+        agentId, leadId: params.id,
+        leadName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
+        channel: "email",
+        event: emailSent ? "AI Email Sent" : "AI Email Failed/Skipped",
+        detail: `Subject: ${subject}\n\n${emailBody}`.slice(0, 2000),
+      });
+      let convo = await Conversation.findOne({ leadId: params.id, channel: "email" });
+      if (!convo) convo = await Conversation.create({ leadId: params.id, agentId, channel: "email", messages: [] });
+      convo.messages.push({ role: "agent", content: `Subject: ${subject}\n\n${emailBody}`, timestamp: new Date() });
+      await convo.save();
+    } catch { /* non-critical */ }
+
+    return NextResponse.json({ ok: true, subject, body: emailBody, emailSent, emailError, leadId: params.id, status: "in_outreach" });
   }
 
-  // 3️⃣  Update lead status
-  await Lead.findByIdAndUpdate(params.id, {
-    status: "in_outreach",
-    pipelineStage: "contacted",
-  });
+  // ── Branch B: no email → send WhatsApp ───────────────────────────────────
+  let waMessage: string;
+  try {
+    waMessage = await generateWhatsAppAI(agentId, {
+      fullName:   lead.fullName || `${lead.firstName} ${lead.lastName}`,
+      firstName:  lead.firstName,
+      company:    lead.company,
+      source:     lead.source,
+      senderName,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `AI generation failed: ${msg}` }, { status: 502 });
+  }
 
-  // 4️⃣  Log activity & Conversation
+  let whatsappSent = false;
+  let whatsappError: string | null = null;
+
+  const waCfg = await getWhatsAppConfig(agentId);
+  if (!waCfg) {
+    whatsappError = "WhatsApp not configured — add API key and Session ID in Settings.";
+  } else {
+    const target = lead.phone || (lead as any).whatsappLid;
+    try {
+      await sendWhatsAppMessage(waCfg, target, waMessage);
+      whatsappSent = true;
+    } catch (err: unknown) {
+      whatsappError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  await Lead.findByIdAndUpdate(params.id, { status: "in_outreach", pipelineStage: "contacted" });
+
   try {
     await Activity.create({
-      agentId,
-      leadId: params.id,
+      agentId, leadId: params.id,
       leadName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
-      channel: "email",
-      event: emailSent ? "AI Email Sent" : "AI Email Failed/Skipped",
-      detail: `Subject: ${subject}\n\n${emailBody}`.slice(0, 2000),
+      channel: "whatsapp",
+      event: whatsappSent ? "AI WhatsApp Sent (email fallback)" : "AI WhatsApp Failed/Skipped",
+      detail: waMessage.slice(0, 2000),
     });
-
-    let convo = await Conversation.findOne({ leadId: params.id, channel: "email" });
-    if (!convo) {
-      convo = await Conversation.create({
-        leadId: params.id,
-        agentId,
-        channel: "email",
-        messages: [],
-      });
-    }
-    convo.messages.push({
-      role: "agent",
-      content: `Subject: ${subject}\n\n${emailBody}`,
-      timestamp: new Date(),
-    });
+    let convo = await Conversation.findOne({ leadId: params.id, channel: "whatsapp" });
+    if (!convo) convo = await Conversation.create({ leadId: params.id, agentId, channel: "whatsapp", messages: [] });
+    convo.messages.push({ role: "agent", content: waMessage, timestamp: new Date() });
     await convo.save();
-  } catch {
-    // activity logging is non-critical
-  }
+  } catch { /* non-critical */ }
 
   return NextResponse.json({
     ok: true,
-    subject,
-    body: emailBody,
-    emailSent,
-    emailError,
+    channel: "whatsapp",
+    body: waMessage,
+    whatsappSent,
+    whatsappError,
+    emailError: "No email address — sent via WhatsApp instead",
     leadId: params.id,
     status: "in_outreach",
   });

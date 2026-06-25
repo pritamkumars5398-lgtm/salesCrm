@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
+  IconExternalLink, IconAlertCircle,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
@@ -44,6 +45,7 @@ export default function Leads({ onAddLead }: Props) {
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
+  const [missingContact, setMissingContact] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,12 +59,13 @@ export default function Leads({ onAddLead }: Props) {
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
       if (search) params.set("q", search);
+      if (missingContact) params.set("missingContact", "true");
       const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
       setLeads(data);
     } finally {
       setLoading(false);
     }
-  }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, search]);
+  }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, search, missingContact]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -91,11 +94,15 @@ export default function Leads({ onAddLead }: Props) {
       
       updateLead(lead._id, { status: "in_outreach" });
       
-      if (data.emailSent) {
+      if (data.whatsappSent) {
+        showToast(`WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`, "success");
+      } else if (data.whatsappError) {
+        showToast(`No email — tried WhatsApp but: ${data.whatsappError}`, "error");
+      } else if (data.emailSent) {
         showToast(`AI email sent to ${lead.fullName}!`, "success");
       } else if (data.emailError) {
         if (data.emailError.includes("Email not configured")) {
-          showToast(`⚠️ Please configure your Email/SMTP in Settings first!`, "error");
+          showToast(`Please configure your Email/SMTP in Settings first!`, "error");
         } else {
           showToast(`AI generated, but email failed: ${data.emailError}`, "error");
         }
@@ -253,6 +260,18 @@ export default function Leads({ onAddLead }: Props) {
           <option value="call">Call</option>
         </select>
         <div className="flex gap-2 ml-auto">
+          <button
+            onClick={() => setMissingContact((v) => !v)}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            style={{
+              background: missingContact ? "rgba(255,107,107,0.1)" : "var(--color-bg2)",
+              borderColor: missingContact ? "#ff6b6b" : "rgba(0,0,0,0.1)",
+              color: missingContact ? "#ff6b6b" : "var(--color-text2)",
+            }}
+            title="Show leads missing email & phone"
+          >
+            <IconAlertCircle size={14} /> No contact
+          </button>
           <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={onAddLead}>
             <IconPlus size={14} /> Add manually
           </button>
@@ -340,12 +359,48 @@ export default function Leads({ onAddLead }: Props) {
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-medium truncate max-w-[240px]" title={lead.fullName}>{lead.fullName}</div>
                       <div className="text-[11.5px] mt-0.5 truncate max-w-[240px]" style={{ color: "var(--color-text3)" }} title={lead.jobTitle}>{lead.jobTitle}</div>
+                      {(!lead.email || !lead.phone) && (
+                        <div className="flex gap-1 mt-1">
+                          {!lead.email && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
+                              background: "rgba(255,107,107,0.1)", color: "#ff6b6b",
+                              border: "1px solid rgba(255,107,107,0.25)", whiteSpace: "nowrap",
+                            }}>
+                              No email
+                            </span>
+                          )}
+                          {!lead.phone && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
+                              background: "rgba(245,166,35,0.1)", color: "#f5a623",
+                              border: "1px solid rgba(245,166,35,0.25)", whiteSpace: "nowrap",
+                            }}>
+                              No phone
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="text-[13px] truncate max-w-[200px]" style={{ color: "var(--color-text2)" }} title={lead.company}>
-                    {lead.company}
+                    {lead.website ? (
+                      <a
+                        href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:underline inline-flex items-center gap-1 transition-colors duration-150"
+                        style={{ color: "var(--color-accent2)", fontWeight: 500 }}
+                      >
+                        <span className="truncate">{lead.company}</span>
+                        <IconExternalLink size={12} className="opacity-70 hover:opacity-100 flex-shrink-0" />
+                      </a>
+                    ) : (
+                      lead.company
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3"><SourceBadge source={lead.source} /></td>
@@ -379,15 +434,27 @@ export default function Leads({ onAddLead }: Props) {
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex gap-1.5 items-center flex-nowrap">
-                    {lead.status === "new" && (
-                      <button
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"
-                        style={{ padding: "5px 10px", background: "linear-gradient(135deg,#4f46e5,#6366f1)", border: "none", cursor: "pointer" }}
-                        onClick={() => startOutreach(lead)}
-                      >
-                        <IconPlayerPlay size={12} /> Start
-                      </button>
-                    )}
+                    {lead.status === "new" && (() => {
+                      const noContact = !lead.email && !lead.phone;
+                      return (
+                        <button
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150"
+                          style={{
+                            padding: "5px 10px",
+                            background: noContact ? "var(--color-bg3)" : "linear-gradient(135deg,#4f46e5,#6366f1)",
+                            color: noContact ? "var(--color-text3)" : "#fff",
+                            border: noContact ? "1px solid var(--color-bg4)" : "none",
+                            cursor: noContact ? "not-allowed" : "pointer",
+                            opacity: noContact ? 0.6 : 1,
+                          }}
+                          disabled={noContact}
+                          title={noContact ? "No email or phone — add contact info first" : undefined}
+                          onClick={() => !noContact && startOutreach(lead)}
+                        >
+                          <IconPlayerPlay size={12} /> Start
+                        </button>
+                      );
+                    })()}
                     {lead.status === "replied" && (
                       <button
                         className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"

@@ -10,6 +10,7 @@ import Topbar from "@/components/layout/Topbar";
 import ConversationDrawer from "@/components/drawer/ConversationDrawer";
 import ToastContainer from "@/components/ui/Toast";
 import AddLeadModal from "@/components/ui/AddLeadModal";
+import SyncPanel, { type SyncRun } from "@/components/ui/SyncPanel";
 import Landing from "@/components/pages/Landing";
 import Profile from "@/components/pages/Profile";
 
@@ -96,6 +97,8 @@ export default function Home({ params }: PageProps) {
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
+  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
 
   // Sync route param changes to Zustand store
   useEffect(() => {
@@ -222,10 +225,17 @@ export default function Home({ params }: PageProps) {
       .catch(() => showToast("Could not connect to database", "error"));
   }, []);
 
+  function patchRun(runId: string, patch: Partial<SyncRun>) {
+    setSyncRuns((prev) => prev.map((r) => r.runId === runId ? { ...r, ...patch } : r));
+  }
+
   async function handleSyncApify() {
     const agentId = useAppStore.getState().activeAgent?._id;
     if (!agentId) return;
     setSyncing(true);
+    setSyncRuns([]);
+    setSyncPanelOpen(true);
+
     try {
       const startRes = await fetch("/api/apify", {
         method: "POST",
@@ -234,6 +244,7 @@ export default function Home({ params }: PageProps) {
       });
       const start = await startRes.json();
       if (!startRes.ok) {
+        setSyncPanelOpen(false);
         if (start.limitReached) {
           showToast("Lead limit reached — upgrade your plan", "error");
           router.push(`/plans/${agentId}`);
@@ -245,44 +256,52 @@ export default function Home({ params }: PageProps) {
 
       const runs = start.runs as { runId: string; datasetId: string; search: string; scraperType: string }[];
       if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w, "error"));
-      showToast(`Scraping: ${runs.map((r) => r.search).join(" + ")}…`);
+
+      // Seed panel with one row per run
+      setSyncRuns(runs.map((r) => ({
+        runId: r.runId,
+        search: r.search,
+        scraperType: r.scraperType,
+        status: "polling",
+        itemCount: 0,
+        imported: 0,
+      })));
 
       const deadline = Date.now() + 3 * 60 * 1000;
-      const completed = await Promise.all(runs.map(async ({ runId, datasetId, scraperType }) => {
-        let finalStatus = "";
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 6000));
-          const poll = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).then((r) => r.json());
-          finalStatus = poll.status as string;
-          if (finalStatus === "SUCCEEDED" || ["FAILED", "ABORTED", "TIMED-OUT"].includes(finalStatus)) break;
-        }
-        return { datasetId, scraperType, finalStatus };
-      }));
+      const completed = await Promise.all(
+        runs.map(async ({ runId, datasetId, scraperType }) => {
+          let finalStatus = "";
+          while (Date.now() < deadline) {
+            await new Promise((res) => setTimeout(res, 6000));
+            const poll = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).then((r) => r.json());
+            finalStatus = poll.status as string;
+            patchRun(runId, { itemCount: poll.itemCount ?? 0 });
+            if (finalStatus === "SUCCEEDED" || ["FAILED", "ABORTED", "TIMED-OUT"].includes(finalStatus)) break;
+          }
+          return { runId, datasetId, scraperType, finalStatus };
+        })
+      );
 
-      let totalImported = 0;
-      for (const { datasetId, scraperType, finalStatus } of completed) {
+      for (const { runId, datasetId, scraperType, finalStatus } of completed) {
         if (finalStatus !== "SUCCEEDED") {
-          showToast(`A scraper run ended: ${finalStatus}`, "error");
+          patchRun(runId, { status: "failed", error: `Run ended: ${finalStatus}` });
           continue;
         }
+        patchRun(runId, { status: "importing" });
         const imp = await fetch("/api/apify", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ agentId, datasetId, scraperType }),
         }).then((r) => r.json());
-        totalImported += imp.imported ?? 0;
+        patchRun(runId, { status: "done", imported: imp.imported ?? 0, error: imp.warning });
         if (imp.warning) showToast(imp.warning, "error");
       }
-
-      showToast(
-        totalImported > 0
-          ? `Done — ${totalImported} new leads imported`
-          : "No new leads found",
-        totalImported > 0 ? "success" : "error",
-      );
     } catch (err) {
       showToast("Apify sync failed — check console", "error");
       console.error("[Apify sync]", err);
+      setSyncRuns((prev) => prev.map((r) =>
+        r.status !== "done" ? { ...r, status: "failed", error: "Unexpected error" } : r
+      ));
     } finally {
       setSyncing(false);
     }
@@ -351,6 +370,7 @@ export default function Home({ params }: PageProps) {
       </div>
 
       <AddLeadModal open={addLeadOpen} onClose={() => setAddLeadOpen(false)} />
+      <SyncPanel runs={syncRuns} open={syncPanelOpen} onClose={() => setSyncPanelOpen(false)} />
       <ToastContainer />
     </div>
   );

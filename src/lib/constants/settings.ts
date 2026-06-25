@@ -84,8 +84,15 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     fields: [
       { label: "Call Provider", key: "callProvider", placeholder: "", options: ["Vapi.ai", "Twilio Voice", "Bland.ai"], hint: "Handles call routing" },
       { label: "Call API Key", key: "callApiKey", type: "password", placeholder: "Enter API key" },
+      { label: "Caller Phone Number", key: "callerPhone", placeholder: "+91xxxxxxxxxx", hint: "Outbound number registered with your call provider" },
       { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["ElevenLabs", "Deepgram", "PlayHT"], hint: "Text-to-speech engine" },
       { label: "Voice API Key", key: "voiceApiKey", type: "password", placeholder: "Enter API key" },
+      { label: "Voice Name / ID", key: "voiceId", placeholder: "e.g. Rachel, Adam, Bella (ElevenLabs voice name)", hint: "Exact voice name or ID from your TTS provider" },
+      { label: "Call Opening Greeting", key: "callGreeting", type: "textarea", placeholder: "Hi, this is Sarah calling from Acme Corp. Am I speaking with {{leadName}}?", hint: "First words spoken when the call connects. Use {{leadName}} as placeholder." },
+      { label: "Call Script / AI Prompt", key: "callScript", type: "textarea", placeholder: "You are a friendly sales assistant for Acme Corp. Your goal is to qualify leads and book a 15-minute meeting...", hint: "Full AI instructions for the call agent" },
+      { label: "Max Call Duration (minutes)", key: "callMaxDuration", placeholder: "", options: ["2", "3", "5", "7", "10", "15"], hint: "Call ends automatically after this duration" },
+      { label: "Call Window Start (hour, 24h)", key: "callWindowStart", placeholder: "9", hint: "Earliest hour to place outbound calls (e.g. 9 = 9 AM)" },
+      { label: "Call Window End (hour, 24h)", key: "callWindowEnd", placeholder: "18", hint: "Latest hour to place outbound calls (e.g. 18 = 6 PM)" },
     ],
   },
   {
@@ -121,8 +128,9 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     togglable: true,
     fields: [
       { label: "Provider", key: "smsProvider", placeholder: "", options: ["Twilio SMS", "MSG91", "Plivo"] },
-      { label: "API Key", key: "smsApiKey", type: "password", placeholder: "Enter API key" },
-      { label: "From Number", key: "smsFrom", placeholder: "+91xxxxxxxxxx", hint: "Must be registered with provider" },
+      { label: "Account SID / Auth ID", key: "smsAccountSid", placeholder: "Twilio Account SID or Plivo Auth ID", hint: "Required for Twilio & Plivo. Leave blank for MSG91." },
+      { label: "Auth Token / API Key", key: "smsApiKey", type: "password", placeholder: "Twilio Auth Token or MSG91/Plivo API key" },
+      { label: "From Number / Sender ID", key: "smsFrom", placeholder: "+91xxxxxxxxxx or SENDER", hint: "Registered number or sender ID with your provider" },
     ],
   },
   {

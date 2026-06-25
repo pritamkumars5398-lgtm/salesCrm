@@ -10,10 +10,10 @@ import type { Lead, Channel } from "@/store/types";
 import StatusPill from "@/components/ui/Pill";
 
 const CHANNEL_META: Record<string, { label: string; Icon: React.ElementType; color: string; bg: string }> = {
-  email:    { label: "Email",     Icon: IconMail,           color: "#4dabf7", bg: "rgba(77,171,247,0.12)" },
-  whatsapp: { label: "WhatsApp",  Icon: IconBrandWhatsapp,  color: "#22c97a", bg: "rgba(34,201,122,0.12)" },
-  sms:      { label: "SMS",       Icon: IconMessage,        color: "#cc99ff", bg: "rgba(204,153,255,0.12)" },
-  call:     { label: "Voice call",Icon: IconPhone,          color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
+  email: { label: "Email", Icon: IconMail, color: "#4dabf7", bg: "rgba(77,171,247,0.12)" },
+  whatsapp: { label: "WhatsApp", Icon: IconBrandWhatsapp, color: "#22c97a", bg: "rgba(34,201,122,0.12)" },
+  sms: { label: "SMS", Icon: IconMessage, color: "#cc99ff", bg: "rgba(204,153,255,0.12)" },
+  call: { label: "Voice call", Icon: IconPhone, color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
 };
 
 const STAGE_STEPS = ["new", "contacted", "replied", "qualified", "closed"];
@@ -71,6 +71,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
     phone: lead.phone || "",
     jobTitle: lead.jobTitle || "",
     company: lead.company || "",
+    website: lead.website || "",
     source: lead.source || "Manual",
     status: lead.status || "new",
     pipelineStage: lead.pipelineStage || "new",
@@ -91,6 +92,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       phone: lead.phone || "",
       jobTitle: lead.jobTitle || "",
       company: lead.company || "",
+      website: lead.website || "",
       source: lead.source || "Manual",
       status: lead.status || "new",
       pipelineStage: lead.pipelineStage || "new",
@@ -132,7 +134,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
     }
   }
 
-  const bg  = avatarColor(lead.fullName);
+  const bg = avatarColor(lead.fullName);
   const ini = initials(lead.fullName);
   const stageIdx = STAGE_STEPS.indexOf(lead.pipelineStage ?? "new");
 
@@ -159,6 +161,35 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
           ) : (
             <p style={{ fontSize: 13, color: "var(--color-text)", margin: 0, wordBreak: "break-all" }}>{value}</p>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  function MissingRow({ Icon, label, color }: { Icon: React.ElementType; label: string; color: string }) {
+    return (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <span style={{
+          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+          background: `${color}18`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginTop: 1,
+        }}>
+          <Icon size={14} style={{ color }} />
+        </span>
+        <div>
+          <p style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", margin: "0 0 3px" }}>
+            {label}
+          </p>
+          <p style={{ fontSize: 12, fontWeight: 600, color, margin: "0 0 3px", opacity: 0.85 }}>
+            No {label.toLowerCase()} added
+          </p>
+          <button
+            onClick={() => setIsEditing(true)}
+            style={{ fontSize: 10.5, fontWeight: 600, color: "#4f46e5", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+          >
+            + Add now
+          </button>
         </div>
       </div>
     );
@@ -297,6 +328,17 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 onChange={(e) => setForm({ ...form, company: e.target.value })}
                 style={inputStyle}
                 placeholder="Company name"
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Website / Business Link</label>
+              <input
+                type="text"
+                value={form.website}
+                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                style={inputStyle}
+                placeholder="https://example.com"
               />
             </div>
 
@@ -443,7 +485,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
                 {STAGE_STEPS.map((s, i) => {
-                  const done    = i <= stageIdx;
+                  const done = i <= stageIdx;
                   const current = i === stageIdx;
                   return (
                     <div key={s} style={{ display: "flex", alignItems: "center", flex: i < STAGE_STEPS.length - 1 ? 1 : 0 }}>
@@ -484,11 +526,16 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 Contact information
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <Row Icon={IconUser}     label="Full name"  value={lead.fullName} />
-                <Row Icon={IconMail}     label="Email"      value={lead.email}    href={lead.email ? `mailto:${lead.email}` : undefined} />
-                <Row Icon={IconPhone}    label="Phone"      value={lead.phone}    href={lead.phone ? `tel:${lead.phone}` : undefined} />
+                <Row Icon={IconUser} label="Full name" value={lead.fullName} />
+                {lead.email
+                  ? <Row Icon={IconMail} label="Email" value={lead.email} href={`mailto:${lead.email}`} />
+                  : <MissingRow Icon={IconMail} label="Email" color="#ff6b6b" />}
+                {lead.phone
+                  ? <Row Icon={IconPhone} label="Phone" value={lead.phone} href={`tel:${lead.phone}`} />
+                  : <MissingRow Icon={IconPhone} label="Phone" color="#f5a623" />}
                 <Row Icon={IconBriefcase} label="Job title" value={lead.jobTitle} />
-                <Row Icon={IconBuilding} label="Company"    value={lead.company} />
+                <Row Icon={IconBuilding} label="Company" value={lead.company} />
+                <Row Icon={IconLink} label="Website" value={lead.website || ""} href={lead.website ? (lead.website.startsWith("http") ? lead.website : `https://${lead.website}`) : undefined} />
               </div>
             </div>
 
@@ -542,8 +589,8 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 Meta
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <Row Icon={IconLink}     label="Source"     value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
-                <Row Icon={IconCalendar} label="Added"      value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
+                <Row Icon={IconLink} label="Source" value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
+                <Row Icon={IconCalendar} label="Added" value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
               </div>
             </div>
           </>
@@ -577,6 +624,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     phone: lead.phone || "",
                     jobTitle: lead.jobTitle || "",
                     company: lead.company || "",
+                    website: lead.website || "",
                     source: lead.source || "Manual",
                     status: lead.status || "new",
                     pipelineStage: lead.pipelineStage || "new",
@@ -596,22 +644,38 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
             </div>
           ) : (
             <>
-              {lead.status === "new" && (
-                <button
-                  onClick={() => { onStartOutreach(lead); handleClose(); }}
-                  style={{
-                    width: "100%", padding: "11px 20px", borderRadius: 10,
-                    background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-                    color: "#fff", fontSize: 13, fontWeight: 700,
-                    border: "none", cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(79,70,229,0.28)",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  <IconPlayerPlay size={15} /> Start outreach
-                </button>
-              )}
+              {lead.status === "new" && (() => {
+                const noContact = !lead.email && !lead.phone;
+                return (
+                  <div style={{ marginBottom: 8 }}>
+                    <button
+                      onClick={() => { if (!noContact) { onStartOutreach(lead); handleClose(); } }}
+                      disabled={noContact}
+                      title={noContact ? "Add email or phone before starting outreach" : undefined}
+                      style={{
+                        width: "100%", padding: "11px 20px", borderRadius: 10,
+                        background: noContact
+                          ? "var(--color-bg3)"
+                          : "linear-gradient(135deg, #4f46e5, #6366f1)",
+                        color: noContact ? "var(--color-text3)" : "#fff",
+                        fontSize: 13, fontWeight: 700,
+                        border: noContact ? "1px solid var(--color-bg4)" : "none",
+                        cursor: noContact ? "not-allowed" : "pointer",
+                        boxShadow: noContact ? "none" : "0 4px 12px rgba(79,70,229,0.28)",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                        opacity: noContact ? 0.6 : 1,
+                      }}
+                    >
+                      <IconPlayerPlay size={15} /> Start outreach
+                    </button>
+                    {noContact && (
+                      <p style={{ fontSize: 11, color: "#ff6b6b", textAlign: "center", margin: "6px 0 0", fontWeight: 600 }}>
+                        Add email or phone to enable outreach
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               <button
                 onClick={handleClose}
                 style={{

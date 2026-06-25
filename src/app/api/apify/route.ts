@@ -239,7 +239,7 @@ export async function PATCH(req: Request) {
       return true;
     })
     .map((p) => {
-      let firstName: string, lastName: string, fullName: string, jobTitle: string, company: string, email: string, phone: string;
+      let firstName: string, lastName: string, fullName: string, jobTitle: string, company: string, email: string, phone: string, website: string;
 
       if (scraperType === "linkedin") {
         firstName = ((p.firstName ?? "") as string).trim() || "Unknown";
@@ -253,6 +253,7 @@ export async function PATCH(req: Request) {
         const emails = Array.isArray(p.emails) ? (p.emails as string[]) : [];
         email     = (emails[0] ?? "").toLowerCase().trim();
         phone     = normalizePhone(p.phone as string);
+        website   = (p.url ?? (p.publicIdentifier ? `https://www.linkedin.com/in/${p.publicIdentifier}` : "")) as string;
       } else {
         // Google Maps / JustDial / Custom
         fullName  = ((p.title ?? p.name ?? "Unknown") as string).trim();
@@ -263,6 +264,7 @@ export async function PATCH(req: Request) {
         company   = fullName;
         phone     = normalizePhone(p.phone as string);
         email     = ((p.email ?? p.website ?? "") as string).toLowerCase().trim();
+        website   = (p.website ?? p.url ?? "") as string;
       }
 
       return {
@@ -279,6 +281,7 @@ export async function PATCH(req: Request) {
         status:        "new" as const,
         pipelineStage: "new" as const,
         agentEnabled:  true,
+        website:       website.trim(),
       };
     });
 

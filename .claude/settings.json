@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/rajesh/Documents/salesagent/src/app/api/crons/\\\\[id\\\\]/run)"
+    ],
+    "additionalDirectories": [
+      "/Users/rajesh/Documents/salesagent/src/app/api/crons/[id]"
+    ]
+  }
+}

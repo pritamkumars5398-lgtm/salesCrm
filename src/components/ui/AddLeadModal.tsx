@@ -13,6 +13,7 @@ const DEFAULT_FORM = {
   firstName: "", lastName: "", jobTitle: "", company: "",
   email: "", phone: "", source: "Manual",
   channels: [] as Channel[],
+  website: "",
 };
 
 export default function AddLeadModal({ open, onClose }: Props) {
@@ -89,9 +90,15 @@ export default function AddLeadModal({ open, onClose }: Props) {
               <input className="form-input" placeholder="TechCorp India" value={form.company} onChange={(e) => set("company", e.target.value)} />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Email</label>
-            <input className="form-input" type="email" placeholder="rahul@techcorp.in" value={form.email} onChange={(e) => set("email", e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Email</label>
+              <input className="form-input" type="email" placeholder="rahul@techcorp.in" value={form.email} onChange={(e) => set("email", e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Website</label>
+              <input className="form-input" placeholder="https://techcorp.in" value={form.website} onChange={(e) => set("website", e.target.value)} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">

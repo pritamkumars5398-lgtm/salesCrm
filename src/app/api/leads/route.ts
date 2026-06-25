@@ -6,11 +6,12 @@ import { Agent } from "@/lib/models/Agent";
 export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
-  const status  = searchParams.get("status");
-  const search  = searchParams.get("q");
-  const source  = searchParams.get("source");
-  const channel = searchParams.get("channel");
+  const agentId       = searchParams.get("agentId");
+  const status        = searchParams.get("status");
+  const search        = searchParams.get("q");
+  const source        = searchParams.get("source");
+  const channel       = searchParams.get("channel");
+  const missingContact = searchParams.get("missingContact");
 
   const filter: Record<string, unknown> = {};
   if (agentId) filter.agentId = agentId;
@@ -18,6 +19,12 @@ export async function GET(req: Request) {
   if (source && source !== "all") filter.source = source;
   if (channel && channel !== "all") filter.channels = channel;
   if (search) filter.$text = { $search: search };
+  if (missingContact === "true") {
+    filter.$and = [
+      { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] },
+      { $or: [{ phone: { $in: [null, ""] } }, { phone: { $exists: false } }] },
+    ];
+  }
 
   const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
   return NextResponse.json(leads);

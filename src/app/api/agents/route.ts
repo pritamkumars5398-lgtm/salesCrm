@@ -21,3 +21,5 @@ export async function POST(req: Request) {
   const agent = await Agent.create({ name: body.name, userEmail: body.userEmail });
   return NextResponse.json(agent, { status: 201 });
 }
+
+
