@@ -67,10 +67,11 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     iconColor: "#22c97a",
     togglable: true,
     fields: [
-      { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb"] },
-      { label: "API Key", key: "waApiKey", type: "password", placeholder: "wire_..." },
-      { label: "Session ID", key: "waSessionId", placeholder: "ws_..." },
-      { label: "Webhook URL", key: "waWebhookUrl", type: "webhook-url", hint: "Copy this and paste in your WireWeb dashboard" },
+      { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb", "Meta Cloud API"] },
+      { label: "API Key / Access Token", key: "waApiKey", type: "password", placeholder: "Enter API Key or Access Token" },
+      { label: "Session ID / Phone Number ID", key: "waSessionId", placeholder: "Enter Session ID or Phone Number ID" },
+      { label: "Webhook Verify Token", key: "waVerifyToken", type: "password", placeholder: "Enter webhook verification token (Meta only)", hint: "Required for Meta Webhook setup verification" },
+      { label: "Webhook URL", key: "waWebhookUrl", type: "webhook-url", hint: "Copy this and paste in your Provider dashboard" },
     ],
   },
   {

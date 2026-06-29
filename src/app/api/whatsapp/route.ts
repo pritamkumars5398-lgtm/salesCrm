@@ -32,46 +32,67 @@ export async function POST(req: Request) {
     console.log("[WhatsApp] Original To:", to, " | Cleaned To:", cleanTo);
 
     // Fetch WA credentials
-    const keys = ["waApiKey", "waSessionId"];
+    const keys = ["waProvider", "waApiKey", "waSessionId"];
     const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
+    const provider = m.waProvider || "WireWeb";
     const apiKey = m.waApiKey;
     const sessionId = m.waSessionId;
 
     if (!apiKey || !sessionId) {
       return NextResponse.json(
-        { error: "WhatsApp not configured. Go to Settings → WhatsApp and fill in API Key and Session ID." },
+        { error: "WhatsApp not configured. Go to Settings → WhatsApp and fill in API Key/Access Token and Session ID/Phone Number ID." },
         { status: 400 }
       );
     }
 
-    const payload = {
-      sessionId: sessionId,
-      to: cleanTo,
-      text: text,
-    };
-
-    console.log("[WhatsApp] Sending Payload to WireWeb:", payload);
-
-    // Call WireWeb API (app.wireweb.co.in)
-    const response = await fetch("https://app.wireweb.co.in/api/v1/messages", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    let response;
+    if (provider === "Meta Cloud API") {
+      const payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: cleanTo,
+        type: "text",
+        text: {
+          preview_url: false,
+          body: text,
+        },
+      };
+      console.log("[WhatsApp] Sending Payload to Meta:", payload);
+      response = await fetch(`https://graph.facebook.com/v20.0/${sessionId}/messages`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      const payload = {
+        sessionId: sessionId,
+        to: cleanTo,
+        text: text,
+      };
+      console.log("[WhatsApp] Sending Payload to WireWeb:", payload);
+      response = await fetch("https://app.wireweb.co.in/api/v1/messages", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[WhatsApp] WireWeb Error Response:", errorText);
-      return NextResponse.json({ error: `WireWeb API error: ${errorText}` }, { status: response.status });
+      console.error(`[WhatsApp] ${provider} Error Response:`, errorText);
+      return NextResponse.json({ error: `${provider} API error: ${errorText}` }, { status: response.status });
     }
 
-    console.log("[WhatsApp] WireWeb Success Response: 200 OK");
+    console.log(`[WhatsApp] ${provider} Success Response: 200 OK`);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

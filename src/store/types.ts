@@ -9,6 +9,21 @@ export interface Agent {
   leadCount: number;
 }
 
+export interface LeadNote {
+  _id?: string;
+  text: string;
+  author: string;
+  createdAt: string;
+}
+
+export interface LeadHistory {
+  field: string;
+  from: string;
+  to: string;
+  by: string;
+  at: string;
+}
+
 export interface Lead {
   _id: string;
   agentId: string;
@@ -25,6 +40,9 @@ export interface Lead {
   pipelineStage: string;
   agentEnabled: boolean;
   website?: string;
+  location?: string;
+  notes?: LeadNote[];
+  history?: LeadHistory[];
   createdAt: string;
 }
 

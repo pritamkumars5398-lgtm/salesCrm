@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
-import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck } from "@tabler/icons-react";
+import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { GENERAL_CARDS, INTEGRATION_CARDS, type SettingsCard } from "@/lib/constants/settings";
 import SettingsNavItem from "@/components/settings/SettingsNavItem";
 import SettingsToggle from "@/components/settings/SettingsToggle";
 import SavedBadge from "@/components/settings/SavedBadge";
 import ApifySources from "@/components/pages/ApifySources";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Settings() {
   const { activeAgent, showToast, agents } = useAppStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [active, setActive] = useState("profile");
   const [values, setValues] = useState<Record<string, string>>({});
   const [toggles, setToggles] = useState<Record<string, boolean>>({});
@@ -21,6 +24,25 @@ export default function Settings() {
   const [sendingTestSms, setSendingTestSms] = useState(false);
   const [smsStatusLabel, setSmsStatusLabel] = useState("");
   const [testSmsResult, setTestSmsResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testSentence, setTestSentence] = useState("Hi, welcome to SalesAgent! I am Pritam, your AI sales assistant. How can I help you automate your cold outreach and manage your CRM leads today?");
+  const [testVoice, setTestVoice] = useState("Bella");
+  const [playingTest, setPlayingTest] = useState(false);
+  const [testPhoneNumber, setTestPhoneNumber] = useState("");
+  const [callingReal, setCallingReal] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab) {
+      setActive(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabKey: string) => {
+    setActive(tabKey);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tabKey);
+    router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+  };
 
   async function playVoicePreview() {
     if (!activeAgent || playingPreview) return;
@@ -42,8 +64,9 @@ export default function Settings() {
         body: JSON.stringify({ agentId: activeAgent._id, text: sampleText }),
       });
       if (!res.ok) {
-        const { error } = await res.json();
+        const { error } = await res.json().catch(() => ({ error: "" }));
         showToast(error || "Preview failed", "error");
+        setPlayingPreview(false);
         return;
       }
       const blob = await res.blob();
@@ -51,10 +74,100 @@ export default function Settings() {
       const audio = new Audio(url);
       audio.onended = () => { URL.revokeObjectURL(url); setPlayingPreview(false); };
       audio.onerror = () => { URL.revokeObjectURL(url); setPlayingPreview(false); showToast("Audio playback failed", "error"); };
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (playErr: any) {
+        URL.revokeObjectURL(url);
+        setPlayingPreview(false);
+        if (playErr.name === "NotAllowedError") {
+          showToast("Audio blocked: Click/interact with the page first to allow audio playback.", "error");
+        } else {
+          showToast(`Playback error: ${playErr.message}`, "error");
+        }
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : "Preview failed", "error");
       setPlayingPreview(false);
+    }
+  }
+
+  async function playTestSentence() {
+    if (!testSentence.trim() || playingTest) return;
+    
+    const apiKey = values["voiceApiKey"];
+    if (!apiKey) {
+      showToast("Save your Voice API key in settings first", "error");
+      return;
+    }
+
+    setPlayingTest(true);
+    try {
+      const res = await fetch("/api/voice/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          agentId: activeAgent?._id, 
+          text: testSentence,
+          voiceId: testVoice 
+        }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => { URL.revokeObjectURL(url); setPlayingTest(false); };
+        audio.onerror = () => { URL.revokeObjectURL(url); setPlayingTest(false); showToast("Audio playback failed", "error"); };
+        try {
+          await audio.play();
+        } catch (playErr: any) {
+          URL.revokeObjectURL(url);
+          setPlayingTest(false);
+          if (playErr.name === "NotAllowedError") {
+            showToast("Audio blocked: Click/interact with the page first to allow audio playback.", "error");
+          } else {
+            showToast(`Playback error: ${playErr.message}`, "error");
+          }
+        }
+      } else {
+        const { error } = await res.json().catch(() => ({ error: "" }));
+        showToast(error || "Voice testing failed", "error");
+        setPlayingTest(false);
+      }
+    } catch (err: any) {
+      showToast(err.message || "Voice testing failed", "error");
+      setPlayingTest(false);
+    }
+  }
+
+  async function triggerRealTestCall() {
+    if (!testPhoneNumber.trim() || callingReal) return;
+    if (!values["callApiKey"]) {
+      showToast("Vapi Call API Key is missing in settings", "error");
+      return;
+    }
+    if (!values["callerPhone"]) {
+      showToast("Caller Phone Number (Vapi Phone ID) is missing", "error");
+      return;
+    }
+    setCallingReal(true);
+    try {
+      const res = await fetch("/api/voice/call-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: activeAgent?._id,
+          testNumber: testPhoneNumber.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start call");
+      }
+      showToast("Test call triggered successfully! Dialing now...", "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to trigger test call", "error");
+    } finally {
+      setCallingReal(false);
     }
   }
 
@@ -216,6 +329,9 @@ export default function Settings() {
     const patch: Record<string, string> = {};
     card.fields.forEach((f) => { patch[f.key] = values[f.key] ?? ""; });
     if (card.togglable) patch[`${card.key}Enabled`] = String(toggles[card.key] ?? true);
+    if (card.key === "profile") {
+      patch["leadLocations"] = values["leadLocations"] ?? "";
+    }
     await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -237,17 +353,17 @@ export default function Settings() {
       <div className="flex flex-col gap-1 p-3 shrink-0" style={{ width: 220, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)", paddingTop: 20 }}>
         <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>General</p>
         {GENERAL_CARDS.map((card) => (
-          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={setActive} />
+          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
         ))}
 
         <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Integrations</p>
         {INTEGRATION_CARDS.map((card) => (
-          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={setActive} />
+          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
         ))}
 
         <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Sources</p>
         <button
-          onClick={() => setActive("apify")}
+          onClick={() => handleTabChange("apify")}
           className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
           style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer" }}
         >
@@ -334,78 +450,203 @@ export default function Settings() {
 
             {/* Fields */}
             <div className="flex flex-col gap-5">
-              {activeCard.fields.map((f) => (
-                <div key={f.key} className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>{f.label}</label>
-                    {f.hint && <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{f.hint}</span>}
-                  </div>
-                  {f.type === "password" ? (
-                    <div className="relative w-full flex items-center">
-                      <input
-                        className="form-input pr-9"
-                        type={showPasswords[f.key] ? "text" : "password"}
-                        placeholder={f.placeholder}
+              {activeCard.fields.map((f) => {
+                let displayLabel = f.label;
+                let displayPlaceholder = f.placeholder;
+                let displayHint = f.hint;
+
+                if (activeCard.key === "whatsapp") {
+                  const currentProvider = values["waProvider"] || "WireWeb";
+                  if (currentProvider === "WireWeb" && f.key === "waVerifyToken") {
+                    return null;
+                  }
+                  
+                  if (currentProvider === "Meta Cloud API") {
+                    if (f.key === "waApiKey") {
+                      displayLabel = "Meta Access Token";
+                      displayPlaceholder = "EAAG...";
+                      displayHint = "Permanent System User Access Token";
+                    } else if (f.key === "waSessionId") {
+                      displayLabel = "Phone Number ID";
+                      displayPlaceholder = "e.g. 106394879201934";
+                      displayHint = "The unique ID for your Meta WhatsApp phone number";
+                    } else if (f.key === "waWebhookUrl") {
+                      displayHint = "Copy this and paste as the Callback URL in your Meta App Webhook settings";
+                    }
+                  } else {
+                    if (f.key === "waWebhookUrl") {
+                      displayHint = "Copy this and paste in your WireWeb dashboard";
+                    }
+                  }
+                }
+
+                if (f.key === "leadLocation") {
+                  const rawLocs = values["leadLocations"] || "";
+                  let locs: { name: string; active: boolean }[] = [];
+                  try {
+                    if (rawLocs) {
+                      locs = JSON.parse(rawLocs);
+                    } else if (values["leadLocation"]) {
+                      locs = [{ name: values["leadLocation"], active: true }];
+                    }
+                  } catch (e) {
+                    locs = [];
+                  }
+
+                  const handleAddLoc = (name: string) => {
+                    const cleanName = name.trim();
+                    if (!cleanName) return;
+                    if (locs.some((l) => l.name.toLowerCase() === cleanName.toLowerCase())) {
+                      showToast("Location already exists", "error");
+                      return;
+                    }
+                    const updated = [...locs, { name: cleanName, active: true }];
+                    updateLocationsSetting(updated);
+                  };
+
+                  const handleToggleLoc = (index: number) => {
+                    const updated = locs.map((l, idx) =>
+                      idx === index ? { ...l, active: !l.active } : l
+                    );
+                    updateLocationsSetting(updated);
+                  };
+
+                  const handleDeleteLoc = (index: number) => {
+                    const updated = locs.filter((_, idx) => idx !== index);
+                    updateLocationsSetting(updated);
+                  };
+
+                  const updateLocationsSetting = (updatedLocs: any[]) => {
+                    const serialized = JSON.stringify(updatedLocs);
+                    const firstActive = updatedLocs.find(l => l.active)?.name || updatedLocs[0]?.name || "";
+                    setValues((prev) => ({
+                      ...prev,
+                      leadLocations: serialized,
+                      leadLocation: firstActive
+                    }));
+                  };
+
+                  return (
+                    <div key={f.key} className="flex flex-col gap-2.5 p-4 rounded-xl border w-full" style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>Target Locations (Apify Scraping)</label>
+                        <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>
+                      </div>
+                      
+                      <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                        {locs.length === 0 ? (
+                          <div className="text-[11.5px] text-slate-400 italic py-1">No locations added. Add one below.</div>
+                        ) : (
+                          locs.map((loc, index) => (
+                            <div key={index} className="flex items-center justify-between bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border text-[12.5px]" style={{ borderColor: "var(--color-bg4)" }}>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={loc.active}
+                                  onChange={() => handleToggleLoc(index)}
+                                  className="cursor-pointer"
+                                />
+                                <span className="text-[12px]" style={{ color: loc.active ? "var(--color-text)" : "var(--color-text3)", textDecoration: loc.active ? "none" : "line-through" }}>
+                                  {loc.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
+                                  loc.active ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10 dark:bg-emerald-950/20" : "bg-slate-100 text-slate-400 border border-slate-500/10 dark:bg-slate-800"
+                                }`}>
+                                  {loc.active ? "Active" : "Inactive"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLoc(index)}
+                                  className="text-red-500 hover:text-red-600 bg-transparent border-none cursor-pointer flex items-center p-0.5"
+                                >
+                                  <IconTrash size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <LocationAdder onAdd={handleAddLoc} />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={f.key} className="flex key-wrapper flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>{displayLabel}</label>
+                      {displayHint && <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>}
+                    </div>
+                    {f.type === "password" ? (
+                      <div className="relative w-full flex items-center">
+                        <input
+                          className="form-input pr-9"
+                          type={showPasswords[f.key] ? "text" : "password"}
+                          placeholder={displayPlaceholder}
+                          value={values[f.key] ?? ""}
+                          onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswords((p) => ({ ...p, [f.key]: !p[f.key] }))}
+                          className="absolute right-2 p-1 rounded-md transition-colors text-slate-400 hover:text-slate-600 flex items-center justify-center border-none bg-transparent cursor-pointer"
+                        >
+                          {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+                        </button>
+                      </div>
+                    ) : f.options ? (
+                      <select
+                        className="form-input"
+                        value={values[f.key] ?? f.options[0]}
+                        onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                      >
+                        {f.options.map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    ) : f.type === "textarea" ? (
+                      <textarea
+                        className="form-input"
+                        style={{ minHeight: "100px", padding: "8px 12px", resize: "vertical" }}
+                        placeholder={displayPlaceholder}
                         value={values[f.key] ?? ""}
                         onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPasswords((p) => ({ ...p, [f.key]: !p[f.key] }))}
-                        className="absolute right-2 p-1 rounded-md transition-colors text-slate-400 hover:text-slate-600 flex items-center justify-center border-none bg-transparent cursor-pointer"
-                      >
-                        {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
-                      </button>
-                    </div>
-                  ) : f.options ? (
-                    <select
-                      className="form-input"
-                      value={values[f.key] ?? f.options[0]}
-                      onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                    >
-                      {f.options.map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                  ) : f.type === "textarea" ? (
-                    <textarea
-                      className="form-input"
-                      style={{ minHeight: "100px", padding: "8px 12px", resize: "vertical" }}
-                      placeholder={f.placeholder}
-                      value={values[f.key] ?? ""}
-                      onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                    />
-                  ) : f.type === "webhook-url" ? (
-                    <div className="w-full flex items-start gap-2">
-                      <div
-                        className="form-input bg-slate-50 dark:bg-slate-900/50 cursor-default flex-1"
-                        style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
-                      >
-                        {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`}
+                    ) : f.type === "webhook-url" ? (
+                      <div className="w-full flex items-start gap-2">
+                        <div
+                          className="form-input bg-slate-50 dark:bg-slate-900/50 cursor-default flex-1"
+                          style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
+                        >
+                          {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `${window.location.origin}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`;
+                            navigator.clipboard.writeText(url);
+                            showToast("Webhook URL copied to clipboard!");
+                          }}
+                          className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-slate-500 hover:text-slate-700"
+                          style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+                          title="Copy to clipboard"
+                        >
+                          <IconCopy size={16} />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = `${window.location.origin}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`;
-                          navigator.clipboard.writeText(url);
-                          showToast("Webhook URL copied to clipboard!");
-                        }}
-                        className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-slate-500 hover:text-slate-700"
-                        style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
-                        title="Copy to clipboard"
-                      >
-                        <IconCopy size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <input
-                      className="form-input"
-                      type={f.type ?? "text"}
-                      placeholder={f.placeholder}
-                      value={values[f.key] ?? ""}
-                      onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                    />
-                  )}
-                </div>
-              ))}
+                    ) : (
+                      <input
+                        className="form-input"
+                        type={f.type ?? "text"}
+                        placeholder={displayPlaceholder}
+                        value={values[f.key] ?? ""}
+                        onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Voice call preview panel */}
@@ -499,6 +740,82 @@ export default function Settings() {
                       )}
                     </button>
                     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                  </div>
+                </div>
+
+                {/* ElevenLabs Sound & Voice Tester */}
+                <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
+                  <div className="text-[12.5px] font-bold text-slate-700 dark:text-slate-300">
+                    ElevenLabs Sound & Voice Tester
+                  </div>
+                  <p className="text-[11.5px] text-slate-500" style={{ margin: 0 }}>
+                    Type a custom sentence below, select a voice, and hear it play via ElevenLabs. (Requires Voice API Key configured).
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                    <input
+                      type="text"
+                      className="form-input text-[12px] flex-1"
+                      placeholder="Type a custom sentence to test..."
+                      value={testSentence}
+                      onChange={(e) => setTestSentence(e.target.value)}
+                      style={{ height: 32 }}
+                    />
+                    
+                    <select
+                      className="form-input text-[12px]"
+                      value={testVoice}
+                      onChange={(e) => setTestVoice(e.target.value)}
+                      style={{ width: 120, height: 32 }}
+                    >
+                      <option value="Rachel">Rachel (F)</option>
+                      <option value="Pritam">Pritam (M)</option>
+                      <option value="Antoni">Antoni (M)</option>
+                      <option value="Bella">Bella (F)</option>
+                      <option value="Elli">Elli (F)</option>
+                      <option value="Josh">Josh (M)</option>
+                      <option value="Arnold">Arnold (M)</option>
+                    </select>
+
+                    <button
+                      onClick={playTestSentence}
+                      disabled={playingTest || !testSentence.trim()}
+                      className="px-3 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-amber-500 to-amber-600 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
+                      style={{ height: 32, opacity: testSentence.trim() ? 1 : 0.6 }}
+                    >
+                      {playingTest ? "Playing..." : "Test Voice"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Real Outbound Call Tester */}
+                <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
+                  <div className="text-[12.5px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Real Outbound Call Tester (2 min test)
+                  </div>
+                  <p className="text-[11.5px] text-slate-500" style={{ margin: 0 }}>
+                    Enter your phone number to test a real phone call from the AI agent (requires Vapi settings saved above).
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                    <input
+                      type="text"
+                      className="form-input text-[12px] flex-1"
+                      placeholder="Enter phone number (with country code, e.g. +91...)"
+                      value={testPhoneNumber}
+                      onChange={(e) => setTestPhoneNumber(e.target.value)}
+                      style={{ height: 32 }}
+                    />
+
+                    <button
+                      onClick={triggerRealTestCall}
+                      disabled={callingReal || !testPhoneNumber.trim()}
+                      className="px-4 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
+                      style={{ height: 32, opacity: testPhoneNumber.trim() ? 1 : 0.6 }}
+                    >
+                      {callingReal ? "Dialing..." : "Start Real Call"}
+                    </button>
                   </div>
                 </div>
 
@@ -616,6 +933,39 @@ export default function Settings() {
           </>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function LocationAdder({ onAdd }: { onAdd: (name: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <input
+        className="form-input text-[12px] flex-1"
+        style={{ height: 34 }}
+        placeholder="e.g. Lucknow, Mumbai, USA..."
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onAdd(name);
+            setName("");
+          }
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          onAdd(name);
+          setName("");
+        }}
+        className="px-3 rounded-lg text-[12px] font-semibold text-white cursor-pointer bg-gradient-to-br from-indigo-600 to-indigo-500 transition-all border-none flex items-center justify-center shrink-0"
+        style={{ height: 34 }}
+      >
+        Add
+      </button>
     </div>
   );
 }

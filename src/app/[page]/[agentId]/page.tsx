@@ -53,7 +53,7 @@ if (process.env.NODE_ENV === "development" && typeof window !== "undefined" && !
       const response = await originalFetch(input, init);
       const duration = (performance.now() - startTime).toFixed(1);
       const statusColor = response.ok ? "color: #10b981; font-weight: bold;" : "color: #ef4444; font-weight: bold;";
-      
+
       console.log(
         `%c[API Response] %c${method} %c${url} %c${response.status} (${duration}ms)`,
         "color: #6366f1; font-weight: bold;",
@@ -67,7 +67,7 @@ if (process.env.NODE_ENV === "development" && typeof window !== "undefined" && !
         .then((data) => {
           console.log("[API Response Data]", data);
         })
-        .catch(() => {});
+        .catch(() => { });
 
       return response;
     } catch (error) {
@@ -93,7 +93,7 @@ export default function Home({ params }: PageProps) {
   const agentIdParam = resolvedParams.agentId;
 
   const router = useRouter();
-  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail } = useAppStore();
+  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail, setLeads } = useAppStore();
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -127,8 +127,8 @@ export default function Home({ params }: PageProps) {
   useEffect(() => {
     const stored = localStorage.getItem("sa_user");
     if (!stored) {
-      setMounted(true);
-      return; // not logged in — show Landing
+      router.replace("/");
+      return;
     }
     let user: { name: string; email: string };
     try {
@@ -136,7 +136,7 @@ export default function Home({ params }: PageProps) {
       login(user.name, user.email);
     } catch {
       localStorage.removeItem("sa_user");
-      setMounted(true);
+      router.replace("/");
       return;
     }
     setMounted(true);
@@ -172,31 +172,31 @@ export default function Home({ params }: PageProps) {
               body: JSON.stringify({
                 agentId: a._id,
                 settings: {
-                  businessType:      "Other",
-                  industry:          agentName.toLowerCase(),
-                  gmKeyword:         agentName.toLowerCase(),
-                  gmLocation:        "Lucknow",
-                  gmMaxResults:      "25",
-                  gmActorId:         "nwua9Gu5YrADL7ZD",
+                  businessType: "Other",
+                  industry: agentName.toLowerCase(),
+                  gmKeyword: agentName.toLowerCase(),
+                  gmLocation: "Lucknow",
+                  gmMaxResults: "25",
+                  gmActorId: "nwua9Gu5YrADL7ZD",
                   activeScraperType: "google-maps",
                   "google-mapsEnabled": "true",
-                  leadLocation:      "Lucknow",
+                  leadLocation: "Lucknow",
                   targetCompanySize: "Any",
-                  apifyToken:        process.env.NEXT_PUBLIC_APIFY_TOKEN || "",
-                  apifyScraper:      "Google Maps businesses",
-                  apifyActorId:      "nwua9Gu5YrADL7ZD",
-                  llmProvider:       "Claude (Anthropic)",
-                  whatsappEnabled:   "true",
-                  emailEnabled:      "true",
-                  smsEnabled:        "true",
-                  voiceEnabled:      "true",
+                  apifyToken: process.env.NEXT_PUBLIC_APIFY_TOKEN || "",
+                  apifyScraper: "Google Maps businesses",
+                  apifyActorId: "nwua9Gu5YrADL7ZD",
+                  llmProvider: "Claude (Anthropic)",
+                  whatsappEnabled: "true",
+                  emailEnabled: "true",
+                  smsEnabled: "true",
+                  voiceEnabled: "true",
                   // Seeded onboarding values
-                  businessWebsite:   onboarding?.businessWebsite || "",
-                  businessPhone:     onboarding?.businessPhone || "",
-                  businessServices:  onboarding?.businessServices || "",
-                  docLink:           onboarding?.docLink || "",
-                  customPrompt:      onboarding?.customPrompt || "",
-                  followUpDays:      onboarding?.followUpDays || "3",
+                  businessWebsite: onboarding?.businessWebsite || "",
+                  businessPhone: onboarding?.businessPhone || "",
+                  businessServices: onboarding?.businessServices || "",
+                  docLink: onboarding?.docLink || "",
+                  customPrompt: onboarding?.customPrompt || "",
+                  followUpDays: onboarding?.followUpDays || "3",
                 },
               }),
             }),
@@ -210,7 +210,7 @@ export default function Home({ params }: PageProps) {
           localStorage.removeItem("sa_onboarding");
           finalAgents = [{ ...a, leadCount: 10 }];
         }
-        
+
         setAgents(finalAgents);
 
         // Sync initial agent
@@ -295,6 +295,24 @@ export default function Home({ params }: PageProps) {
         }).then((r) => r.json());
         patchRun(runId, { status: "done", imported: imp.imported ?? 0, error: imp.warning });
         if (imp.warning) showToast(imp.warning, "error");
+      }
+
+      // Re-fetch agents to update lead counts
+      fetch(`/api/agents?email=${encodeURIComponent(userEmail)}`)
+        .then((r) => r.json())
+        .then((agentsList) => {
+          setAgents(agentsList);
+          const match = agentsList.find((a: any) => a._id === agentId);
+          if (match) setActiveAgent(match);
+        })
+        .catch(() => { });
+
+      // If on Leads page, reload the leads
+      if (currentPage === "leads") {
+        fetch(`/api/leads?agentId=${agentId}`)
+          .then((r) => r.json())
+          .then((data) => setLeads(data))
+          .catch(() => { });
       }
     } catch (err) {
       showToast("Apify sync failed — check console", "error");

@@ -28,12 +28,14 @@ interface AppState {
   setAgents: (agents: Agent[]) => void;
   setActiveAgent: (agent: Agent) => void;
   addAgent: (agent: Agent) => void;
+  updateAgentLeadCount: (agentId: string, count: number) => void;
 
   // Leads
   leads: Lead[];
   setLeads: (leads: Lead[]) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
   addLead: (lead: Lead) => void;
+  addLeads: (leads: Lead[]) => void;
 
   // Conversations
   conversations: Record<string, Conversation[]>; // keyed by leadId
@@ -75,6 +77,8 @@ interface AppState {
   // Loading
   loading: Record<string, boolean>;
   setLoading: (key: string, val: boolean) => void;
+  sidebarOpenMobile: boolean;
+  setSidebarOpenMobile: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -83,10 +87,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   userEmail: "",
   login: (name, email) => {
     localStorage.setItem("sa_user", JSON.stringify({ name, email }));
+    document.cookie = "sa_auth=1; path=/; max-age=2592000; SameSite=Lax";
     set({ isAuthed: true, userName: name, userEmail: email });
   },
   logout: () => {
     localStorage.removeItem("sa_user");
+    document.cookie = "sa_auth=; path=/; max-age=0";
     set({ isAuthed: false, userName: "", userEmail: "", agents: [], activeAgent: null, leads: [] });
   },
 
@@ -98,12 +104,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAgents: (agents) => set({ agents, activeAgent: agents[0] ?? null }),
   setActiveAgent: (agent) => set({ activeAgent: agent }),
   addAgent: (agent) => set((s) => ({ agents: [...s.agents, agent] })),
+  updateAgentLeadCount: (agentId, count) => set((s) => {
+    const updatedAgents = s.agents.map((a) =>
+      a._id === agentId ? { ...a, leadCount: count } : a
+    );
+    const updatedActive = s.activeAgent && s.activeAgent._id === agentId
+      ? { ...s.activeAgent, leadCount: count }
+      : s.activeAgent;
+    return { agents: updatedAgents, activeAgent: updatedActive };
+  }),
 
   leads: [],
   setLeads: (leads) => set({ leads }),
   updateLead: (id, patch) =>
     set((s) => ({ leads: s.leads.map((l) => (l._id === id ? { ...l, ...patch } : l)) })),
-  addLead: (lead) => set((s) => ({ leads: [lead, ...s.leads] })),
+  addLead: (lead) => set((s) => {
+    const updatedAgents = s.agents.map((a) =>
+      a._id === lead.agentId ? { ...a, leadCount: a.leadCount + 1 } : a
+    );
+    const updatedActive = s.activeAgent && s.activeAgent._id === lead.agentId
+      ? { ...s.activeAgent, leadCount: s.activeAgent.leadCount + 1 }
+      : s.activeAgent;
+    return {
+      leads: [lead, ...s.leads],
+      agents: updatedAgents,
+      activeAgent: updatedActive,
+    };
+  }),
+  addLeads: (newLeads) => set((s) => {
+    if (newLeads.length === 0) return {};
+    const agentId = newLeads[0].agentId;
+    const updatedAgents = s.agents.map((a) =>
+      a._id === agentId ? { ...a, leadCount: a.leadCount + newLeads.length } : a
+    );
+    const updatedActive = s.activeAgent && s.activeAgent._id === agentId
+      ? { ...s.activeAgent, leadCount: s.activeAgent.leadCount + newLeads.length }
+      : s.activeAgent;
+    return {
+      leads: [...newLeads, ...s.leads],
+      agents: updatedAgents,
+      activeAgent: updatedActive,
+    };
+  }),
 
   conversations: {},
   setConversations: (leadId, convos) =>
@@ -155,4 +197,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: {},
   setLoading: (key, val) =>
     set((s) => ({ loading: { ...s.loading, [key]: val } })),
+  sidebarOpenMobile: false,
+  setSidebarOpenMobile: (open) => set({ sidebarOpenMobile: open }),
 }));

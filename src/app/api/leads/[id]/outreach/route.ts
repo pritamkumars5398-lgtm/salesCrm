@@ -168,8 +168,6 @@ use "Hi there," instead of addressing them by name.
     const json = await res.json();
     const raw: string = json.choices?.[0]?.message?.content ?? "";
     let clean = raw.replace(/```json|```/g, "").trim();
-
-    // Extra safety: extract JSON object if there is leading/trailing text
     const start = clean.indexOf("{");
     const end = clean.lastIndexOf("}");
     if (start !== -1 && end !== -1 && end > start) {
@@ -218,8 +216,7 @@ async function sendEmail(cfg: Awaited<ReturnType<typeof getEmailConfig>>, to: st
       subject,
       html,
       text: body,
-      // Deliverability: a valid List-Unsubscribe header is one of the
-      // strongest signals to Gmail that this is legitimate, not spam.
+
       headers: {
         "List-Unsubscribe": `<mailto:${cfg.fromAddress}?subject=unsubscribe>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -259,11 +256,11 @@ async function sendEmail(cfg: Awaited<ReturnType<typeof getEmailConfig>>, to: st
 // ── WhatsApp helpers ──────────────────────────────────────────────────────────
 
 async function getWhatsAppConfig(agentId: string) {
-  const rows = await Setting.find({ agentId, key: { $in: ["waApiKey", "waSessionId"] } }).lean();
+  const rows = await Setting.find({ agentId, key: { $in: ["waProvider", "waApiKey", "waSessionId"] } }).lean();
   const m: Record<string, string> = {};
   rows.forEach((r) => { m[r.key] = r.value; });
   if (!m.waApiKey || !m.waSessionId) return null;
-  return { apiKey: m.waApiKey, sessionId: m.waSessionId };
+  return { provider: m.waProvider || "WireWeb", apiKey: m.waApiKey, sessionId: m.waSessionId };
 }
 
 async function generateWhatsAppAI(agentId: string, lead: {
@@ -279,14 +276,14 @@ async function generateWhatsAppAI(agentId: string, lead: {
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
   const services = m.businessServices || "";
-  const website  = m.businessWebsite  || "";
-  const custom   = m.customPrompt     || "";
+  const website = m.businessWebsite || "";
+  const custom = m.customPrompt || "";
 
   const prompt = `Write a short, friendly WhatsApp outreach message (under 80 words).
 Lead: ${lead.fullName}${lead.company ? `, ${lead.company}` : ""}.
 ${services ? `We offer: ${services}.` : ""}
-${website  ? `Our website: ${website}.` : ""}
-${custom   ? `Instructions: ${custom}` : ""}
+${website ? `Our website: ${website}.` : ""}
+${custom ? `Instructions: ${custom}` : ""}
 Sender name: ${lead.senderName || "our team"}.
 
 Rules:
@@ -311,15 +308,37 @@ Rules:
   return (json.choices?.[0]?.message?.content ?? "").trim();
 }
 
-async function sendWhatsAppMessage(config: { apiKey: string; sessionId: string }, to: string, text: string) {
+async function sendWhatsAppMessage(config: { provider: string; apiKey: string; sessionId: string }, to: string, text: string) {
   let phone = to.replace(/\D/g, "");
   if (phone.length === 10) phone = "91" + phone;
-  const res = await fetch("https://app.wireweb.co.in/api/v1/messages", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId: config.sessionId, to: phone, text }),
-  });
-  if (!res.ok) throw new Error(`WhatsApp API error: ${await res.text()}`);
+
+  if (config.provider === "Meta Cloud API") {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${config.sessionId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: phone,
+        type: "text",
+        text: {
+          preview_url: false,
+          body: text,
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`Meta API error: ${await res.text()}`);
+  } else {
+    const res = await fetch("https://app.wireweb.co.in/api/v1/messages", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: config.sessionId, to: phone, text }),
+    });
+    if (!res.ok) throw new Error(`WhatsApp API error: ${await res.text()}`);
+  }
 }
 
 // ── route ─────────────────────────────────────────────────────────────────────
@@ -349,12 +368,12 @@ export async function POST(
     let emailBody: string;
     try {
       ({ subject, body: emailBody } = await generateEmailAI(agentId, {
-        fullName:  lead.fullName || `${lead.firstName} ${lead.lastName}`,
+        fullName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
         firstName: lead.firstName,
-        lastName:  lead.lastName,
-        jobTitle:  lead.jobTitle,
-        company:   lead.company,
-        source:    lead.source,
+        lastName: lead.lastName,
+        jobTitle: lead.jobTitle,
+        company: lead.company,
+        source: lead.source,
         senderName,
       }));
     } catch (err: unknown) {
@@ -371,7 +390,7 @@ export async function POST(
           const protocol = req.headers.get("x-forwarded-proto") || "http";
           const host = req.headers.get("host") || "localhost:3001";
           const baseUrl = `${protocol}://${host}`;
-          const interestedUrl    = `${baseUrl}/api/leads/${params.id}/response?action=interested`;
+          const interestedUrl = `${baseUrl}/api/leads/${params.id}/response?action=interested`;
           const notInterestedUrl = `${baseUrl}/api/leads/${params.id}/response?action=not_interested`;
           const htmlButtons = `
 <br><br>
@@ -417,10 +436,10 @@ export async function POST(
   let waMessage: string;
   try {
     waMessage = await generateWhatsAppAI(agentId, {
-      fullName:   lead.fullName || `${lead.firstName} ${lead.lastName}`,
-      firstName:  lead.firstName,
-      company:    lead.company,
-      source:     lead.source,
+      fullName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
+      firstName: lead.firstName,
+      company: lead.company,
+      source: lead.source,
       senderName,
     });
   } catch (err: unknown) {

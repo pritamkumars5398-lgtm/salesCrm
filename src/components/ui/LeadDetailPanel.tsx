@@ -64,6 +64,57 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
   const [visible, setVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [calling, setCalling] = useState(false);
+  const [activeTab, setActiveTab] = useState<"details" | "notes" | "history">("details");
+  const [newNote, setNewNote] = useState("");
+  const [postingNote, setPostingNote] = useState(false);
+
+  async function handleCall() {
+    if (!lead.phone || calling) return;
+    setCalling(true);
+    
+    // Open native dialer
+    window.location.href = `tel:${lead.phone}`;
+
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/call`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const data = await res.json();
+      updateLead(lead._id, data.lead);
+      showToast("Call initiated successfully!", "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to trigger call", "error");
+    } finally {
+      setCalling(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!newNote.trim() || postingNote) return;
+    setPostingNote(true);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: newNote.trim(), author: "User" }),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const updatedLead = await res.json();
+      updateLead(lead._id, updatedLead);
+      setNewNote("");
+      showToast("Comment added!", "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to add comment", "error");
+    } finally {
+      setPostingNote(false);
+    }
+  }
   const [form, setForm] = useState({
     firstName: lead.firstName || "",
     lastName: lead.lastName || "",
@@ -236,6 +287,28 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
             {isEditing ? "Edit Lead details" : "Lead details"}
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!isEditing && lead.phone && (
+              <button
+                onClick={handleCall}
+                disabled={calling}
+                style={{
+                  background: calling ? "var(--color-bg3)" : "rgba(16,185,129,0.1)",
+                  border: "1px solid rgba(16,185,129,0.2)",
+                  cursor: calling ? "wait" : "pointer",
+                  padding: "4px 8px",
+                  color: "#059669",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                }}
+              >
+                <IconPhone size={14} className={calling ? "animate-pulse" : ""} />
+                {calling ? "Calling..." : "Call"}
+              </button>
+            )}
             {!isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
@@ -478,121 +551,241 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
               </div>
             </div>
 
-            {/* Pipeline progress */}
-            <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
-              <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
-                Pipeline stage
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                {STAGE_STEPS.map((s, i) => {
-                  const done = i <= stageIdx;
-                  const current = i === stageIdx;
-                  return (
-                    <div key={s} style={{ display: "flex", alignItems: "center", flex: i < STAGE_STEPS.length - 1 ? 1 : 0 }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                        <div
-                          style={{
-                            width: 20, height: 20, borderRadius: "50%",
-                            background: done ? "#4f46e5" : "var(--color-bg4)",
-                            border: current ? "2px solid #4f46e5" : "2px solid transparent",
-                            boxSizing: "border-box",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            boxShadow: current ? "0 0 0 3px rgba(79,70,229,0.15)" : "none",
-                          }}
-                        >
-                          {done && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+            {/* Tabs Selector */}
+            <div style={{ display: "flex", borderBottom: "1px solid var(--color-bg4)", padding: "0 20px", gap: 10, background: "var(--color-bg3)" }}>
+              {(["details", "notes", "history"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: "10px 8px",
+                    fontSize: 12.5,
+                    fontWeight: activeTab === tab ? 700 : 500,
+                    color: activeTab === tab ? "#4f46e5" : "var(--color-text3)",
+                    border: "none",
+                    borderBottom: activeTab === tab ? "2px solid #4f46e5" : "2px solid transparent",
+                    background: "none",
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "details" && (
+              <>
+                {/* Pipeline progress */}
+                <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+                  <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+                    Pipeline stage
+                  </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                    {STAGE_STEPS.map((s, i) => {
+                      const done = i <= stageIdx;
+                      const current = i === stageIdx;
+                      return (
+                        <div key={s} style={{ display: "flex", alignItems: "center", flex: i < STAGE_STEPS.length - 1 ? 1 : 0 }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                            <div
+                              style={{
+                                width: 20, height: 20, borderRadius: "50%",
+                                background: done ? "#4f46e5" : "var(--color-bg4)",
+                                border: current ? "2px solid #4f46e5" : "2px solid transparent",
+                                boxSizing: "border-box",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                boxShadow: current ? "0 0 0 3px rgba(79,70,229,0.15)" : "none",
+                              }}
+                            >
+                              {done && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                            </div>
+                            <span style={{ fontSize: 9.5, fontWeight: 600, color: done ? "#4f46e5" : "var(--color-text3)", whiteSpace: "nowrap" }}>
+                              {STAGE_LABELS[s]}
+                            </span>
+                          </div>
+                          {i < STAGE_STEPS.length - 1 && (
+                            <div
+                              style={{
+                                flex: 1, height: 2, marginBottom: 14,
+                                background: i < stageIdx ? "#4f46e5" : "var(--color-bg4)",
+                              }}
+                            />
+                          )}
                         </div>
-                        <span style={{ fontSize: 9.5, fontWeight: 600, color: done ? "#4f46e5" : "var(--color-text3)", whiteSpace: "nowrap" }}>
-                          {STAGE_LABELS[s]}
-                        </span>
-                      </div>
-                      {i < STAGE_STEPS.length - 1 && (
-                        <div
-                          style={{
-                            flex: 1, height: 2, marginBottom: 14,
-                            background: i < stageIdx ? "#4f46e5" : "var(--color-bg4)",
-                          }}
-                        />
-                      )}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Contact info */}
+                <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+                  <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
+                    Contact information
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <Row Icon={IconUser} label="Full name" value={lead.fullName} />
+                    {lead.email
+                      ? <Row Icon={IconMail} label="Email" value={lead.email} href={`mailto:${lead.email}`} />
+                      : <MissingRow Icon={IconMail} label="Email" color="#ff6b6b" />}
+                    {lead.phone
+                      ? <Row Icon={IconPhone} label="Phone" value={lead.phone} href={`tel:${lead.phone}`} />
+                      : <MissingRow Icon={IconPhone} label="Phone" color="#f5a623" />}
+                    <Row Icon={IconBriefcase} label="Job title" value={lead.jobTitle} />
+                    <Row Icon={IconBuilding} label="Company" value={lead.company} />
+                    <Row Icon={IconLink} label="Website" value={lead.website || ""} href={lead.website ? (lead.website.startsWith("http") ? lead.website : `https://${lead.website}`) : undefined} />
+                  </div>
+                </div>
+
+                {/* Channels */}
+                {(lead.channels ?? []).length > 0 && (
+                  <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+                      Outreach channels
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(lead.channels ?? []).map((ch) => {
+                        const meta = CHANNEL_META[ch];
+                        if (!meta) return null;
+                        return (
+                          <div
+                            key={ch}
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "space-between",
+                              padding: "10px 14px", borderRadius: 10,
+                              background: "var(--color-bg3)", border: "1px solid var(--color-bg4)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <span style={{ width: 28, height: 28, borderRadius: 7, background: meta.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <meta.Icon size={14} style={{ color: meta.color }} />
+                              </span>
+                              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text)" }}>{meta.label}</span>
+                            </div>
+                            <button
+                              onClick={() => { handleClose(); openDrawer(lead, ch as Channel); }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 5,
+                                padding: "5px 12px", borderRadius: 7,
+                                background: "var(--color-bg2)", border: "1px solid var(--color-bg4)",
+                                fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <IconMessageCircle size={12} /> View convo
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+                )}
 
-            {/* Contact info */}
-            <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
-              <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
-                Contact information
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <Row Icon={IconUser} label="Full name" value={lead.fullName} />
-                {lead.email
-                  ? <Row Icon={IconMail} label="Email" value={lead.email} href={`mailto:${lead.email}`} />
-                  : <MissingRow Icon={IconMail} label="Email" color="#ff6b6b" />}
-                {lead.phone
-                  ? <Row Icon={IconPhone} label="Phone" value={lead.phone} href={`tel:${lead.phone}`} />
-                  : <MissingRow Icon={IconPhone} label="Phone" color="#f5a623" />}
-                <Row Icon={IconBriefcase} label="Job title" value={lead.jobTitle} />
-                <Row Icon={IconBuilding} label="Company" value={lead.company} />
-                <Row Icon={IconLink} label="Website" value={lead.website || ""} href={lead.website ? (lead.website.startsWith("http") ? lead.website : `https://${lead.website}`) : undefined} />
-              </div>
-            </div>
+                {/* Meta */}
+                <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+                  <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
+                    Meta
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <Row Icon={IconLink} label="Source" value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
+                    <Row Icon={IconCalendar} label="Added" value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
+                  </div>
+                </div>
+              </>
+            )}
 
-            {/* Channels */}
-            {(lead.channels ?? []).length > 0 && (
-              <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
-                <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
-                  Outreach channels
-                </p>
+            {activeTab === "notes" && (
+              <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {(lead.channels ?? []).map((ch) => {
-                    const meta = CHANNEL_META[ch];
-                    if (!meta) return null;
-                    return (
-                      <div
-                        key={ch}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "10px 14px", borderRadius: 10,
-                          background: "var(--color-bg3)", border: "1px solid var(--color-bg4)",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ width: 28, height: 28, borderRadius: 7, background: meta.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <meta.Icon size={14} style={{ color: meta.color }} />
+                  <textarea
+                    placeholder="Add a comment or note about this lead..."
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    style={{
+                      width: "100%", minHeight: 70, padding: 10, borderRadius: 8,
+                      border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
+                      fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit",
+                      color: "var(--color-text)"
+                    }}
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={postingNote || !newNote.trim()}
+                    style={{
+                      alignSelf: "flex-end", padding: "6px 16px", borderRadius: 8,
+                      background: newNote.trim() ? "linear-gradient(135deg, #4f46e5, #6366f1)" : "var(--color-bg4)",
+                      color: newNote.trim() ? "#fff" : "var(--color-text3)",
+                      fontSize: 12, fontWeight: 600, border: "none",
+                      cursor: newNote.trim() && !postingNote ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    {postingNote ? "Posting..." : "Add Comment"}
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {(!lead.notes || lead.notes.length === 0) ? (
+                    <p style={{ fontSize: 12, color: "var(--color-text3)", textAlign: "center", marginTop: 20 }}>No comments yet. Be the first to add one!</p>
+                  ) : (
+                    [...lead.notes].reverse().map((note, idx) => (
+                      <div key={idx} style={{ padding: 12, borderRadius: 8, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--color-text2)" }}>{note.author}</span>
+                          <span style={{ fontSize: 10, color: "var(--color-text3)" }}>
+                            {new Date(note.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                           </span>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text)" }}>{meta.label}</span>
                         </div>
-                        <button
-                          onClick={() => { handleClose(); openDrawer(lead, ch as Channel); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 5,
-                            padding: "5px 12px", borderRadius: 7,
-                            background: "var(--color-bg2)", border: "1px solid var(--color-bg4)",
-                            fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <IconMessageCircle size={12} /> View convo
-                        </button>
+                        <p style={{ fontSize: 12.5, color: "var(--color-text)", margin: 0, whiteSpace: "pre-wrap" }}>{note.text}</p>
                       </div>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Meta */}
-            <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
-              <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>
-                Meta
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <Row Icon={IconLink} label="Source" value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
-                <Row Icon={IconCalendar} label="Added" value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
+            {activeTab === "history" && (
+              <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
+                {(!lead.history || lead.history.length === 0) ? (
+                  <p style={{ fontSize: 12, color: "var(--color-text3)", textAlign: "center", marginTop: 20 }}>No change history available.</p>
+                ) : (
+                  <div style={{ position: "relative", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ position: "absolute", left: 4, top: 8, bottom: 8, width: 2, background: "var(--color-bg4)" }} />
+
+                    {[...lead.history].reverse().map((h, idx) => (
+                      <div key={idx} style={{ position: "relative" }}>
+                        <div
+                          style={{
+                            position: "absolute", left: -16, top: 4,
+                            width: 10, height: 10, borderRadius: "50%",
+                            background: h.field === "call" ? "#10b981" : h.field === "note" ? "#6366f1" : "var(--color-text3)",
+                            border: "2px solid var(--color-bg2)"
+                          }}
+                        />
+                        <div style={{ fontSize: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", color: "var(--color-text3)", marginBottom: 3 }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 600 }}>By {h.by}</span>
+                            <span style={{ fontSize: 9.5 }}>
+                              {new Date(h.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p style={{ color: "var(--color-text)", margin: 0 }}>
+                            {h.field === "call" ? (
+                              <span>Placed a phone call</span>
+                            ) : h.field === "note" ? (
+                              <span>Added a comment</span>
+                            ) : (
+                              <span>
+                                Updated <strong>{h.field}</strong> from <span style={{ textDecoration: "line-through", color: "var(--color-text3)" }}>{h.from}</span> to <strong>{h.to}</strong>
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </>
         )}
 

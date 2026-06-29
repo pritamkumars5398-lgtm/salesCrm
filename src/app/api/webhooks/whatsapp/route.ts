@@ -5,6 +5,40 @@ import { Conversation } from "@/lib/models/Conversation";
 import { eventEmitter } from "@/lib/events";
 import fs from "fs";
 
+export async function GET(req: Request) {
+  try {
+    await connectDB();
+    const { searchParams } = new URL(req.url);
+    const mode = searchParams.get("hub.mode");
+    const token = searchParams.get("hub.verify_token");
+    const challenge = searchParams.get("hub.challenge");
+    const agentId = searchParams.get("agentId");
+
+    if (mode === "subscribe" && token) {
+      if (!agentId) {
+        return new Response("Missing agentId parameter", { status: 400 });
+      }
+      const { Setting } = await import("@/lib/models/Setting");
+      const setting = await Setting.findOne({ agentId, key: "waVerifyToken" });
+      const expectedToken = setting?.value;
+      if (expectedToken && token === expectedToken) {
+        console.log("[WhatsApp Webhook] Meta Verification successful!");
+        return new Response(challenge, {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      } else {
+        console.warn("[WhatsApp Webhook] Meta Verification failed: token mismatch");
+        return new Response("Forbidden", { status: 403 });
+      }
+    }
+    return new Response("Bad Request", { status: 400 });
+  } catch (error) {
+    console.error("[WhatsApp Webhook GET] Error:", error);
+    return new Response("Internal Server Error", { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     await connectDB();
@@ -19,16 +53,62 @@ export async function POST(req: Request) {
       console.error("Failed to write to webhook.log");
     }
 
-    // Check if it's a message.received event
-    if (payload.event !== "message.received") {
-      return NextResponse.json({ ok: true }); // Acknowledge other events but ignore
-    }
-
     const { searchParams } = new URL(req.url);
     const agentIdParam = searchParams.get("agentId");
 
-    const { from, text, timestamp, sessionId } = payload;
-    
+    let from: string = "";
+    let text: string = "";
+    let timestamp: Date | undefined;
+    let sessionId: string = "";
+    let isGroup = false;
+    let chat = "";
+    let pushName = "";
+    let sender = "";
+
+    const isMeta = payload.object === "whatsapp_business_account";
+
+    if (isMeta) {
+      const entry = payload.entry?.[0];
+      const change = entry?.changes?.[0];
+      const value = change?.value;
+      const message = value?.messages?.[0];
+
+      if (!message) {
+        // If it's a status update (sent/delivered/read) or not a message, return 200 OK
+        return NextResponse.json({ ok: true });
+      }
+
+      from = message.from;
+      if (message.type === "text") {
+        text = message.text?.body || "";
+      } else if (message.type && message[message.type]?.caption) {
+        text = message[message.type].caption;
+      } else {
+        text = `[Sent a ${message.type || "message"}]`;
+      }
+
+      timestamp = message.timestamp ? new Date(parseInt(message.timestamp) * 1000) : new Date();
+      pushName = value.contacts?.[0]?.profile?.name || "";
+      sessionId = value.metadata?.phone_number_id || "";
+      isGroup = false;
+      chat = from;
+      sender = from;
+    } else {
+      // WireWeb Check if it's a message.received event
+      if (payload.event !== "message.received") {
+        return NextResponse.json({ ok: true }); // Acknowledge other events but ignore
+      }
+
+      from = payload.from;
+      text = payload.text;
+      timestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
+      sessionId = payload.sessionId;
+      isGroup = !!payload.isGroup;
+      chat = payload.chat || "";
+      pushName = payload.pushName || "";
+      sender = payload.sender || "";
+    }
+
     if (!from || typeof text !== 'string') {
       console.log("[WhatsApp Webhook] Missing 'from' or 'text' in payload.");
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -62,8 +142,8 @@ export async function POST(req: Request) {
     const last10 = cleanFrom.slice(-10);
 
     // Ignore group messages
-    if (payload.isGroup || (payload.chat && payload.chat.includes("@g.us"))) {
-      console.log(`[WhatsApp Webhook] Ignoring group message from: ${payload.chat}`);
+    if (isGroup || (chat && chat.includes("@g.us"))) {
+      console.log(`[WhatsApp Webhook] Ignoring group message from: ${chat}`);
       return NextResponse.json({ ok: true });
     }
 
@@ -78,8 +158,8 @@ export async function POST(req: Request) {
 
     // 4. Fallback for WhatsApp Local IDs (@lid) which mask the real phone number
     let matchedByFallback = false;
-    if (!lead && (from.length > 12 || payload.sender?.includes("@lid")) && payload.pushName) {
-      const nameRegex = new RegExp(`^${payload.pushName.split(" ")[0]}`, "i");
+    if (!lead && (from.length > 12 || (sender && sender.includes("@lid"))) && pushName) {
+      const nameRegex = new RegExp(`^${pushName.split(" ")[0]}`, "i");
       
       const matchingLeads = await Lead.find({
         agentId: agentId,
@@ -101,7 +181,7 @@ export async function POST(req: Request) {
       }
       
       if (lead) {
-        console.log(`[WhatsApp Webhook] Fallback matched lead by pushName: '${payload.pushName}'`);
+        console.log(`[WhatsApp Webhook] Fallback matched lead by pushName: '${pushName}'`);
         matchedByFallback = true;
       }
     }

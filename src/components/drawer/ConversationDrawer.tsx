@@ -357,21 +357,28 @@ export default function ConversationDrawer() {
             className="flex flex-shrink-0 border-b"
             style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
           >
-            {CHANNEL_TABS.map(({ id, label, Icon, color }) => (
-              <button
-                key={id}
-                onClick={() => setDrawerChannel(id)}
-                className="flex-1 py-2 text-[11.5px] font-medium flex items-center justify-center gap-1 border-b-2 transition-all duration-150"
-                style={{
-                  color: channel === id ? "var(--color-text)" : "var(--color-text3)",
-                  borderBottomColor: channel === id ? "#6c63ff" : "transparent",
-                  background: channel === id ? "var(--color-bg3)" : "transparent",
-                }}
-              >
-                <Icon size={14} style={{ color: channel === id ? color : undefined }} />
-                {label}
-              </button>
-            ))}
+            {CHANNEL_TABS.map(({ id, label, Icon, color }) => {
+              const needsPhone = id === "whatsapp" || id === "sms" || id === "call";
+              const tabDisabled = (id === "email" && !lead.email) || (needsPhone && !lead.phone);
+              return (
+                <button
+                  key={id}
+                  onClick={() => !tabDisabled && setDrawerChannel(id)}
+                  title={tabDisabled ? (id === "email" ? "No email address" : "No phone number") : undefined}
+                  className="flex-1 py-2 text-[11.5px] font-medium flex items-center justify-center gap-1 border-b-2 transition-all duration-150"
+                  style={{
+                    color: tabDisabled ? "var(--color-text3)" : channel === id ? "var(--color-text)" : "var(--color-text3)",
+                    borderBottomColor: !tabDisabled && channel === id ? "#6c63ff" : "transparent",
+                    background: !tabDisabled && channel === id ? "var(--color-bg3)" : "transparent",
+                    opacity: tabDisabled ? 0.35 : 1,
+                    cursor: tabDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <Icon size={14} style={{ color: !tabDisabled && channel === id ? color : undefined }} />
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Conversation body */}

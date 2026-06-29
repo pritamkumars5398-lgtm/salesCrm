@@ -29,9 +29,9 @@ async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
     "google-mapsEnabled", "linkedinEnabled", "justdialEnabled", "customEnabled",
     "gmActorId", "gmKeyword", "gmLocation", "gmMaxResults",
     "liActorId", "liKeywords", "liMaxResults",
-    "jdActorId", "jdCategory", "jdCity", "jdMaxResults",
+    "justdialEnabled", "jdActorId", "jdCategory", "jdCity", "jdMaxResults",
     "customActorId", "customActorInput",
-    "leadLocation", "industry", "apifyActorId",
+    "leadLocation", "leadLocations", "industry", "apifyActorId",
   ];
   const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
   const m: Record<string, string> = {};
@@ -40,30 +40,46 @@ async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
   if (!m.apifyToken) return [];
   const configs: ScraperConfig[] = [];
 
+  let activeLocations: string[] = [];
+  if (m.leadLocations) {
+    try {
+      const parsed = JSON.parse(m.leadLocations);
+      if (Array.isArray(parsed)) {
+        activeLocations = parsed.filter((l: any) => l.active).map((l: any) => l.name);
+      }
+    } catch (e) {
+      console.error("Failed to parse leadLocations setting", e);
+    }
+  }
+  if (activeLocations.length === 0) {
+    activeLocations = [m.gmLocation || m.leadLocation || "Lucknow"];
+  }
+
   // Google Maps
   if (m["google-mapsEnabled"] !== "false") {
     const keyword  = m.gmKeyword  || m.industry    || "Carpenter";
-    const location = m.gmLocation || m.leadLocation || "Lucknow";
     const max      = parseInt(m.gmMaxResults ?? "25", 10) || 25;
     const actorId  = m.gmActorId  || m.apifyActorId || DEFAULT_GM_ACTOR;
-    configs.push({
-      token: m.apifyToken, actorId, scraperType: "google-maps",
-      searchLabel: `${keyword} in ${location}`,
-      input: {
-        searchStringsArray: [`${keyword} in ${location}`],
-        maxCrawledPlacesPerSearch: max,
-        language: "en",
-        countryCode: "in",
-        includeReviews: false,
-        includeImages: false,
-      },
+    activeLocations.forEach((location) => {
+      configs.push({
+        token: m.apifyToken, actorId, scraperType: "google-maps",
+        searchLabel: `${keyword} in ${location}`,
+        input: {
+          searchStringsArray: [`${keyword} in ${location}`],
+          maxCrawledPlacesPerSearch: max,
+          language: "en",
+          countryCode: "in",
+          includeReviews: false,
+          includeImages: false,
+        },
+      });
     });
   }
 
   // LinkedIn — harvestapi/linkedin-profile-search, no cookie needed
   if (m.linkedinEnabled !== "false") {
     const actorId  = m.liActorId || DEFAULT_LI_ACTOR;
-    const keywords = m.liKeywords || "carpenter Lucknow";
+    const keywords = m.liKeywords || `carpenter ${activeLocations[0] || "Lucknow"}`;
     const max      = parseInt(m.liMaxResults ?? "20", 10) || 20;
     configs.push({
       token: m.apifyToken, actorId, scraperType: "linkedin",
@@ -75,12 +91,13 @@ async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
   // JustDial
   if (m.justdialEnabled !== "false" && m.jdActorId) {
     const category = m.jdCategory || "Carpenter";
-    const city     = m.jdCity     || "Lucknow";
     const max      = Math.max(parseInt(m.jdMaxResults ?? "30", 10) || 30, 10);
-    configs.push({
-      token: m.apifyToken, actorId: m.jdActorId, scraperType: "justdial",
-      searchLabel: `JustDial: ${category} in ${city}`,
-      input: { search: `${category} ${city}`, maxItems: max },
+    activeLocations.forEach((location) => {
+      configs.push({
+        token: m.apifyToken, actorId: m.jdActorId, scraperType: "justdial",
+        searchLabel: `JustDial: ${category} in ${location}`,
+        input: { search: `${category} ${location}`, maxItems: max },
+      });
     });
   }
 
@@ -198,13 +215,29 @@ export async function PATCH(req: Request) {
 
   // ── plan limit check ──────────────────────────────────────────────────────
   const month = currentMonth();
-  const [planRow, usageDoc] = await Promise.all([
+  const [planRow, usageDoc, locationsRow] = await Promise.all([
     Setting.findOne({ agentId, key: "plan" }).lean(),
     Usage.findOne({ agentId, month }).lean(),
+    Setting.findOne({ agentId, key: "leadLocations" }).lean(),
   ]);
   const planId = (planRow?.value ?? "free") as PlanId;
   const limit  = PLANS[planId].limits.leadsPerMonth;
   const used   = usageDoc?.leadsScraped ?? 0;
+
+  let activeLocations: string[] = [];
+  if (locationsRow?.value) {
+    try {
+      const parsed = JSON.parse(locationsRow.value);
+      if (Array.isArray(parsed)) {
+        activeLocations = parsed.filter((l: any) => l.active).map((l: any) => l.name);
+      }
+    } catch {}
+  }
+  if (activeLocations.length === 0) {
+    const backupLocationRow = await Setting.findOne({ agentId, key: "leadLocation" }).lean();
+    activeLocations = [backupLocationRow?.value || "Lucknow"];
+  }
+
   if (limit !== -1 && used >= limit) {
     return NextResponse.json(
       { error: `Lead limit reached (${used}/${limit} this month). Upgrade your plan.`, limitReached: true },
@@ -234,6 +267,7 @@ export async function PATCH(req: Request) {
     .filter((p) => {
       const phone = normalizePhone(p.phone as string);
       const email = ((p.email as string) ?? "").toLowerCase().trim();
+      if (!phone && !email) return false;
       if (phone && existingPhones.has(phone)) return false;
       if (email && existingEmails.has(email)) return false;
       return true;
@@ -267,6 +301,18 @@ export async function PATCH(req: Request) {
         website   = (p.website ?? p.url ?? "") as string;
       }
 
+      let leadLocation = "";
+      if (scraperType === "google-maps") {
+        leadLocation = (p.city || p.state || "") as string;
+      } else if (scraperType === "justdial") {
+        leadLocation = (p.city || "") as string;
+      }
+      if (!leadLocation) {
+        const address = String(p.address || "").toLowerCase();
+        const found = activeLocations.find((loc) => address.includes(loc.toLowerCase()));
+        leadLocation = found || activeLocations[0] || "";
+      }
+
       return {
         agentId,
         firstName,
@@ -282,6 +328,7 @@ export async function PATCH(req: Request) {
         pipelineStage: "new" as const,
         agentEnabled:  true,
         website:       website.trim(),
+        location:      leadLocation,
       };
     });
 

@@ -4,7 +4,7 @@ import { Setting } from "@/lib/models/Setting";
 
 export async function POST(req: Request) {
   try {
-    const { agentId, text } = await req.json();
+    const { agentId, text, voiceId: reqVoiceId } = await req.json();
     if (!agentId || !text) {
       return NextResponse.json({ error: "agentId and text are required" }, { status: 400 });
     }
@@ -14,8 +14,8 @@ export async function POST(req: Request) {
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const apiKey  = m.voiceApiKey  || "";
-    const voiceId = m.voiceId      || "Rachel";
+    const apiKey = m.voiceApiKey || "";
+    const voiceId = reqVoiceId || m.voiceId || "Bella";
     const provider = m.voiceProvider || "ElevenLabs";
 
     if (!apiKey) {
@@ -23,9 +23,44 @@ export async function POST(req: Request) {
     }
 
     if (provider === "ElevenLabs") {
-      // Try voice ID directly. ElevenLabs accepts both numeric IDs and voice names
-      // if using the /v1/text-to-speech/:voice_id endpoint.
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+      const PREMADE_VOICES: Record<string, string> = {
+        rachel: "21m00Tcm4TlvDq8ikWAM",
+        antoni: "ErXwobaYiN019PkySvjV",
+        bella: "EXAVITQu4vr4xnSDxMaL",
+        elli: "MF3mGyEYCl7XYW7LE5I9",
+        josh: "TxGEqn7CgqZOUsJ96t4v",
+        arnold: "VR6A4UBqgJJANC18DGxa",
+        adam: "pNInz6obpgHs517UZAcT",
+        dom: "AZnzlk1XvdvUeBnXmlld",
+      };
+
+      let resolvedVoiceId = voiceId;
+      const lowerVoice = voiceId.toLowerCase().trim();
+
+      if (PREMADE_VOICES[lowerVoice]) {
+        resolvedVoiceId = PREMADE_VOICES[lowerVoice];
+      } else {
+        // Try resolving name against user's custom voices list from ElevenLabs API
+        try {
+          const listRes = await fetch("https://api.elevenlabs.io/v1/voices", {
+            headers: { "xi-api-key": apiKey },
+          });
+          if (listRes.ok) {
+            const data = await listRes.json();
+            const voicesList = data.voices || [];
+            const match = voicesList.find(
+              (v: any) => v.name.toLowerCase().trim() === lowerVoice
+            );
+            if (match) {
+              resolvedVoiceId = match.voice_id;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to query ElevenLabs custom voices", e);
+        }
+      }
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(resolvedVoiceId)}`, {
         method: "POST",
         headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -37,10 +72,9 @@ export async function POST(req: Request) {
 
       if (!res.ok) {
         const errText = await res.text();
-        // ElevenLabs returns 404 for bad voice IDs — give a helpful message
         if (res.status === 404) {
           return NextResponse.json({
-            error: `Voice "${voiceId}" not found in ElevenLabs. Check your Voice Name / ID in settings.`,
+            error: `Voice "${voiceId}" not found in ElevenLabs. Please check your Voice Name / ID in settings.`,
           }, { status: 404 });
         }
         return NextResponse.json({ error: `ElevenLabs error: ${errText}` }, { status: 502 });

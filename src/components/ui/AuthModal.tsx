@@ -23,6 +23,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Onboarding Wizard steps
   const [signupStep, setSignupStep] = useState(1);
@@ -47,9 +48,16 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
 
     if (mode === "login") {
       if (!email || !password) { setError("All fields are required."); return; }
-      const result = await authLogin(email, password);
-      if (result.error) { setError(result.error); return; }
-      onAuth(result.user!.name, result.user!.email);
+      setLoading(true);
+      try {
+        const result = await authLogin(email, password);
+        if (result.error) { setError(result.error); return; }
+        onAuth(result.user!.name, result.user!.email);
+      } catch (err) {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -74,9 +82,16 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
       };
       localStorage.setItem("sa_onboarding", JSON.stringify(onboardingData));
 
-      const result = await authSignup(name, email, password);
-      if (result.error) { setError(result.error); return; }
-      onAuth(name.trim(), email);
+      setLoading(true);
+      try {
+        const result = await authSignup(name, email, password);
+        if (result.error) { setError(result.error); return; }
+        onAuth(name.trim(), email);
+      } catch (err) {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
     }
   }
 
@@ -128,10 +143,11 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 10 }}>
         <button
           onClick={onClose}
+          disabled={loading}
           style={{
             background: "none",
             border: "none",
-            cursor: "pointer",
+            cursor: loading ? "not-allowed" : "pointer",
             color: "var(--color-text2)",
             padding: 0,
             display: "flex",
@@ -139,6 +155,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
             gap: 6,
             fontSize: 14,
             fontWeight: 600,
+            opacity: loading ? 0.6 : 1,
           }}
         >
           <IconArrowLeft size={18} />
@@ -206,12 +223,13 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               <>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
-                  <input style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input disabled={loading} style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
                   <div style={{ position: "relative", width: "100%" }}>
                     <input
+                      disabled={loading}
                       style={{ ...INPUT_STYLE, paddingRight: 40 }}
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter password"
@@ -220,6 +238,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                     />
                     <button
                       type="button"
+                      disabled={loading}
                       onClick={() => setShowPassword(!showPassword)}
                       style={{
                         position: "absolute",
@@ -228,7 +247,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                         transform: "translateY(-50%)",
                         background: "none",
                         border: "none",
-                        cursor: "pointer",
+                        cursor: loading ? "not-allowed" : "pointer",
                         color: "var(--color-text3)",
                         padding: 4,
                         display: "flex",
@@ -247,16 +266,17 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Full name</label>
-                      <input style={INPUT_STYLE} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
-                      <input style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
                       <div style={{ position: "relative", width: "100%" }}>
                         <input
+                          disabled={loading}
                           style={{ ...INPUT_STYLE, paddingRight: 40 }}
                           type={showPassword ? "text" : "password"}
                           placeholder="Min. 6 characters"
@@ -265,6 +285,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                         />
                         <button
                           type="button"
+                          disabled={loading}
                           onClick={() => setShowPassword(!showPassword)}
                           style={{
                             position: "absolute",
@@ -273,7 +294,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                             transform: "translateY(-50%)",
                             background: "none",
                             border: "none",
-                            cursor: "pointer",
+                            cursor: loading ? "not-allowed" : "pointer",
                             color: "var(--color-text3)",
                             padding: 4,
                             display: "flex",
@@ -292,15 +313,15 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business name</label>
-                      <input style={INPUT_STYLE} placeholder="e.g. Acme Inc" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. Acme Inc" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business website (optional)</label>
-                      <input style={INPUT_STYLE} placeholder="e.g. https://acme.com" value={businessWebsite} onChange={(e) => setBusinessWebsite(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. https://acme.com" value={businessWebsite} onChange={(e) => setBusinessWebsite(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business phone number (optional)</label>
-                      <input style={INPUT_STYLE} placeholder="e.g. +91 98765 43210" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. +91 98765 43210" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                     </div>
                   </>
                 )}
@@ -309,15 +330,15 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Services offered (optional)</label>
-                      <textarea style={TEXTAREA_STYLE} placeholder="e.g. We offer residential plumbing, drain cleaning..." value={businessServices} onChange={(e) => setBusinessServices(e.target.value)} />
+                      <textarea disabled={loading} style={TEXTAREA_STYLE} placeholder="e.g. We offer residential plumbing, drain cleaning..." value={businessServices} onChange={(e) => setBusinessServices(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Resource brochure / document link (optional)</label>
-                      <input style={INPUT_STYLE} placeholder="e.g. https://acme.com/brochure.pdf" value={docLink} onChange={(e) => setDocLink(e.target.value)} />
+                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. https://acme.com/brochure.pdf" value={docLink} onChange={(e) => setDocLink(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Custom AI prompt / instructions (optional)</label>
-                      <textarea style={TEXTAREA_STYLE} placeholder="e.g. Speak politely. Always sign off with our name..." value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} />
+                      <textarea disabled={loading} style={TEXTAREA_STYLE} placeholder="e.g. Speak politely. Always sign off with our name..." value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} />
                     </div>
                   </>
                 )}
@@ -330,6 +351,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               {mode === "signup" && signupStep > 1 && (
                 <button
                   type="button"
+                  disabled={loading}
                   onClick={() => setSignupStep((s) => s - 1)}
                   style={{
                     flex: 1,
@@ -340,8 +362,9 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                     fontSize: 13,
                     fontWeight: 700,
                     border: "1px solid var(--color-bg4)",
-                    cursor: "pointer",
+                    cursor: loading ? "not-allowed" : "pointer",
                     boxShadow: "none",
+                    opacity: loading ? 0.6 : 1,
                   }}
                 >
                   Back
@@ -349,26 +372,62 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               )}
               <button
                 type="submit"
+                disabled={loading}
                 style={{
                   flex: 2,
                   padding: "11px 20px",
                   borderRadius: 10,
-                  background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-                  color: "#fff",
+                  background: loading ? "var(--color-bg4)" : "linear-gradient(135deg, #4f46e5, #6366f1)",
+                  color: loading ? "var(--color-text3)" : "#fff",
                   fontSize: 13,
                   fontWeight: 700,
                   border: "none",
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   boxShadow: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
                 }}
               >
-                {mode === "login"
-                  ? "Log in →"
-                  : signupStep === 1
-                    ? "Next: Business Details →"
-                    : signupStep === 2
-                      ? "Next: AI Setup →"
-                      : "Create free account →"}
+                {loading ? (
+                  <>
+                    <svg
+                      className="animate-spin"
+                      style={{
+                        width: 16,
+                        height: 16,
+                        color: "currentColor",
+                      }}
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        style={{ opacity: 0.25 }}
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        style={{ opacity: 0.75 }}
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span>{mode === "login" ? "Logging in..." : "Creating account..."}</span>
+                  </>
+                ) : (
+                  mode === "login"
+                    ? "Log in →"
+                    : signupStep === 1
+                      ? "Next: Business Details →"
+                      : signupStep === 2
+                        ? "Next: AI Setup →"
+                        : "Create free account →"
+                )}
               </button>
             </div>
           </form>
@@ -380,8 +439,9 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               </p>
               <button
                 type="button"
+                disabled={loading}
                 onClick={() => { setMode("login"); setError(""); setSignupStep(1); }}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13 }}
+                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Log in to your dashboard →
               </button>
@@ -393,8 +453,9 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               </p>
               <button
                 type="button"
+                disabled={loading}
                 onClick={() => { setMode("signup"); setError(""); setSignupStep(1); }}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13 }}
+                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Create your free account →
               </button>

@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
-  IconExternalLink, IconAlertCircle,
+  IconExternalLink, IconAlertCircle, IconTrash,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
@@ -14,10 +14,10 @@ import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = {
-  email:    { Icon: CHANNEL_CONFIG.email.Icon,    cls: "text-[#4dabf7] bg-[rgba(77,171,247,0.1)]" },
+  email: { Icon: CHANNEL_CONFIG.email.Icon, cls: "text-[#4dabf7] bg-[rgba(77,171,247,0.1)]" },
   whatsapp: { Icon: CHANNEL_CONFIG.whatsapp.Icon, cls: "text-[#22c97a] bg-[rgba(34,201,122,0.1)]" },
-  sms:      { Icon: CHANNEL_CONFIG.sms.Icon,      cls: "text-[#cc99ff] bg-[rgba(204,153,255,0.1)]" },
-  call:     { Icon: CHANNEL_CONFIG.call.Icon,     cls: "text-[#f5a623] bg-[rgba(245,166,35,0.1)]" },
+  sms: { Icon: CHANNEL_CONFIG.sms.Icon, cls: "text-[#cc99ff] bg-[rgba(204,153,255,0.1)]" },
+  call: { Icon: CHANNEL_CONFIG.call.Icon, cls: "text-[#f5a623] bg-[rgba(245,166,35,0.1)]" },
 };
 
 function SourceBadge({ source }: { source: string }) {
@@ -40,7 +40,7 @@ function SourceBadge({ source }: { source: string }) {
 interface Props { onAddLead: () => void; }
 
 export default function Leads({ onAddLead }: Props) {
-  const { activeAgent, leads, setLeads, updateLead, openDrawer, showToast } = useAppStore();
+  const { activeAgent, leads, setLeads, updateLead, openDrawer, showToast, updateAgentLeadCount } = useAppStore();
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -49,6 +49,8 @@ export default function Leads({ onAddLead }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [locations, setLocations] = useState<{ name: string; active: boolean }[]>([]);
 
   const fetchLeads = useCallback(async () => {
     if (!activeAgent) return;
@@ -58,6 +60,7 @@ export default function Leads({ onAddLead }: Props) {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
+      if (locationFilter !== "all") params.set("location", locationFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
       const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
@@ -65,9 +68,60 @@ export default function Leads({ onAddLead }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, search, missingContact]);
+  }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, locationFilter, search, missingContact]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  useEffect(() => {
+    if (!activeAgent) return;
+    fetch(`/api/settings?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const rawLocs = data.leadLocations || "";
+        let locsList: { name: string; active: boolean }[] = [];
+        try {
+          if (rawLocs) {
+            locsList = JSON.parse(rawLocs);
+          } else if (data.leadLocation) {
+            locsList = [{ name: data.leadLocation, active: true }];
+          }
+        } catch (e) {
+          locsList = [];
+        }
+        setLocations(locsList);
+      });
+  }, [activeAgent?._id]);
+
+  async function handleAddLocation(name: string) {
+    if (!activeAgent) return;
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    if (locations.some((l) => l.name.toLowerCase() === cleanName.toLowerCase())) {
+      showToast("Location already exists", "error");
+      return;
+    }
+    const updated = [...locations, { name: cleanName, active: true }];
+    setLocations(updated);
+
+    const serialized = JSON.stringify(updated);
+    const firstActive = updated.find(l => l.active)?.name || updated[0]?.name || "";
+    try {
+      await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: activeAgent._id,
+          settings: {
+            leadLocations: serialized,
+            leadLocation: firstActive,
+          },
+        }),
+      });
+      showToast(`Scraping location "${cleanName}" added!`);
+    } catch {
+      showToast("Failed to save location", "error");
+    }
+  }
 
   if (loading) {
     return (
@@ -89,11 +143,11 @@ export default function Leads({ onAddLead }: Props) {
         body: JSON.stringify({ senderName: activeAgent?.name || "our team" }),
       });
       const data = await res.json();
-      
+
       if (!res.ok) throw new Error(data.error || "Failed to start outreach");
-      
+
       updateLead(lead._id, { status: "in_outreach" });
-      
+
       if (data.whatsappSent) {
         showToast(`WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`, "success");
       } else if (data.whatsappError) {
@@ -138,6 +192,23 @@ export default function Leads({ onAddLead }: Props) {
     });
   }
 
+  async function cleanupIncomplete() {
+    if (!activeAgent) return;
+    if (!confirm("Delete all leads missing an email or phone number? This cannot be undone.")) return;
+    const res = await fetch(`/api/leads?agentId=${activeAgent._id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Removed ${data.deleted} incomplete lead${data.deleted !== 1 ? "s" : ""}`, "success");
+      fetchLeads();
+      if (activeAgent) {
+        const newCount = Math.max(0, activeAgent.leadCount - data.deleted);
+        updateAgentLeadCount(activeAgent._id, newCount);
+      }
+    } else {
+      showToast(data.error ?? "Cleanup failed", "error");
+    }
+  }
+
   async function bulkStartOutreach() {
     showToast(`Starting AI outreach for ${selected.size} leads...`);
     let errors = 0;
@@ -150,17 +221,17 @@ export default function Leads({ onAddLead }: Props) {
         });
         const data = await res.json();
         if (res.ok) {
-           updateLead(id, { status: "in_outreach" });
-           if (data.emailError) errors++;
+          updateLead(id, { status: "in_outreach" });
+          if (data.emailError) errors++;
         } else {
-           errors++;
+          errors++;
         }
       } catch (err) {
         errors++;
         console.error("Bulk outreach error for lead", id, err);
       }
     });
-    
+
     await Promise.all(promises);
     if (errors > 0) {
       showToast(`Completed with ${errors} errors (Check Settings if email failed)`, "error");
@@ -184,9 +255,10 @@ export default function Leads({ onAddLead }: Props) {
         </h1>
       </div>
 
+
       {/* Status tabs */}
       <div
-        className="flex gap-1 mb-5 rounded-[14px] p-1 w-fit border"
+        className="flex gap-1 mb-5 rounded-[14px] p-1 w-full md:w-fit overflow-x-auto flex-nowrap border"
         style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
       >
         {STATUS_TABS.map((tab) => {
@@ -197,7 +269,7 @@ export default function Leads({ onAddLead }: Props) {
             <button
               key={tab.value}
               onClick={() => setStatusFilter(tab.value)}
-              className="flex items-center gap-1.5 px-4 py-[7px] rounded-lg text-[12.5px] font-medium transition-colors duration-150"
+              className="flex items-center gap-1.5 px-4 py-[7px] rounded-lg text-[12.5px] font-medium transition-colors duration-150 whitespace-nowrap"
               style={{
                 background: statusFilter === tab.value ? "var(--color-bg4)" : "transparent",
                 color: statusFilter === tab.value ? "var(--color-text)" : "var(--color-text2)",
@@ -219,9 +291,9 @@ export default function Leads({ onAddLead }: Props) {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2.5 mb-4">
+      <div className="flex flex-wrap items-center gap-2.5 mb-4 w-full">
         <div
-          className="flex items-center gap-2 px-3 py-[7px] rounded-[10px] flex-1 max-w-[280px] border transition-colors focus-within:border-[#6c63ff]"
+          className="flex items-center gap-2 px-3 py-[7px] rounded-[10px] w-full sm:max-w-[280px] border transition-colors focus-within:border-[#6c63ff]"
           style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
         >
           <IconSearch size={15} style={{ color: "var(--color-text3)" }} />
@@ -236,7 +308,7 @@ export default function Leads({ onAddLead }: Props) {
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="form-input"
+          className="form-input w-full sm:w-auto"
           style={{ width: "auto" }}
         >
           <option value="all">All sources</option>
@@ -250,7 +322,7 @@ export default function Leads({ onAddLead }: Props) {
         <select
           value={channelFilter}
           onChange={(e) => setChannelFilter(e.target.value)}
-          className="form-input"
+          className="form-input w-full sm:w-auto"
           style={{ width: "auto" }}
         >
           <option value="all">All channels</option>
@@ -259,7 +331,20 @@ export default function Leads({ onAddLead }: Props) {
           <option value="sms">SMS</option>
           <option value="call">Call</option>
         </select>
-        <div className="flex gap-2 ml-auto">
+        <select
+          value={locationFilter}
+          onChange={(e) => setLocationFilter(e.target.value)}
+          className="form-input w-full sm:w-auto"
+          style={{ width: "auto" }}
+        >
+          <option value="all">All locations</option>
+          {locations.map((loc) => (
+            <option key={loc.name} value={loc.name}>
+              {loc.name} {!loc.active && "(Inactive)"}
+            </option>
+          ))}
+        </select>
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
           <button
             onClick={() => setMissingContact((v) => !v)}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
@@ -271,6 +356,14 @@ export default function Leads({ onAddLead }: Props) {
             title="Show leads missing email & phone"
           >
             <IconAlertCircle size={14} /> No contact
+          </button>
+          <button
+            onClick={cleanupIncomplete}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
+            title="Delete all leads missing email or phone"
+          >
+            <IconTrash size={14} /> Clean up
           </button>
           <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={onAddLead}>
             <IconPlus size={14} /> Add manually
@@ -316,7 +409,7 @@ export default function Leads({ onAddLead }: Props) {
                   className="accent-[#6c63ff] cursor-pointer"
                 />
               </th>
-              {["Name", "Company", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
+              {["Name", "Company", "Location", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap"
@@ -330,7 +423,7 @@ export default function Leads({ onAddLead }: Props) {
           <tbody>
             {leads.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
+                <td colSpan={9} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
                   No leads found. Add your first lead or sync Apify.
                 </td>
               </tr>
@@ -400,6 +493,17 @@ export default function Leads({ onAddLead }: Props) {
                       </a>
                     ) : (
                       lead.company
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="text-[12px] font-medium text-slate-500">
+                    {lead.location ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                        {lead.location}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-normal">—</span>
                     )}
                   </div>
                 </td>

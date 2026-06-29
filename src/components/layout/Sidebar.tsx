@@ -5,7 +5,7 @@ import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconPlus, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield,
+  IconShield, IconX,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Page } from "@/store/types";
@@ -37,7 +37,7 @@ const OUTREACH_CHANNELS = [
 
 export default function Sidebar() {
   const router = useRouter();
-  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, showToast, userEmail } =
+  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, showToast, userEmail, setSidebarOpenMobile } =
     useAppStore();
   const [miniUsage, setMiniUsage] = useState<MiniUsage | null>(null);
   const [outreach, setOutreach] = useState<Record<string, string>>({});
@@ -84,8 +84,10 @@ export default function Sidebar() {
 
   const enabledCronsCount = cronJobs.filter((j) => j.enabled).length;
   // Use live DB count; fall back to store count if dashboard hasn't loaded yet
-  const inOutreachCount   = liveInOutreach || leads.filter((l) => l.status === "in_outreach").length;
-  const totalLeadCount    = activeAgent ? (agentStats[activeAgent._id]?.totalCount ?? leads.length) : leads.length;
+  const inOutreachCount = (currentPage === "leads")
+    ? leads.filter((l) => l.status === "in_outreach").length
+    : (liveInOutreach || (activeAgent ? (agentStats[activeAgent._id]?.inOutreachCount ?? 0) : 0));
+  const totalLeadCount    = activeAgent ? activeAgent.leadCount : 0;
   const outreachPct       = totalLeadCount > 0 ? Math.round((inOutreachCount / totalLeadCount) * 100) : 0;
 
   async function handleNewAgent() {
@@ -106,7 +108,7 @@ export default function Sidebar() {
     }
   }
 
-  const leadCount = leads.length;
+  const leadCount = activeAgent ? activeAgent.leadCount : 0;
   const planColor = miniUsage ? PLANS[miniUsage.planId].color : "#6366f1";
   const usagePct  = miniUsage && miniUsage.leadsLimit !== -1
     ? Math.min(100, Math.round((miniUsage.leadsScraped / miniUsage.leadsLimit) * 100))
@@ -115,25 +117,33 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col overflow-y-auto flex-shrink-0 border-r"
+      className="flex flex-col overflow-y-auto flex-shrink-0 border-r h-screen"
       style={{
         width: 220,
         minWidth: 220,
-        background: "rgba(255,255,255,0.7)", backdropFilter: "blur(12px)",
+        background: "#ffffff",
         borderColor: "#e2e8f0",
       }}
     >
       {/* Logo */}
       <div
-        className="px-[18px] py-5 text-[15px] font-semibold tracking-tight flex items-center gap-2 border-b"
+        className="px-[18px] py-5 text-[15px] font-semibold tracking-tight flex items-center justify-between border-b"
         style={{ borderColor: "#e2e8f0" }}
       >
-        <div className="w-2 h-2 rounded-full" style={{ background: currentPage === "superadmin" ? "#ef4444" : "#6c63ff" }} />
-        {currentPage === "superadmin" ? (
-          <span>Sales<span style={{ color: "#ef4444" }}>Admin</span></span>
-        ) : (
-          <span>Sales<span style={{ color: "var(--color-accent2)" }}>Agent</span></span>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ background: currentPage === "superadmin" ? "#ef4444" : "#6c63ff" }} />
+          {currentPage === "superadmin" ? (
+            <span>Sales<span style={{ color: "#ef4444" }}>Admin</span></span>
+          ) : (
+            <span>Sales<span style={{ color: "var(--color-accent2)" }}>Agent</span></span>
+          )}
+        </div>
+        <button
+          onClick={() => setSidebarOpenMobile(false)}
+          className="p-1 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-none bg-transparent cursor-pointer md:hidden flex items-center justify-center"
+        >
+          <IconX size={16} />
+        </button>
       </div>
 
       {currentPage === "superadmin" ? (

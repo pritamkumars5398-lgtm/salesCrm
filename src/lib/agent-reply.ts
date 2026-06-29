@@ -147,10 +147,12 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
         await sendEmail(emailConfig, lead.email, parsed.subject || "Follow up", parsed.body);
       }
     } else if (channel === "whatsapp") {
-      const keys = ["waApiKey", "waSessionId"];
+      const keys = ["waProvider", "waApiKey", "waSessionId"];
       const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
       const m: Record<string, string> = {};
       rows.forEach((r) => { m[r.key] = r.value; });
+
+      const provider = m.waProvider || "WireWeb";
 
       if (m.waApiKey && m.waSessionId) {
         // Clean phone number
@@ -160,18 +162,38 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
         const targetNumber = phone || lead.whatsappLid;
         
         if (targetNumber) {
-          await fetch("https://app.wireweb.co.in/api/v1/messages", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${m.waApiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              sessionId: m.waSessionId,
-              to: targetNumber,
-              text: parsed.body,
-            }),
-          });
+          if (provider === "Meta Cloud API") {
+            await fetch(`https://graph.facebook.com/v20.0/${m.waSessionId}/messages`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${m.waApiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: targetNumber,
+                type: "text",
+                text: {
+                  preview_url: false,
+                  body: parsed.body,
+                },
+              }),
+            });
+          } else {
+            await fetch("https://app.wireweb.co.in/api/v1/messages", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${m.waApiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                sessionId: m.waSessionId,
+                to: targetNumber,
+                text: parsed.body,
+              }),
+            });
+          }
         }
       }
     }

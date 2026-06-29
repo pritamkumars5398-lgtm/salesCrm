@@ -52,7 +52,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         {[
           { label: "Total leads",      val: stats?.totalLeads ?? 0,        sub: "+12 today" },
           { label: "In outreach",      val: stats?.inOutreach ?? 0,        sub: `${stats ? Math.round((stats.inOutreach / (stats.totalLeads || 1)) * 100) : 0}% of leads` },
@@ -72,7 +72,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Recent leads */}
         <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">

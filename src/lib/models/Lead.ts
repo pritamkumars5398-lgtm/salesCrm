@@ -4,6 +4,21 @@ export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | 
 export type LeadSource = "LinkedIn" | "Google Maps" | "JustDial" | "Manual" | "Apify" | "Referral";
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 
+export interface ILeadNote {
+  _id?: Types.ObjectId;
+  text: string;
+  author: string;
+  createdAt: Date;
+}
+
+export interface ILeadHistory {
+  field: string;
+  from: string;
+  to: string;
+  by: string;
+  at: Date;
+}
+
 export interface ILead extends Document {
   agentId: Types.ObjectId;
   firstName: string;
@@ -21,6 +36,9 @@ export interface ILead extends Document {
   agentEnabled: boolean;
   whatsappLid?: string;
   website?: string;
+  location?: string;
+  notes: ILeadNote[];
+  history: ILeadHistory[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +61,19 @@ const LeadSchema = new Schema<ILead>(
     agentEnabled:  { type: Boolean, default: true },
     whatsappLid:   { type: String, trim: true },
     website:       { type: String, trim: true },
+    location:      { type: String, trim: true, default: "" },
+    notes: [{
+      text:      { type: String, required: true },
+      author:    { type: String, default: "User" },
+      createdAt: { type: Date, default: Date.now },
+    }],
+    history: [{
+      field: { type: String },
+      from:  { type: String },
+      to:    { type: String },
+      by:    { type: String, default: "User" },
+      at:    { type: Date, default: Date.now },
+    }],
   },
   { timestamps: true }
 );
