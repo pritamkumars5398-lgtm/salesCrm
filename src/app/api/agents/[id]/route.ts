@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Agent } from "@/lib/models/Agent";
+import { CronJob } from "@/lib/models/CronJob";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
@@ -16,6 +17,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const body = await req.json();
   const agent = await Agent.findByIdAndUpdate(id, body, { new: true }).lean();
   if (!agent) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (body.status === "inactive") {
+    await CronJob.updateMany({ agentId: id }, { enabled: false });
+  }
+
   return NextResponse.json(agent);
 }
 

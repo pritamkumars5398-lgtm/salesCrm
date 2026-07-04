@@ -62,6 +62,8 @@ export default function Crons() {
     const cronExpression = isCustom ? form.customCron : form.cronPreset;
     if (!cronExpression.trim()) return;
 
+    const startsEnabled = activeAgent.status !== "inactive";
+
     const res = await fetch("/api/crons", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -70,17 +72,25 @@ export default function Crons() {
         name: form.name.trim(),
         cronExpression,
         action: form.action,
-        enabled: true,
+        enabled: startsEnabled,
       }),
     });
     const job = await res.json();
     addCronJob(job);
     setShowForm(false);
     setForm({ name: "", cronPreset: "0 9 * * 1-5", customCron: "", action: "start_outreach" });
-    showToast("Schedule created");
+    if (startsEnabled) {
+      showToast("Schedule created");
+    } else {
+      showToast("Schedule created (paused because agent is unpublished)", "error");
+    }
   }
 
   async function toggleJob(job: CronJob) {
+    if (activeAgent?.status === "inactive" && !job.enabled) {
+      showToast("Cannot enable schedules when the agent is unpublished. Please publish the agent from the top bar first.", "error");
+      return;
+    }
     await fetch(`/api/crons/${job._id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
 export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | "closed";
+export type OutreachStatus = "none" | "pending" | "sending" | "sent" | "failed";
 export type LeadSource = "LinkedIn" | "Google Maps" | "JustDial" | "Manual" | "Apify" | "Referral";
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 
@@ -34,6 +35,10 @@ export interface ILead extends Document {
   sequenceId?: Types.ObjectId;
   pipelineStage: "new" | "contacted" | "replied" | "qualified" | "closed";
   agentEnabled: boolean;
+  outreachStatus: OutreachStatus;
+  lastOutreachError?: string;
+  lastContactedAt?: Date;
+  outreachAttempts: number;
   whatsappLid?: string;
   website?: string;
   location?: string;
@@ -59,6 +64,10 @@ const LeadSchema = new Schema<ILead>(
     sequenceId:    { type: Schema.Types.ObjectId, ref: "Sequence" },
     pipelineStage: { type: String, enum: ["new", "contacted", "replied", "qualified", "closed"], default: "new" },
     agentEnabled:  { type: Boolean, default: true },
+    outreachStatus:    { type: String, enum: ["none", "pending", "sending", "sent", "failed"], default: "none" },
+    lastOutreachError: { type: String },
+    lastContactedAt:   { type: Date },
+    outreachAttempts:  { type: Number, default: 0 },
     whatsappLid:   { type: String, trim: true },
     website:       { type: String, trim: true },
     location:      { type: String, trim: true, default: "" },
@@ -84,6 +93,7 @@ LeadSchema.pre("save", function (next) {
 });
 
 LeadSchema.index({ agentId: 1, status: 1 });
+LeadSchema.index({ agentId: 1, outreachStatus: 1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
 
 export const Lead: Model<ILead> =

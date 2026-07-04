@@ -12,6 +12,8 @@ import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
+import { startLeadOutreach, mapWithConcurrency } from "@/lib/api/leads.api";
+import { ApiError } from "@/lib/api/client";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = {
   email: { Icon: CHANNEL_CONFIG.email.Icon, cls: "text-[#4dabf7] bg-[rgba(77,171,247,0.1)]" },
@@ -135,37 +137,32 @@ export default function Leads({ onAddLead }: Props) {
   }
 
   async function startOutreach(lead: Lead) {
+    if (activeAgent?.status === "inactive") {
+      showToast("Your agent is currently unpublished. Please publish the agent from the top bar first.", "error");
+      return;
+    }
     showToast(`Generating AI outreach for ${lead.firstName}...`);
     try {
-      const res = await fetch(`/api/leads/${lead._id}/outreach`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ senderName: activeAgent?.name || "our team" }),
-      });
-      const data = await res.json();
+      const data = await startLeadOutreach(lead._id, activeAgent?.name || "our team");
 
-      if (!res.ok) throw new Error(data.error || "Failed to start outreach");
-
-      updateLead(lead._id, { status: "in_outreach" });
-
-      if (data.whatsappSent) {
-        showToast(`WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`, "success");
-      } else if (data.whatsappError) {
-        showToast(`No email — tried WhatsApp but: ${data.whatsappError}`, "error");
-      } else if (data.emailSent) {
-        showToast(`AI email sent to ${lead.fullName}!`, "success");
-      } else if (data.emailError) {
-        if (data.emailError.includes("Email not configured")) {
-          showToast(`Please configure your Email/SMTP in Settings first!`, "error");
-        } else {
-          showToast(`AI generated, but email failed: ${data.emailError}`, "error");
-        }
-      } else {
-        showToast(`Outreach started for ${lead.fullName}`);
+      if (data.sent) {
+        updateLead(lead._id, { status: "in_outreach" });
+        showToast(
+          data.channel === "whatsapp"
+            ? `WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`
+            : `AI email sent to ${lead.fullName}!`,
+          "success"
+        );
+      } else if (data.skipped) {
+        showToast(data.reason ?? `Outreach already in progress for ${lead.fullName}.`, "error");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      showToast(`Error: ${msg}`, "error");
+      if (err instanceof ApiError && err.payload && typeof err.payload === "object") {
+        const p = err.payload as { error?: string };
+        showToast(p.error ?? err.message, "error");
+      } else {
+        showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error");
+      }
     }
   }
 
@@ -210,33 +207,45 @@ export default function Leads({ onAddLead }: Props) {
   }
 
   async function bulkStartOutreach() {
-    showToast(`Starting AI outreach for ${selected.size} leads...`);
-    let errors = 0;
-    const promises = Array.from(selected).map(async (id) => {
+    if (activeAgent?.status === "inactive") {
+      showToast("Your agent is currently unpublished. Please publish the agent from the top bar first.", "error");
+      return;
+    }
+    const ids = Array.from(selected);
+    showToast(`Starting AI outreach for ${ids.length} leads...`);
+
+    const failures: { id: string; reason: string }[] = [];
+    let sent = 0;
+
+    // Cap parallel sends so we don't hammer the AI/SMTP providers.
+    await mapWithConcurrency(ids, 3, async (id) => {
       try {
-        const res = await fetch(`/api/leads/${id}/outreach`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ senderName: activeAgent?.name || "our team" }),
-        });
-        const data = await res.json();
-        if (res.ok) {
+        const data = await startLeadOutreach(id, activeAgent?.name || "our team");
+        if (data.sent) {
+          sent++;
           updateLead(id, { status: "in_outreach" });
-          if (data.emailError) errors++;
         } else {
-          errors++;
+          failures.push({ id, reason: data.reason ?? "Skipped" });
         }
       } catch (err) {
-        errors++;
-        console.error("Bulk outreach error for lead", id, err);
+        const reason = err instanceof ApiError && err.payload && typeof err.payload === "object"
+          ? ((err.payload as { error?: string }).error ?? err.message)
+          : err instanceof Error ? err.message : String(err);
+        failures.push({ id, reason });
       }
     });
 
-    await Promise.all(promises);
-    if (errors > 0) {
-      showToast(`Completed with ${errors} errors (Check Settings if email failed)`, "error");
+    if (failures.length > 0) {
+      const names = failures
+        .map((f) => leads.find((l) => l._id === f.id)?.fullName ?? "Unknown")
+        .slice(0, 3)
+        .join(", ");
+      showToast(
+        `${sent} sent, ${failures.length} failed (${names}${failures.length > 3 ? "…" : ""}): ${failures[0].reason}`,
+        "error"
+      );
     } else {
-      showToast(`Successfully sent ${selected.size} AI emails!`, "success");
+      showToast(`Successfully sent ${sent} AI message${sent !== 1 ? "s" : ""}!`, "success");
     }
     setSelected(new Set());
   }

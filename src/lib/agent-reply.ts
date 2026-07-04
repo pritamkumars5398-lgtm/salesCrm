@@ -2,6 +2,7 @@ import { Lead } from "@/lib/models/Lead";
 import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
 import { Activity } from "@/lib/models/Activity";
+import { Agent } from "@/lib/models/Agent";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
 import twilio from "twilio";
@@ -13,6 +14,13 @@ export async function handleAgentReply(
   channel: string = "email"
 ) {
   try {
+    // Check if agent is published
+    const agent = await Agent.findById(agentId).lean();
+    if (agent && agent.status === "inactive") {
+      console.warn(`[Auto Agent Reply] Skipped because agent is inactive/unpublished (agentId=${agentId})`);
+      return;
+    }
+
     // 1. Fetch LLM and business context config
     const configKeys = [
       "llmProvider",
