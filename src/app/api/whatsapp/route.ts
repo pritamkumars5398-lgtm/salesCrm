@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import twilio from "twilio";
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     console.log("[WhatsApp] Original To:", to, " | Cleaned To:", cleanTo);
 
     // Fetch WA credentials
-    const keys = ["waProvider", "waApiKey", "waSessionId"];
+    const keys = ["waProvider", "waApiKey", "waSessionId", "twilioPhoneNumber"];
     const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
     const provider = m.waProvider || "WireWeb";
     const apiKey = m.waApiKey;
     const sessionId = m.waSessionId;
+    const twilioPhoneNumber = m.twilioPhoneNumber;
 
     if (!apiKey || !sessionId) {
       return NextResponse.json(
@@ -47,9 +49,30 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (provider === "Twilio" && !twilioPhoneNumber) {
+      return NextResponse.json(
+        { error: "Twilio WhatsApp Number not configured in Settings." },
+        { status: 400 }
+      );
+    }
 
     let response;
-    if (provider === "Meta Cloud API") {
+    if (provider === "Twilio") {
+      console.log(`[WhatsApp] Sending Payload to Twilio from: ${twilioPhoneNumber}`);
+      try {
+        const client = twilio(sessionId, apiKey);
+        const msg = await client.messages.create({
+          body: text,
+          from: `whatsapp:${twilioPhoneNumber}`,
+          to: `whatsapp:+${cleanTo}`,
+        });
+        console.log(`[WhatsApp] Twilio Success Response: MSG SID ${msg.sid}`);
+        return NextResponse.json({ ok: true });
+      } catch (err: any) {
+        console.error(`[WhatsApp] Twilio Error:`, err);
+        return NextResponse.json({ error: `Twilio API error: ${err.message}` }, { status: 500 });
+      }
+    } else if (provider === "Meta Cloud API") {
       const payload = {
         messaging_product: "whatsapp",
         recipient_type: "individual",

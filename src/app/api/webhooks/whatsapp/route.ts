@@ -42,7 +42,22 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const payload = await req.json();
+    const contentType = req.headers.get("content-type") || "";
+    let payload: any = {};
+    let isTwilio = false;
+
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const textBody = await req.text();
+      const params = new URLSearchParams(textBody);
+      params.forEach((value, key) => {
+        payload[key] = value;
+      });
+      if (payload.SmsSid || payload.MessageSid) {
+        isTwilio = true;
+      }
+    } else {
+      payload = await req.json();
+    }
 
     console.log("[WhatsApp Webhook] Received payload:", payload);
     
@@ -67,7 +82,18 @@ export async function POST(req: Request) {
 
     const isMeta = payload.object === "whatsapp_business_account";
 
-    if (isMeta) {
+    if (isTwilio) {
+      from = payload.From || ""; 
+      if (from.startsWith("whatsapp:")) from = from.replace("whatsapp:", "");
+      text = payload.Body || "";
+      timestamp = new Date();
+      pushName = payload.ProfileName || "";
+      sessionId = payload.To || ""; 
+      if (sessionId.startsWith("whatsapp:")) sessionId = sessionId.replace("whatsapp:", "");
+      isGroup = false;
+      chat = from;
+      sender = from;
+    } else if (isMeta) {
       const entry = payload.entry?.[0];
       const change = entry?.changes?.[0];
       const value = change?.value;

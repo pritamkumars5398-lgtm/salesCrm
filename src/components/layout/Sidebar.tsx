@@ -5,7 +5,7 @@ import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconPlus, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX,
+  IconShield, IconX, IconEdit, IconCheck,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Page } from "@/store/types";
@@ -37,12 +37,17 @@ const OUTREACH_CHANNELS = [
 
 export default function Sidebar() {
   const router = useRouter();
-  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, showToast, userEmail, setSidebarOpenMobile } =
+  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast, userEmail, setSidebarOpenMobile } =
     useAppStore();
   const [miniUsage, setMiniUsage] = useState<MiniUsage | null>(null);
   const [outreach, setOutreach] = useState<Record<string, string>>({});
   const [agentStats, setAgentStats] = useState<Record<string, { newCount: number; inOutreachCount: number; totalCount: number }>>({});
   const [liveInOutreach, setLiveInOutreach] = useState(0);
+
+  // Agent Rename State
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     if (!activeAgent) return;
@@ -108,6 +113,26 @@ export default function Sidebar() {
     }
   }
 
+  async function handleRenameAgent() {
+    if (!activeAgent || !newName.trim() || savingName) return;
+    setSavingName(true);
+    try {
+      const res = await fetch(`/api/agents/${activeAgent._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      updateAgent(activeAgent._id, { name: newName.trim() });
+      showToast("Agent renamed successfully");
+      setIsEditingName(false);
+    } catch {
+      showToast("Failed to rename agent", "error");
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   const leadCount = activeAgent ? activeAgent.leadCount : 0;
   const planColor = miniUsage ? PLANS[miniUsage.planId].color : "#6366f1";
   const usagePct  = miniUsage && miniUsage.leadsLimit !== -1
@@ -130,12 +155,14 @@ export default function Sidebar() {
         className="px-[18px] py-5 text-[15px] font-semibold tracking-tight flex items-center justify-between border-b"
         style={{ borderColor: "#e2e8f0" }}
       >
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full" style={{ background: currentPage === "superadmin" ? "#ef4444" : "#6c63ff" }} />
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: currentPage === "superadmin" ? "#ef4444" : "#6c63ff" }} />
           {currentPage === "superadmin" ? (
-            <span>Sales<span style={{ color: "#ef4444" }}>Admin</span></span>
+            <span className="truncate">Sales<span style={{ color: "#ef4444" }}>Admin</span></span>
           ) : (
-            <span>Sales<span style={{ color: "var(--color-accent2)" }}>Agent</span></span>
+            <span className="truncate" style={{ color: "var(--color-text)" }}>
+              {activeAgent?.name || "Workspace"}
+            </span>
           )}
         </div>
         <button
@@ -181,45 +208,39 @@ export default function Sidebar() {
         <>
           {/* Agents */}
           <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Agents
+            Workspace Status
           </div>
           <div className="px-2.5 pb-2 flex flex-col gap-0.5">
-            {agents.map((agent) => {
-              const isActive      = activeAgent?._id === agent._id;
+            {/* Multi-agent code commented out as requested
+            {agents.map((agent) => { ... })} 
+            */}
+
+            {activeAgent && (() => {
+              const agent = activeAgent;
+              const isActive      = true;
               const stats         = agentStats[agent._id];
               const hasOutreach   = isActive && inOutreachCount > 0;
-              // Agent is "done" when it has leads but none are new (all have been processed)
-              const isDone        = !isActive && stats && stats.totalCount > 0 && stats.newCount === 0;
-              const agentInOut    = isActive ? inOutreachCount : (stats?.inOutreachCount ?? 0);
+              const isDone        = false;
+              const agentInOut    = inOutreachCount;
 
               return (
                 <div key={agent._id} className="flex flex-col">
-                  <button
-                    onClick={() => router.push(`/${currentPage}/${agent._id}`)}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-[10px] text-[13px] transition-all duration-200 cursor-pointer w-full text-left`}
+                  <div
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-[10px] text-[13px] transition-all duration-200 w-full text-left`}
                     style={{
-                      background:  isActive ? "rgba(108,99,255,0.12)" : undefined,
-                      color:       isActive ? "var(--color-accent2)" : isDone ? "var(--color-text3)" : "var(--color-text2)",
-                      opacity:     isDone ? 0.55 : 1,
-                      boxShadow:   hasOutreach ? "inset 3px 0 0 #22c97a"
-                                 : agentInOut > 0 && !isActive ? "inset 3px 0 0 rgba(34,201,122,0.4)"
-                                 : undefined,
+                      background:  "rgba(108,99,255,0.12)",
+                      color:       "var(--color-accent2)",
+                      boxShadow:   hasOutreach ? "inset 3px 0 0 #22c97a" : undefined,
                     }}
                   >
                     <span
                       className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ background: isDone ? "#cbd5e1" : agent.status === "active" ? "#22c97a" : "var(--color-text3)" }}
+                      style={{ background: agent.status === "active" ? "#22c97a" : "var(--color-text3)" }}
                     />
-                    <span className="truncate flex-1 text-left">{agent.name}</span>
+                    <span className="truncate flex-1 text-left font-medium">Overview</span>
 
                     <span className="ml-auto flex items-center gap-1 flex-shrink-0">
-                      {isDone && (
-                        <span className="text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide"
-                          style={{ background: "rgba(100,116,139,0.1)", color: "var(--color-text3)" }}>
-                          done
-                        </span>
-                      )}
-                      {!isActive && agentInOut > 0 && (
+                      {agentInOut > 0 && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
                           style={{ background: "rgba(34,201,122,0.1)", color: "#22c97a" }}>
                           {agentInOut}
@@ -230,7 +251,7 @@ export default function Sidebar() {
                         {agent.leadCount}
                       </span>
                     </span>
-                  </button>
+                  </div>
 
                   {/* Outreach progress bar — active agent with in-outreach leads */}
                   {hasOutreach && (
@@ -263,7 +284,9 @@ export default function Sidebar() {
                   )}
                 </div>
               );
-            })}
+            })()}
+
+            {/* Commenting out New Agent button
             <button
               onClick={handleNewAgent}
               className="flex items-center gap-1.5 px-2.5 py-2 rounded-[10px] text-[12px] border border-dashed transition-colors duration-150 mt-1 w-full"
@@ -272,6 +295,7 @@ export default function Sidebar() {
               <IconPlus size={14} />
               New agent
             </button>
+            */}
           </div>
 
           {/* Menu */}

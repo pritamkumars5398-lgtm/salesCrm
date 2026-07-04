@@ -5,6 +5,7 @@ import { Setting } from "@/lib/models/Setting";
 import { Activity } from "@/lib/models/Activity";
 import { Conversation } from "@/lib/models/Conversation";
 import nodemailer from "nodemailer";
+import twilio from "twilio";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -256,11 +257,11 @@ async function sendEmail(cfg: Awaited<ReturnType<typeof getEmailConfig>>, to: st
 // ── WhatsApp helpers ──────────────────────────────────────────────────────────
 
 async function getWhatsAppConfig(agentId: string) {
-  const rows = await Setting.find({ agentId, key: { $in: ["waProvider", "waApiKey", "waSessionId"] } }).lean();
+  const rows = await Setting.find({ agentId, key: { $in: ["waProvider", "waApiKey", "waSessionId", "twilioPhoneNumber"] } }).lean();
   const m: Record<string, string> = {};
   rows.forEach((r) => { m[r.key] = r.value; });
   if (!m.waApiKey || !m.waSessionId) return null;
-  return { provider: m.waProvider || "WireWeb", apiKey: m.waApiKey, sessionId: m.waSessionId };
+  return { provider: m.waProvider || "WireWeb", apiKey: m.waApiKey, sessionId: m.waSessionId, twilioPhoneNumber: m.twilioPhoneNumber };
 }
 
 async function generateWhatsAppAI(agentId: string, lead: {
@@ -308,11 +309,19 @@ Rules:
   return (json.choices?.[0]?.message?.content ?? "").trim();
 }
 
-async function sendWhatsAppMessage(config: { provider: string; apiKey: string; sessionId: string }, to: string, text: string) {
+async function sendWhatsAppMessage(config: { provider: string; apiKey: string; sessionId: string; twilioPhoneNumber?: string }, to: string, text: string) {
   let phone = to.replace(/\D/g, "");
   if (phone.length === 10) phone = "91" + phone;
 
-  if (config.provider === "Meta Cloud API") {
+  if (config.provider === "Twilio") {
+    if (!config.twilioPhoneNumber) throw new Error("Twilio WhatsApp Number not configured in Settings.");
+    const client = twilio(config.sessionId, config.apiKey);
+    await client.messages.create({
+      body: text,
+      from: `whatsapp:${config.twilioPhoneNumber}`,
+      to: `whatsapp:+${phone}`,
+    });
+  } else if (config.provider === "Meta Cloud API") {
     const res = await fetch(`https://graph.facebook.com/v20.0/${config.sessionId}/messages`, {
       method: "POST",
       headers: {

@@ -4,6 +4,7 @@ import { Setting } from "@/lib/models/Setting";
 import { Activity } from "@/lib/models/Activity";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
+import twilio from "twilio";
 
 export async function handleAgentReply(
   lead: any,
@@ -147,7 +148,7 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
         await sendEmail(emailConfig, lead.email, parsed.subject || "Follow up", parsed.body);
       }
     } else if (channel === "whatsapp") {
-      const keys = ["waProvider", "waApiKey", "waSessionId"];
+      const keys = ["waProvider", "waApiKey", "waSessionId", "twilioPhoneNumber"];
       const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
       const m: Record<string, string> = {};
       rows.forEach((r) => { m[r.key] = r.value; });
@@ -162,7 +163,18 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
         const targetNumber = phone || lead.whatsappLid;
         
         if (targetNumber) {
-          if (provider === "Meta Cloud API") {
+          if (provider === "Twilio") {
+            if (m.twilioPhoneNumber) {
+              const client = twilio(m.waSessionId, m.waApiKey);
+              await client.messages.create({
+                body: parsed.body,
+                from: `whatsapp:${m.twilioPhoneNumber}`,
+                to: `whatsapp:+${phone}`,
+              });
+            } else {
+              console.warn("Twilio sender number not configured for AI reply");
+            }
+          } else if (provider === "Meta Cloud API") {
             await fetch(`https://graph.facebook.com/v20.0/${m.waSessionId}/messages`, {
               method: "POST",
               headers: {

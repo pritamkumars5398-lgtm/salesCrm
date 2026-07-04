@@ -31,6 +31,7 @@ export const GENERAL_CARDS: SettingsCard[] = [
     iconBg: "rgba(16,185,129,0.1)",
     iconColor: "#10b981",
     fields: [
+      { label: "Agent Name", key: "agentName", placeholder: "e.g. Sales Agent 1", hint: "The name of this workspace/agent" },
       { label: "Business Type", key: "businessType", placeholder: "", options: ["B2B SaaS", "E-commerce", "Real Estate", "Consulting / Agency", "Finance", "Healthcare", "Recruitment", "Other"] },
       { label: "Industry", key: "industry", placeholder: "e.g. Technology, Retail, Education...", hint: "Helps AI tailor messaging tone" },
       { label: "Target Location of Leads", key: "leadLocation", placeholder: "e.g. India, USA, Global, Mumbai...", hint: "City, country or region" },
@@ -67,9 +68,10 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     iconColor: "#22c97a",
     togglable: true,
     fields: [
-      { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb", "Meta Cloud API"] },
+      { label: "Provider", key: "waProvider", placeholder: "", options: ["WireWeb", "Meta Cloud API", "Twilio"] },
       { label: "API Key / Access Token", key: "waApiKey", type: "password", placeholder: "Enter API Key or Access Token" },
       { label: "Session ID / Phone Number ID", key: "waSessionId", placeholder: "Enter Session ID or Phone Number ID" },
+      { label: "WhatsApp Number (Twilio)", key: "twilioPhoneNumber", placeholder: "e.g. +14154239886", hint: "Your Twilio Sender Number (Sandbox or Production)" },
       { label: "Webhook Verify Token", key: "waVerifyToken", type: "password", placeholder: "Enter webhook verification token (Meta only)", hint: "Required for Meta Webhook setup verification" },
       { label: "Webhook URL", key: "waWebhookUrl", type: "webhook-url", hint: "Copy this and paste in your Provider dashboard" },
     ],

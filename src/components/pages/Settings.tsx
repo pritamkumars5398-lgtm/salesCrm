@@ -10,7 +10,7 @@ import ApifySources from "@/components/pages/ApifySources";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Settings() {
-  const { activeAgent, showToast, agents } = useAppStore();
+  const { activeAgent, showToast, agents, updateAgent } = useAppStore();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [active, setActive] = useState("profile");
@@ -317,7 +317,7 @@ export default function Settings() {
     fetch(`/api/settings?agentId=${activeAgent._id}`)
       .then((r) => r.json())
       .then((data) => {
-        setValues(data);
+        setValues({ ...data, agentName: activeAgent.name });
         const t: Record<string, boolean> = {};
         INTEGRATION_CARDS.filter((c) => c.togglable).forEach((c) => { t[c.key] = data[`${c.key}Enabled`] !== "false"; });
         setToggles(t);
@@ -331,6 +331,18 @@ export default function Settings() {
     if (card.togglable) patch[`${card.key}Enabled`] = String(toggles[card.key] ?? true);
     if (card.key === "profile") {
       patch["leadLocations"] = values["leadLocations"] ?? "";
+      if (patch.agentName && patch.agentName !== activeAgent.name) {
+        try {
+          await fetch(`/api/agents/${activeAgent._id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: patch.agentName }),
+          });
+          updateAgent(activeAgent._id, { name: patch.agentName });
+        } catch (err) {
+          console.error("Failed to rename agent", err);
+        }
+      }
     }
     await fetch("/api/settings", {
       method: "POST",
@@ -409,7 +421,7 @@ export default function Settings() {
 
             <div style={{ height: 1, background: "var(--color-bg4)", marginBottom: 24 }} />
 
-            {/* Copy settings utility */}
+            {/* Copy settings utility (Commented out for single-agent mode)
             {isIntegration && agents.length > 1 && (
               <div className="mb-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: "var(--color-bg4)", backgroundColor: "var(--color-bg)" }}>
                 <div>
@@ -447,6 +459,7 @@ export default function Settings() {
                 </div>
               </div>
             )}
+            */}
 
             {/* Fields */}
             <div className="flex flex-col gap-5">
@@ -457,10 +470,14 @@ export default function Settings() {
 
                 if (activeCard.key === "whatsapp") {
                   const currentProvider = values["waProvider"] || "WireWeb";
-                  if (currentProvider === "WireWeb" && f.key === "waVerifyToken") {
+                  if (currentProvider !== "Meta Cloud API" && f.key === "waVerifyToken") {
                     return null;
                   }
                   
+                  if (currentProvider !== "Twilio" && f.key === "twilioPhoneNumber") {
+                    return null;
+                  }
+
                   if (currentProvider === "Meta Cloud API") {
                     if (f.key === "waApiKey") {
                       displayLabel = "Meta Access Token";
@@ -472,6 +489,18 @@ export default function Settings() {
                       displayHint = "The unique ID for your Meta WhatsApp phone number";
                     } else if (f.key === "waWebhookUrl") {
                       displayHint = "Copy this and paste as the Callback URL in your Meta App Webhook settings";
+                    }
+                  } else if (currentProvider === "Twilio") {
+                    if (f.key === "waApiKey") {
+                      displayLabel = "Twilio Auth Token";
+                      displayPlaceholder = "Enter Twilio Auth Token";
+                      displayHint = "Your Twilio Account Auth Token";
+                    } else if (f.key === "waSessionId") {
+                      displayLabel = "Twilio Account SID";
+                      displayPlaceholder = "AC...";
+                      displayHint = "Your Twilio Account SID";
+                    } else if (f.key === "waWebhookUrl") {
+                      displayHint = "Copy this and paste into your Twilio Sandbox or Phone Number Webhook settings";
                     }
                   } else {
                     if (f.key === "waWebhookUrl") {

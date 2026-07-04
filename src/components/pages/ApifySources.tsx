@@ -489,7 +489,7 @@ export default function ApifySources() {
         </div>
       </div>
 
-      {/* Copy settings from another agent */}
+      {/* Copy settings from another agent (Commented out for single-agent mode)
       {agents.length > 1 && (
         <div
           style={{
@@ -567,6 +567,7 @@ export default function ApifySources() {
           )}
         </div>
       )}
+      */}
 
       {/* Section label */}
       <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>

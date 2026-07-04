@@ -28,6 +28,7 @@ interface AppState {
   setAgents: (agents: Agent[]) => void;
   setActiveAgent: (agent: Agent) => void;
   addAgent: (agent: Agent) => void;
+  updateAgent: (id: string, patch: Partial<Agent>) => void;
   updateAgentLeadCount: (agentId: string, count: number) => void;
 
   // Leads
@@ -104,6 +105,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAgents: (agents) => set({ agents, activeAgent: agents[0] ?? null }),
   setActiveAgent: (agent) => set({ activeAgent: agent }),
   addAgent: (agent) => set((s) => ({ agents: [...s.agents, agent] })),
+  updateAgent: (id, patch) => set((s) => {
+    const updatedAgents = s.agents.map((a) => (a._id === id ? { ...a, ...patch } : a));
+    const updatedActive = s.activeAgent && s.activeAgent._id === id ? { ...s.activeAgent, ...patch } : s.activeAgent;
+    return { agents: updatedAgents, activeAgent: updatedActive };
+  }),
   updateAgentLeadCount: (agentId, count) => set((s) => {
     const updatedAgents = s.agents.map((a) =>
       a._id === agentId ? { ...a, leadCount: count } : a
