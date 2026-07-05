@@ -27,3 +27,13 @@ export const getActiveCampaigns = (agentId: string) =>
   apiGet<CampaignDto[]>(`/api/campaigns?agentId=${agentId}&active=1`);
 
 export const retryCampaign = (id: string) => apiPost<CampaignDto>(`/api/campaigns/${id}/retry`);
+
+export interface ManualRunResult {
+  campaign: CampaignDto;
+  remainingEligible: number;
+  alreadyRunning: boolean;
+}
+
+/** Start a manual outreach run for the first `limit` eligible leads (works in Draft). */
+export const startManualRun = (agentId: string, limit?: number) =>
+  apiPost<ManualRunResult>(`/api/campaigns`, { agentId, limit });

@@ -58,6 +58,7 @@ function eligibleLeadFilter(agentId: string) {
   return {
     agentId,
     status: "new",
+    deletedAt: null,
     agentEnabled: { $ne: false },
     outreachStatus: { $nin: ["sending"] },
     $or: [
@@ -73,21 +74,26 @@ export async function countEligibleLeads(agentId: string): Promise<number> {
 }
 
 /**
- * Create a campaign covering the given leads (default: all eligible "new" leads)
- * and mark them outreachStatus="pending".
+ * Create a campaign covering the given leads (default: all eligible "new" leads,
+ * optionally capped to the first `limit`) and mark them outreachStatus="pending".
  */
 export async function createCampaign(
   agentId: string,
   trigger: ICampaign["trigger"],
-  leadIds?: string[]
+  opts: { leadIds?: string[]; limit?: number } = {}
 ): Promise<ICampaign | null> {
   // One active campaign per agent — don't stack duplicates.
   const active = await Campaign.findOne({ agentId, status: { $in: ["pending", "running"] } });
   if (active) return active;
 
-  const ids = leadIds
-    ? leadIds.map((id) => new Types.ObjectId(id))
-    : (await Lead.find(eligibleLeadFilter(agentId)).select("_id").lean()).map((l) => l._id);
+  let ids: Types.ObjectId[];
+  if (opts.leadIds) {
+    ids = opts.leadIds.map((id) => new Types.ObjectId(id));
+  } else {
+    let q = Lead.find(eligibleLeadFilter(agentId)).select("_id").sort({ createdAt: -1 });
+    if (opts.limit && opts.limit > 0) q = q.limit(opts.limit);
+    ids = (await q.lean()).map((l) => l._id);
+  }
 
   if (ids.length === 0) return null;
 
@@ -144,10 +150,16 @@ export async function processCampaignSlice(
     .limit(opts.maxLeads ?? BATCH_SLICE)
     .lean();
 
+  // Manual/retry runs were explicitly requested by the user, so they work even
+  // while the agent is in Draft; scheduled runs respect the agent status.
+  const ignoreAgentStatus =
+    opts.ignoreAgentStatus ?? (campaign.trigger === "manual" || campaign.trigger === "retry");
+
   await runPool(pending, async (lead) => {
     const result = await sendOutreachToLead(String(lead._id), {
       senderName: opts.senderName,
       baseUrl: opts.baseUrl,
+      ignoreAgentStatus,
     });
 
     const inc: Record<string, number> = {};

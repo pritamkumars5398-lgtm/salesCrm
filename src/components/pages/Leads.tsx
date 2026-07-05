@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
-  IconExternalLink, IconAlertCircle, IconTrash,
+  IconExternalLink, IconAlertCircle, IconTrash, IconRestore, IconTrashX,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
@@ -12,7 +12,8 @@ import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
-import { startLeadOutreach, mapWithConcurrency } from "@/lib/api/leads.api";
+import { startLeadOutreach, mapWithConcurrency, deleteLeads, restoreLeads, permanentlyDeleteLeads } from "@/lib/api/leads.api";
+import { startManualRun } from "@/lib/api/campaigns.api";
 import { ApiError } from "@/lib/api/client";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = {
@@ -42,7 +43,8 @@ function SourceBadge({ source }: { source: string }) {
 interface Props { onAddLead: () => void; }
 
 export default function Leads({ onAddLead }: Props) {
-  const { activeAgent, leads, setLeads, updateLead, openDrawer, showToast, updateAgentLeadCount } = useAppStore();
+  const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen } = useAppStore();
+  const [deleting, setDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -53,26 +55,85 @@ export default function Leads({ onAddLead }: Props) {
   const [loading, setLoading] = useState(true);
   const [locationFilter, setLocationFilter] = useState("all");
   const [locations, setLocations] = useState<{ name: string; active: boolean }[]>([]);
+  const [addedDateFilter, setAddedDateFilter] = useState("all");
+  const [outreachFilter, setOutreachFilter] = useState("all");
+  const [dateOptions, setDateOptions] = useState<{ value: string; label: string; count: number }[]>([]);
+  const [runOpen, setRunOpen] = useState(false);
+  const [runCount, setRunCount] = useState(15);
+  const [starting, setStarting] = useState(false);
+  const [sequence, setSequence] = useState<any>(null);
+  const [trashView, setTrashView] = useState(false);
 
-  const fetchLeads = useCallback(async () => {
+  useEffect(() => {
+    if (!activeAgent) {
+      setSequence(null);
+      return;
+    }
+    fetch(`/api/sequences?agentId=${activeAgent._id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.length > 0) {
+          setSequence(data[0]);
+        } else {
+          setSequence(null);
+        }
+      })
+      .catch((err) => console.error("Error loading sequence in Leads page", err));
+  }, [activeAgent?._id]);
+
+  const fetchLeads = useCallback(async (background = false) => {
     if (!activeAgent) return;
-    setLoading(true);
+    if (!background) setLoading(true);
     try {
       const params = new URLSearchParams({ agentId: activeAgent._id });
+      if (trashView) params.set("trashed", "1");
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
       if (locationFilter !== "all") params.set("location", locationFilter);
+      if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
+      if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
-      const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
+      const data: Lead[] = await fetch(`/api/leads?${params}`).then((r) => r.json());
       setLeads(data);
+
+      // Sync-batch options: distinct days leads were added, newest first.
+      if (addedDateFilter === "all" && Array.isArray(data)) {
+        const counts = new Map<string, number>();
+        data.forEach((l) => {
+          if (!l.createdAt) return;
+          const day = new Date(l.createdAt).toLocaleDateString("en-CA"); // YYYY-MM-DD local
+          counts.set(day, (counts.get(day) ?? 0) + 1);
+        });
+        setDateOptions(
+          [...counts.entries()]
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([day, count]) => ({
+              value: day,
+              label: new Date(`${day}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+              count,
+            }))
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
-  }, [activeAgent?._id, statusFilter, sourceFilter, channelFilter, locationFilter, search, missingContact]);
+  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, search, missingContact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // While a run is in flight for this agent, refresh lead statuses in the
+  // background so the table shows live "sending…" highlights and results.
+  const campaignRunning = !!activeCampaign
+    && activeCampaign.agentId === activeAgent?._id
+    && (activeCampaign.status === "pending" || activeCampaign.status === "running");
+
+  useEffect(() => {
+    if (!campaignRunning) return;
+    const t = setInterval(() => fetchLeads(true), 3000);
+    return () => { clearInterval(t); fetchLeads(true); };
+  }, [campaignRunning, fetchLeads]);
 
   useEffect(() => {
     if (!activeAgent) return;
@@ -136,9 +197,52 @@ export default function Leads({ onAddLead }: Props) {
     );
   }
 
+  /** Leads that still qualify for a run: new, has contact info, not already sent/in-flight. */
+  const remainingEligible = leads.filter(
+    (l) =>
+      l.status === "new" &&
+      (l.email || l.phone) &&
+      !["sent", "sending", "pending"].includes(l.outreachStatus ?? "none")
+  ).length;
+
+  async function handleRun() {
+    if (!activeAgent || starting) return;
+    setStarting(true);
+    try {
+      const res = await startManualRun(activeAgent._id, runCount);
+      setActiveCampaign(res.campaign);
+      setCampaignPanelOpen(true);
+      setRunOpen(false);
+      if (res.alreadyRunning) {
+        showToast("A run is already in progress — showing its live status.");
+      } else {
+        showToast(`Outreach started for ${res.campaign.total} lead${res.campaign.total !== 1 ? "s" : ""} — ${res.remainingEligible} more remaining.`, "success");
+      }
+      fetchLeads(true);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Could not start the run.", "error");
+    } finally {
+      setStarting(false);
+    }
+  }
+
   async function startOutreach(lead: Lead) {
     if (activeAgent?.status === "inactive") {
       showToast("Your agent is currently unpublished. Please publish the agent from the top bar first.", "error");
+      return;
+    }
+    // Edge case: don't silently double-message someone who was already contacted.
+    if (lead.outreachStatus === "sent" || lead.status !== "new") {
+      const when = lead.lastContactedAt
+        ? `on ${new Date(lead.lastContactedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+        : "earlier";
+      if (!confirm(`${lead.fullName} was already outreached ${when}. Send another message?`)) {
+        showToast(`${lead.fullName} was already outreached ${when} — skipped.`, "error");
+        return;
+      }
+    }
+    if (lead.outreachStatus === "sending" || lead.outreachStatus === "pending") {
+      showToast(`${lead.fullName} is already queued in the current run.`, "error");
       return;
     }
     showToast(`Generating AI outreach for ${lead.firstName}...`);
@@ -187,6 +291,68 @@ export default function Leads({ onAddLead }: Props) {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  function clearSelection(ids: string[]) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+  }
+
+  async function trashLeads(ids: string[], opts: { confirmLabel?: string } = {}) {
+    if (!activeAgent || ids.length === 0 || deleting) return;
+    const label = opts.confirmLabel ?? `${ids.length} lead${ids.length !== 1 ? "s" : ""}`;
+    if (!confirm(`Move ${label} to Trash? You can restore ${ids.length === 1 ? "it" : "them"} later.`)) return;
+    setDeleting(true);
+    // Optimistic: drop from the active table immediately (also fixes agent leadCount).
+    removeLeads(ids);
+    clearSelection(ids);
+    try {
+      const { deleted } = await deleteLeads(activeAgent._id, ids);
+      showToast(`Moved ${deleted} lead${deleted !== 1 ? "s" : ""} to Trash`, "success");
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
+      fetchLeads(); // reconcile if the server rejected the delete
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function restoreSelected(ids: string[]) {
+    if (!activeAgent || ids.length === 0 || deleting) return;
+    setDeleting(true);
+    setLeads(leads.filter((l) => !ids.includes(l._id))); // optimistic: leave the Trash list
+    clearSelection(ids);
+    try {
+      const { restored } = await restoreLeads(activeAgent._id, ids);
+      updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + restored);
+      showToast(`Restored ${restored} lead${restored !== 1 ? "s" : ""}`, "success");
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Failed to restore leads", "error");
+      fetchLeads();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function deleteForever(ids: string[], opts: { confirmLabel?: string } = {}) {
+    if (!activeAgent || ids.length === 0 || deleting) return;
+    const label = opts.confirmLabel ?? `${ids.length} lead${ids.length !== 1 ? "s" : ""}`;
+    if (!confirm(`Permanently delete ${label}? This also removes their conversations and CANNOT be undone.`)) return;
+    setDeleting(true);
+    setLeads(leads.filter((l) => !ids.includes(l._id))); // optimistic: leave the Trash list
+    clearSelection(ids);
+    try {
+      const { deleted } = await permanentlyDeleteLeads(activeAgent._id, ids);
+      showToast(`Permanently deleted ${deleted} lead${deleted !== 1 ? "s" : ""}`, "success");
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
+      fetchLeads();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function cleanupIncomplete() {
@@ -353,7 +519,101 @@ export default function Leads({ onAddLead }: Props) {
             </option>
           ))}
         </select>
+        <select
+          value={addedDateFilter}
+          onChange={(e) => setAddedDateFilter(e.target.value)}
+          className="form-input w-full sm:w-auto"
+          style={{ width: "auto" }}
+          title="Filter by the day leads were added/synced"
+        >
+          <option value="all">All sync dates</option>
+          {dateOptions.map((d) => (
+            <option key={d.value} value={d.value}>
+              Added {d.label} ({d.count})
+            </option>
+          ))}
+        </select>
+        <select
+          value={outreachFilter}
+          onChange={(e) => setOutreachFilter(e.target.value)}
+          className="form-input w-full sm:w-auto"
+          style={{ width: "auto" }}
+          title="Filter by outreach result"
+        >
+          <option value="all">All outreach</option>
+          <option value="none">Not started</option>
+          <option value="pending">Queued</option>
+          <option value="sending">Sending now</option>
+          <option value="sent">Outreached ✓</option>
+          <option value="failed">Failed ✗</option>
+        </select>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
+          {/* Run: start outreach for the next N eligible leads — works even in Draft */}
+          {!trashView && (
+          <div className="relative">
+            <button
+              onClick={() => setRunOpen((v) => !v)}
+              disabled={campaignRunning}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold !border-none !text-white transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg"
+              style={{
+                background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
+                cursor: campaignRunning ? "not-allowed" : "pointer",
+              }}
+              title={campaignRunning ? "A run is already in progress" : "Start outreach for the next batch of leads (works in Draft too)"}
+            >
+              <IconPlayerPlay size={14} />
+              {campaignRunning ? "Running…" : `Run (${remainingEligible} left)`}
+            </button>
+            {runOpen && !campaignRunning && (
+              <div
+                className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50"
+                style={{ borderColor: "#e2e8f0" }}
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
+                <p className="text-[12px] text-slate-600 m-0 mb-2">
+                  {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} not started yet. How many to contact now?
+                </p>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={Math.max(remainingEligible, 1)}
+                    value={runCount}
+                    onChange={(e) => setRunCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                    className="form-input w-20 text-[13px]"
+                  />
+                  {[10, 15].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setRunCount(n)}
+                      className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setRunCount(Math.max(remainingEligible, 1))}
+                    className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                  >
+                    All
+                  </button>
+                </div>
+                <button
+                  onClick={handleRun}
+                  disabled={starting || remainingEligible === 0}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "#10b981", opacity: starting || remainingEligible === 0 ? 0.6 : 1 }}
+                >
+                  <IconPlayerPlay size={13} />
+                  {starting ? "Starting…" : `Start ${Math.min(runCount, Math.max(remainingEligible, 1))} now`}
+                </button>
+                <p className="text-[10.5px] text-slate-400 m-0 mt-2 leading-snug">
+                  Runs even while the agent is in Draft. Already-contacted leads are skipped automatically.
+                </p>
+              </div>
+            )}
+          </div>
+          )}
           <button
             onClick={() => setMissingContact((v) => !v)}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
@@ -374,6 +634,18 @@ export default function Leads({ onAddLead }: Props) {
           >
             <IconTrash size={14} /> Clean up
           </button>
+          <button
+            onClick={() => { setTrashView((v) => !v); setSelected(new Set()); }}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            style={{
+              background: trashView ? "rgba(99,102,241,0.12)" : "var(--color-bg2)",
+              borderColor: trashView ? "#6366f1" : "rgba(0,0,0,0.1)",
+              color: trashView ? "#6366f1" : "var(--color-text2)",
+            }}
+            title={trashView ? "Back to active leads" : "View trashed leads"}
+          >
+            <IconTrash size={14} /> {trashView ? "Viewing Trash" : "Trash"}
+          </button>
           <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={onAddLead}>
             <IconPlus size={14} /> Add manually
           </button>
@@ -392,9 +664,42 @@ export default function Leads({ onAddLead }: Props) {
           <IconCheck size={14} />
           <span>{selected.size} lead{selected.size > 1 ? "s" : ""} selected</span>
           <div className="ml-auto flex gap-2">
-            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={bulkStartOutreach}>
-              <IconPlayerPlay size={13} /> Start outreach
-            </button>
+            {trashView ? (
+              <>
+                <button
+                  className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg font-semibold !border-none !text-white bg-gradient-to-br from-emerald-500 to-green-500 hover:brightness-105 transition-all duration-200 ease-out whitespace-nowrap disabled:opacity-60"
+                  onClick={() => restoreSelected(Array.from(selected))}
+                  disabled={deleting}
+                  title="Restore selected leads"
+                >
+                  <IconRestore size={13} /> Restore
+                </button>
+                <button
+                  className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg font-semibold border transition-all duration-200 ease-out whitespace-nowrap disabled:opacity-60"
+                  style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
+                  onClick={() => deleteForever(Array.from(selected))}
+                  disabled={deleting}
+                  title="Permanently delete selected leads"
+                >
+                  <IconTrashX size={13} /> Delete forever
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={bulkStartOutreach}>
+                  <IconPlayerPlay size={13} /> Start outreach
+                </button>
+                <button
+                  className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg font-semibold border transition-all duration-200 ease-out whitespace-nowrap disabled:opacity-60"
+                  style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
+                  onClick={() => trashLeads(Array.from(selected))}
+                  disabled={deleting}
+                  title="Move selected leads to Trash"
+                >
+                  <IconTrash size={13} /> Delete
+                </button>
+              </>
+            )}
             <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={() => setSelected(new Set())}>
               <IconX size={13} /> Deselect
             </button>
@@ -433,7 +738,7 @@ export default function Leads({ onAddLead }: Props) {
             {leads.length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
-                  No leads found. Add your first lead or sync Apify.
+                  {trashView ? "Trash is empty." : "No leads found. Add your first lead or sync Apify."}
                 </td>
               </tr>
             )}
@@ -441,9 +746,11 @@ export default function Leads({ onAddLead }: Props) {
               <tr
                 key={lead._id}
                 onClick={() => openDrawer(lead, primaryChannel(lead))}
-                className="cursor-pointer transition-colors hover:bg-white/[0.02]"
+                className={`cursor-pointer transition-colors hover:bg-white/[0.02] ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
                 style={{
-                  background: selected.has(lead._id) ? "rgba(108,99,255,0.06)" : undefined,
+                  background: lead.outreachStatus === "sending"
+                    ? "rgba(99,102,241,0.12)"
+                    : selected.has(lead._id) ? "rgba(108,99,255,0.06)" : undefined,
                   borderBottom: i < leads.length - 1 ? "1px solid rgba(0,0,0,0.1)" : "none",
                 }}
               >
@@ -518,19 +825,80 @@ export default function Leads({ onAddLead }: Props) {
                 </td>
                 <td className="px-4 py-3"><SourceBadge source={lead.source} /></td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-1">
-                    {(lead.channels ?? []).map((ch) => {
-                      const cfg = CHANNEL_ICONS[ch];
-                      if (!cfg) return null;
-                      return (
-                        <div key={ch} className={`w-6 h-6 rounded-[6px] flex items-center justify-center ${cfg.cls}`}>
-                          <cfg.Icon size={13} />
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-1">
+                      {(lead.channels ?? []).map((ch) => {
+                        const cfg = CHANNEL_ICONS[ch];
+                        if (!cfg) return null;
+                        return (
+                          <div key={ch} className={`w-6 h-6 rounded-[6px] flex items-center justify-center ${cfg.cls}`} title={`${ch} available`}>
+                            <cfg.Icon size={13} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {sequence && sequence.steps && sequence.steps.length > 0 && (
+                      <div className="flex items-center gap-1 mt-0.5" title="Outreach Sequence channels">
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
+                          Seq:
+                        </span>
+                        <div className="flex gap-0.5 items-center">
+                          {sequence.steps.map((step: any, idx: number) => {
+                            const cfg = CHANNEL_ICONS[step.channel];
+                            if (!cfg) return null;
+                            const isWhatsApp = step.channel === "whatsapp";
+                            return (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center" 
+                                title={`Step ${step.order}: ${step.channel} (Day ${step.dayOffset})`}
+                                style={{ color: isWhatsApp ? "#22c97a" : "var(--color-text3)" }}
+                              >
+                                <cfg.Icon size={10} />
+                                {idx < sequence.steps.length - 1 && <span className="mx-0.5 text-[9px] text-slate-400">→</span>}
+                              </span>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
                 </td>
-                <td className="px-4 py-3"><StatusPill status={lead.status} /></td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusPill status={lead.status} />
+                    {lead.outreachStatus === "sending" && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse"
+                        style={{ background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.3)" }}>
+                        ● Sending…
+                      </span>
+                    )}
+                    {lead.outreachStatus === "pending" && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: "rgba(245,166,35,0.1)", color: "#f5a623", border: "1px solid rgba(245,166,35,0.3)" }}>
+                        Queued
+                      </span>
+                    )}
+                    {lead.outreachStatus === "sent" && (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: "rgba(34,201,122,0.1)", color: "#22c97a", border: "1px solid rgba(34,201,122,0.3)" }}
+                        title={lead.lastContactedAt ? `Outreached ${new Date(lead.lastContactedAt).toLocaleString("en-IN")}` : "Outreached"}
+                      >
+                        ✓ Outreached
+                      </span>
+                    )}
+                    {lead.outreachStatus === "failed" && (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full cursor-help"
+                        style={{ background: "rgba(255,107,107,0.1)", color: "#ff6b6b", border: "1px solid rgba(255,107,107,0.3)" }}
+                        title={lead.lastOutreachError || "Send failed — will retry on the next run"}
+                      >
+                        ✗ Failed
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   {lead.createdAt ? (
                     <div>
@@ -547,6 +915,29 @@ export default function Leads({ onAddLead }: Props) {
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex gap-1.5 items-center flex-nowrap">
+                    {trashView ? (
+                      <>
+                        <button
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"
+                          style={{ padding: "5px 10px", background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
+                          onClick={() => restoreSelected([lead._id])}
+                          disabled={deleting}
+                          title="Restore this lead"
+                        >
+                          <IconRestore size={12} /> Restore
+                        </button>
+                        <button
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150 hover:brightness-95"
+                          style={{ padding: "5px 10px", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
+                          onClick={() => deleteForever([lead._id], { confirmLabel: lead.fullName })}
+                          disabled={deleting}
+                          title="Permanently delete this lead"
+                        >
+                          <IconTrashX size={12} /> Delete forever
+                        </button>
+                      </>
+                    ) : (
+                    <>
                     {lead.status === "new" && (() => {
                       const noContact = !lead.email && !lead.phone;
                       return (
@@ -591,6 +982,17 @@ export default function Leads({ onAddLead }: Props) {
                     >
                       <IconEye size={12} /> Details
                     </button>
+                    <button
+                      className="inline-flex items-center justify-center rounded-lg transition-all duration-150 hover:brightness-95"
+                      style={{ padding: "5px 8px", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
+                      onClick={() => trashLeads([lead._id], { confirmLabel: lead.fullName })}
+                      disabled={deleting}
+                      title="Move this lead to Trash"
+                    >
+                      <IconTrash size={12} />
+                    </button>
+                    </>
+                    )}
                   </div>
                 </td>
               </tr>

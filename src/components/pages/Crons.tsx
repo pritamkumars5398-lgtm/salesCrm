@@ -6,8 +6,16 @@ import {
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { CronJob } from "@/store/types";
-import { CRON_PRESETS } from "@/constants/theme";
 import { formatDistanceToNow } from "date-fns";
+import ScheduleBuilder, { buildCron, parseCron, describeCron, type ScheduleState } from "@/components/crons/ScheduleBuilder";
+
+const DEFAULT_SCHEDULE: ScheduleState = {
+  frequency: "weekdays",
+  time: "09:00",
+  weekdays: [1],
+  dayOfMonth: 1,
+  customCron: "",
+};
 
 const ACTION_OPTIONS = [
   { value: "start_outreach", label: "Start outreach",  Icon: IconPlayerPlay, color: "#22c97a" },
@@ -24,16 +32,11 @@ function getActionCfg(action: string) {
 export default function Crons() {
   const { activeAgent, cronJobs, setCronJobs, addCronJob, updateCronJob, removeCronJob, showToast } = useAppStore();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    cronPreset: "0 9 * * 1-5",
-    customCron: "",
-    action: "start_outreach",
-  });
-  const [isCustom, setIsCustom] = useState(false);
+  const [form, setForm] = useState({ name: "", action: "start_outreach" });
+  const [schedule, setSchedule] = useState<ScheduleState>(DEFAULT_SCHEDULE);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", cronPreset: "0 9 * * 1-5", customCron: "", action: "start_outreach" });
-  const [editIsCustom, setEditIsCustom] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", action: "start_outreach" });
+  const [editSchedule, setEditSchedule] = useState<ScheduleState>(DEFAULT_SCHEDULE);
   const [deleteTarget, setDeleteTarget] = useState<CronJob | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,8 +62,15 @@ export default function Crons() {
 
   async function createJob() {
     if (!activeAgent || !form.name.trim()) return;
-    const cronExpression = isCustom ? form.customCron : form.cronPreset;
-    if (!cronExpression.trim()) return;
+    if (schedule.frequency === "weekly" && schedule.weekdays.length === 0) {
+      showToast("Pick at least one day for the schedule.", "error");
+      return;
+    }
+    const cronExpression = buildCron(schedule);
+    if (!cronExpression.trim()) {
+      showToast("Pick a valid schedule.", "error");
+      return;
+    }
 
     const startsEnabled = activeAgent.status !== "inactive";
 
@@ -75,14 +85,19 @@ export default function Crons() {
         enabled: startsEnabled,
       }),
     });
-    const job = await res.json();
+    const job = await res.json().catch(() => null);
+    if (!res.ok || !job || !job._id) {
+      showToast(job?.error ?? "Failed to save schedule — please try again.", "error");
+      return;
+    }
     addCronJob(job);
     setShowForm(false);
-    setForm({ name: "", cronPreset: "0 9 * * 1-5", customCron: "", action: "start_outreach" });
+    setForm({ name: "", action: "start_outreach" });
+    setSchedule(DEFAULT_SCHEDULE);
     if (startsEnabled) {
       showToast("Schedule created");
     } else {
-      showToast("Schedule created (paused because agent is unpublished)", "error");
+      showToast("Schedule created (paused because agent is unpublished — it will arm on publish)", "error");
     }
   }
 
@@ -135,21 +150,28 @@ export default function Crons() {
   }
 
   function startEdit(job: CronJob) {
-    const preset = CRON_PRESETS.find((p) => p.value === job.cronExpression && p.value !== "custom");
-    const isC = !preset;
-    setEditForm({
-      name: job.name,
-      cronPreset: isC ? "0 9 * * 1-5" : job.cronExpression,
-      customCron: isC ? job.cronExpression : "",
-      action: job.action,
+    const parsed = parseCron(job.cronExpression);
+    setEditForm({ name: job.name, action: job.action });
+    setEditSchedule({
+      frequency: parsed.frequency,
+      time: parsed.time,
+      weekdays: parsed.weekdays,
+      dayOfMonth: parsed.dayOfMonth,
+      customCron: parsed.frequency === "custom" ? job.cronExpression : "",
     });
-    setEditIsCustom(isC);
     setEditingId(job._id);
   }
 
   async function saveEdit(job: CronJob) {
-    const cronExpression = editIsCustom ? editForm.customCron : editForm.cronPreset;
-    if (!editForm.name.trim() || !cronExpression.trim()) return;
+    if (editSchedule.frequency === "weekly" && editSchedule.weekdays.length === 0) {
+      showToast("Pick at least one day for the schedule.", "error");
+      return;
+    }
+    const cronExpression = buildCron(editSchedule);
+    if (!editForm.name.trim() || !cronExpression.trim()) {
+      showToast("Enter a name and a valid schedule.", "error");
+      return;
+    }
     const res = await fetch(`/api/crons/${job._id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -162,9 +184,7 @@ export default function Crons() {
   }
 
   function describeExpression(expr: string): string {
-    const preset = CRON_PRESETS.find((p) => p.value === expr);
-    if (preset && preset.value !== "custom") return preset.label;
-    return `Cron: ${expr}`;
+    return describeCron(expr);
   }
 
   return (
@@ -214,33 +234,7 @@ export default function Crons() {
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Schedule</label>
-              <div className="flex gap-2">
-                <select
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
-                  value={form.cronPreset}
-                  onChange={(e) => {
-                    if (e.target.value === "custom") { setIsCustom(true); }
-                    else { setIsCustom(false); setForm((p) => ({ ...p, cronPreset: e.target.value })); }
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  {CRON_PRESETS.map((p) => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-                {isCustom && (
-                  <input
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400 font-mono"
-                    placeholder="* * * * *"
-                    value={form.customCron}
-                    onChange={(e) => setForm((p) => ({ ...p, customCron: e.target.value }))}
-                    style={{ flex: 1 }}
-                  />
-                )}
-              </div>
-              <p className="text-[11.5px]" style={{ color: "var(--color-text3)" }}>
-                Format: minute hour day-of-month month day-of-week
-              </p>
+              <ScheduleBuilder state={schedule} onChange={setSchedule} />
             </div>
           </div>
           <div className="flex justify-end gap-2 px-[18px] pb-4">
@@ -392,33 +386,7 @@ export default function Crons() {
                   </div>
                   <div className="flex flex-col gap-1.5 col-span-2">
                     <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Schedule</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600"
-                        value={editIsCustom ? "custom" : editForm.cronPreset}
-                        onChange={(e) => {
-                          if (e.target.value === "custom") { setEditIsCustom(true); }
-                          else { setEditIsCustom(false); setEditForm((p) => ({ ...p, cronPreset: e.target.value })); }
-                        }}
-                        style={{ flex: 1 }}
-                      >
-                        {CRON_PRESETS.map((p) => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                      {editIsCustom && (
-                        <input
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 font-mono placeholder:text-slate-400"
-                          placeholder="* * * * *"
-                          value={editForm.customCron}
-                          onChange={(e) => setEditForm((p) => ({ ...p, customCron: e.target.value }))}
-                          style={{ flex: 1 }}
-                        />
-                      )}
-                    </div>
-                    <p className="text-[11.5px]" style={{ color: "var(--color-text3)" }}>
-                      Format: minute hour day-of-month month day-of-week
-                    </p>
+                    <ScheduleBuilder state={editSchedule} onChange={setEditSchedule} />
                   </div>
                   <div className="col-span-2 flex justify-end gap-2">
                     <button

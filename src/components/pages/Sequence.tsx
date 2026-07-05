@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { IconPlus, IconDeviceFloppy, IconSparkles, IconLayoutList } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { DEFAULT_SEQUENCE_STEPS, type SequenceStep } from "@/lib/constants/sequence";
@@ -11,6 +11,33 @@ export default function Sequence() {
   const [steps, setSteps] = useState<SequenceStep[]>(DEFAULT_SEQUENCE_STEPS);
   const [afterNoReply, setAfterNoReply] = useState("stop");
   const [sequenceName, setSequenceName] = useState("Cold outreach");
+
+  useEffect(() => {
+    if (!activeAgent) return;
+    const agentId = activeAgent._id;
+    async function loadSequence() {
+      try {
+        const res = await fetch(`/api/sequences?agentId=${agentId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            const seq = data[0];
+            setSteps(seq.steps || DEFAULT_SEQUENCE_STEPS);
+            setSequenceName(seq.name || "Cold outreach");
+            setAfterNoReply(seq.afterNoReply || "stop");
+          } else {
+            // Reset to defaults if no sequence saved
+            setSteps(DEFAULT_SEQUENCE_STEPS);
+            setSequenceName("Cold outreach");
+            setAfterNoReply("stop");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load sequence", err);
+      }
+    }
+    loadSequence();
+  }, [activeAgent?._id]);
 
   function addStep() {
     const next = steps.length + 1;

@@ -10,7 +10,7 @@ import Topbar from "@/components/layout/Topbar";
 import ConversationDrawer from "@/components/drawer/ConversationDrawer";
 import ToastContainer from "@/components/ui/Toast";
 import AddLeadModal from "@/components/ui/AddLeadModal";
-import SyncPanel, { type SyncRun } from "@/components/ui/SyncPanel";
+import SyncPanel from "@/components/ui/SyncPanel";
 import Landing from "@/components/pages/Landing";
 import Profile from "@/components/pages/Profile";
 
@@ -93,12 +93,16 @@ export default function Home({ params }: PageProps) {
   const agentIdParam = resolvedParams.agentId;
 
   const router = useRouter();
-  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail, setLeads } = useAppStore();
+  const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail, setLeads,
+    syncing, syncRuns, syncPanelOpen, setSyncPanelOpen, runApifySync } = useAppStore();
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
-  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
+
+  function handleSyncApify() {
+    const agentId = useAppStore.getState().activeAgent?._id;
+    if (!agentId) return;
+    runApifySync(agentId, { onLimitReached: () => router.push(`/plans/${agentId}`) });
+  }
 
   // Sync route param changes to Zustand store
   useEffect(() => {
@@ -225,105 +229,6 @@ export default function Home({ params }: PageProps) {
       .catch(() => showToast("Could not connect to database", "error"));
   }, []);
 
-  function patchRun(runId: string, patch: Partial<SyncRun>) {
-    setSyncRuns((prev) => prev.map((r) => r.runId === runId ? { ...r, ...patch } : r));
-  }
-
-  async function handleSyncApify() {
-    const agentId = useAppStore.getState().activeAgent?._id;
-    if (!agentId) return;
-    setSyncing(true);
-    setSyncRuns([]);
-    setSyncPanelOpen(true);
-
-    try {
-      const startRes = await fetch("/api/apify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-      });
-      const start = await startRes.json();
-      if (!startRes.ok) {
-        setSyncPanelOpen(false);
-        if (start.limitReached) {
-          showToast("Lead limit reached — upgrade your plan", "error");
-          router.push(`/plans/${agentId}`);
-        } else {
-          showToast(start.error ?? "Apify start failed", "error");
-        }
-        return;
-      }
-
-      const runs = start.runs as { runId: string; datasetId: string; search: string; scraperType: string }[];
-      if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w, "error"));
-
-      // Seed panel with one row per run
-      setSyncRuns(runs.map((r) => ({
-        runId: r.runId,
-        search: r.search,
-        scraperType: r.scraperType,
-        status: "polling",
-        itemCount: 0,
-        imported: 0,
-      })));
-
-      const deadline = Date.now() + 3 * 60 * 1000;
-      const completed = await Promise.all(
-        runs.map(async ({ runId, datasetId, scraperType }) => {
-          let finalStatus = "";
-          while (Date.now() < deadline) {
-            await new Promise((res) => setTimeout(res, 6000));
-            const poll = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).then((r) => r.json());
-            finalStatus = poll.status as string;
-            patchRun(runId, { itemCount: poll.itemCount ?? 0 });
-            if (finalStatus === "SUCCEEDED" || ["FAILED", "ABORTED", "TIMED-OUT"].includes(finalStatus)) break;
-          }
-          return { runId, datasetId, scraperType, finalStatus };
-        })
-      );
-
-      for (const { runId, datasetId, scraperType, finalStatus } of completed) {
-        if (finalStatus !== "SUCCEEDED") {
-          patchRun(runId, { status: "failed", error: `Run ended: ${finalStatus}` });
-          continue;
-        }
-        patchRun(runId, { status: "importing" });
-        const imp = await fetch("/api/apify", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, datasetId, scraperType }),
-        }).then((r) => r.json());
-        patchRun(runId, { status: "done", imported: imp.imported ?? 0, error: imp.warning });
-        if (imp.warning) showToast(imp.warning, "error");
-      }
-
-      // Re-fetch agents to update lead counts
-      fetch(`/api/agents?email=${encodeURIComponent(userEmail)}`)
-        .then((r) => r.json())
-        .then((agentsList) => {
-          setAgents(agentsList);
-          const match = agentsList.find((a: any) => a._id === agentId);
-          if (match) setActiveAgent(match);
-        })
-        .catch(() => { });
-
-      // If on Leads page, reload the leads
-      if (currentPage === "leads") {
-        fetch(`/api/leads?agentId=${agentId}`)
-          .then((r) => r.json())
-          .then((data) => setLeads(data))
-          .catch(() => { });
-      }
-    } catch (err) {
-      showToast("Apify sync failed — check console", "error");
-      console.error("[Apify sync]", err);
-      setSyncRuns((prev) => prev.map((r) =>
-        r.status !== "done" ? { ...r, status: "failed", error: "Unexpected error" } : r
-      ));
-    } finally {
-      setSyncing(false);
-    }
-  }
 
   if (!mounted) {
     return (

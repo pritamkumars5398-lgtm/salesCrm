@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Agent } from "@/lib/models/Agent";
-import {
-  preflightCheck,
-  createCampaign,
-  processCampaign,
-} from "@/server/services/campaign.service";
-import { getAppBaseUrl } from "@/server/services/settings.service";
+import { preflightCheck } from "@/server/services/campaign.service";
+import { armSchedules } from "@/server/services/cron.service";
 
-
+/**
+ * POST /api/agents/[id]/publish
+ * Pre-flight checks the agent's config, activates it, and ARMS its schedules.
+ * Publishing does NOT send anything by itself — outreach runs when a schedule
+ * fires (e.g. 9pm "Sync Apify" scrapes then contacts the new leads), or when
+ * the user presses Run on the Leads page.
+ *
+ * Body: { dryRun?: boolean }  — dryRun returns the pre-flight result only.
+ *
+ * Responses:
+ *  200 { published: true, schedules, warnings }  — live
+ *  422 { published: false, issues, warnings }    — config blocks publishing
+ */
 export async function POST(
   req: Request,
   props: { params: Promise<{ id: string }> }
@@ -34,27 +42,14 @@ export async function POST(
   }
 
   await Agent.findByIdAndUpdate(id, { status: "active" });
+  const schedules = await armSchedules(id);
 
-  let campaignId: string | undefined;
-  let total = 0;
-
-  if (preflight.eligibleLeads > 0) {
-    const campaign = await createCampaign(id, "publish");
-    if (campaign) {
-      campaignId = String(campaign._id);
-      total = campaign.total;
-
-      const baseUrl = getAppBaseUrl(req);
-      void processCampaign(campaignId, { senderName: agent.name, baseUrl }).catch((err) => {
-        console.error(`[publish] campaign ${campaignId} processing error:`, err);
-      });
-    }
+  const warnings = [...preflight.warnings];
+  if (schedules === 0) {
+    warnings.push(
+      "No schedules found — automated outreach will not run. Create one in Schedules, or use Run on the Leads page."
+    );
   }
 
-  return NextResponse.json({
-    published: true,
-    campaignId,
-    total,
-    warnings: preflight.warnings,
-  });
+  return NextResponse.json({ published: true, schedules, warnings });
 }

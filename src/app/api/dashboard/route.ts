@@ -23,11 +23,11 @@ export async function GET(req: Request) {
     recentLeads,
     recentActivity,
   ] = await Promise.all([
-    Lead.countDocuments({ agentId }),
-    Lead.countDocuments({ agentId, status: "in_outreach" }),
-    Lead.countDocuments({ agentId, status: "replied" }),
+    Lead.countDocuments({ agentId, deletedAt: null }),
+    Lead.countDocuments({ agentId, status: "in_outreach", deletedAt: null }),
+    Lead.countDocuments({ agentId, status: "replied", deletedAt: null }),
     Meeting.countDocuments({ agentId, scheduledAt: { $gte: weekStart } }),
-    Lead.find({ agentId }).sort({ createdAt: -1 }).limit(5).lean(),
+    Lead.find({ agentId, deletedAt: null }).sort({ createdAt: -1 }).limit(5).lean(),
     Activity.find({ agentId }).sort({ createdAt: -1 }).limit(10).lean(),
   ]);
 

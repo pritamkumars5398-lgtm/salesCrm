@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const objectIds = agents.map((a) => new mongoose.Types.ObjectId(String(a._id)));
 
   const agg = await Lead.aggregate([
-    { $match: { agentId: { $in: objectIds } } },
+    { $match: { agentId: { $in: objectIds }, deletedAt: null } },
     { $group: {
         _id: { agentId: "$agentId", status: "$status" },
         count: { $sum: 1 },

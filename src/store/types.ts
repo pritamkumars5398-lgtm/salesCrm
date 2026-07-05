@@ -39,6 +39,10 @@ export interface Lead {
   status: LeadStatus;
   pipelineStage: string;
   agentEnabled: boolean;
+  outreachStatus?: "none" | "pending" | "sending" | "sent" | "failed";
+  lastOutreachError?: string;
+  lastContactedAt?: string;
+  outreachAttempts?: number;
   website?: string;
   location?: string;
   notes?: LeadNote[];

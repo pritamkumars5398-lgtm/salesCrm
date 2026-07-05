@@ -2,16 +2,27 @@ import { Lead, ILead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
 import { Activity } from "@/lib/models/Activity";
 import { Conversation } from "@/lib/models/Conversation";
+import { Sequence } from "@/lib/models/Sequence";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 
+export type OutreachChannel = "email" | "whatsapp";
+
+export interface ChannelResult {
+  channel: OutreachChannel;
+  sent: boolean;
+  error?: string;
+}
+
 export interface OutreachResult {
   sent: boolean;
   /** true when nothing was attempted (already sending / recently contacted) */
   skipped: boolean;
-  channel: "email" | "whatsapp" | null;
+  /** primary channel (first attempted); see channelResults for the full picture */
+  channel: OutreachChannel | null;
+  channelResults?: ChannelResult[];
   subject?: string;
   body?: string;
   error?: string;
@@ -21,6 +32,8 @@ export interface OutreachOptions {
   senderName?: string;
   /** bypass the recently-contacted guard (manual single-lead sends) */
   force?: boolean;
+  /** allow sending while the agent is in Draft (manual "Run" from Leads page) */
+  ignoreAgentStatus?: boolean;
   baseUrl?: string;
 }
 
@@ -58,6 +71,8 @@ function leadInfo(lead: ILead, senderName?: string) {
     jobTitle: lead.jobTitle,
     company: lead.company,
     source: lead.source,
+    location: lead.location,
+    website: lead.website,
     senderName,
   };
 }
@@ -125,11 +140,48 @@ function buildResponseButtonsHtml(baseUrl: string, leadId: string): string {
 }
 
 /**
- * Send one AI outreach message to a lead (email preferred, WhatsApp fallback).
+ * Which channels to use for the first touch:
+ * - If the lead is attached to a sequence, use the channels of the earliest
+ *   step(s) — steps sharing the same dayOffset+sendTime fire together, so a
+ *   sequence with email AND WhatsApp at the same time sends BOTH.
+ * - Otherwise: email preferred, WhatsApp as fallback when there is no email.
+ */
+async function channelsForLead(lead: ILead): Promise<OutreachChannel[]> {
+  const canEmail = !!lead.email;
+  const canWhatsApp = !!(lead.phone || lead.whatsappLid);
+
+  // Check lead's specific sequence, or fall back to agent's sequence
+  const seq = lead.sequenceId
+    ? await Sequence.findById(lead.sequenceId).lean()
+    : await Sequence.findOne({ agentId: lead.agentId }).lean();
+
+  if (seq?.steps?.length) {
+    const sorted = [...seq.steps].sort(
+      (a, b) => a.dayOffset - b.dayOffset || a.sendTime.localeCompare(b.sendTime)
+    );
+    const first = sorted[0];
+    const sameSlot = sorted.filter(
+      (s) => s.dayOffset === first.dayOffset && s.sendTime === first.sendTime
+    );
+    const channels = [...new Set(sameSlot.map((s) => s.channel))]
+      .filter((c): c is OutreachChannel => c === "email" || c === "whatsapp")
+      .filter((c) => (c === "email" ? canEmail : canWhatsApp));
+    if (channels.length > 0) return channels;
+  }
+
+  if (canEmail) return ["email"];
+  if (canWhatsApp) return ["whatsapp"];
+  return [];
+}
+
+/**
+ * Send one AI outreach message to a lead. Channel choice is sequence-aware
+ * (see channelsForLead) — a sequence with email + WhatsApp at the same time
+ * sends on both channels.
  *
  * Guarantees:
  * - A lead is atomically claimed ("sending") so concurrent calls can't double-send.
- * - Lead status/pipeline only advance when the message was actually delivered.
+ * - Lead status/pipeline only advance when at least one message was delivered.
  * - On failure the lead is marked outreachStatus="failed" with the reason, and
  *   remains eligible for retry.
  */
@@ -140,7 +192,7 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
   const agentId = String(lead.agentId);
   const agent = await Agent.findById(agentId).lean();
   if (!agent) return { sent: false, skipped: false, channel: null, error: "Agent not found" };
-  if (agent.status === "inactive") {
+  if (agent.status === "inactive" && !opts.ignoreAgentStatus) {
     return { sent: false, skipped: false, channel: null, error: "Agent is unpublished. Please publish the agent first." };
   }
 
@@ -166,71 +218,98 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
     return { sent: false, skipped: true, channel: null, error: "Outreach already in progress for this lead." };
   }
 
-  const useWhatsApp = !lead.email && !!(lead.phone || lead.whatsappLid);
   const info = leadInfo(lead, opts.senderName);
+  const channels = await channelsForLead(lead);
 
-  try {
-    if (!useWhatsApp) {
-      if (!lead.email) {
-        const error = "Lead has no email or phone number.";
-        await markFailed(leadId, error);
-        return { sent: false, skipped: false, channel: null, error };
-      }
-
-      const cfg = await getEmailConfig(agentId);
-      if (!cfg) {
-        const error = "Email not configured — add SMTP/API settings in Settings.";
-        await markFailed(leadId, error);
-        return { sent: false, skipped: false, channel: "email", error };
-      }
-
-      const { subject, body } = await generateOutreachEmail(agentId, {
-        ...info,
-        senderName: opts.senderName || cfg.fromName || "our team",
-      });
-
-      const baseUrl = opts.baseUrl || getAppBaseUrl();
-      const content = `Subject: ${subject}\n\n${body}`;
-
-      try {
-        await withRetry(() => sendEmail(cfg, lead.email, subject, body, buildResponseButtonsHtml(baseUrl, leadId)));
-        await markSent(leadId);
-        await logOutreach(lead, agentId, "email", true, content);
-        return { sent: true, skipped: false, channel: "email", subject, body };
-      } catch (err) {
-        const error = err instanceof Error ? err.message : String(err);
-        await markFailed(leadId, error);
-        await logOutreach(lead, agentId, "email", false, content, error);
-        return { sent: false, skipped: false, channel: "email", subject, body, error };
-      }
-    }
-
-    // WhatsApp branch (no email on the lead)
-    const waCfg = await getWhatsAppConfig(agentId);
-    if (!waCfg) {
-      const error = "WhatsApp not configured — add API key and Session ID in Settings.";
-      await markFailed(leadId, error);
-      return { sent: false, skipped: false, channel: "whatsapp", error };
-    }
-
-    const message = await generateWhatsAppMessage(agentId, info);
-    const target = lead.phone || lead.whatsappLid!;
-
-    try {
-      await withRetry(() => sendWhatsAppMessage(waCfg, target, message));
-      await markSent(leadId);
-      await logOutreach(lead, agentId, "whatsapp", true, message);
-      return { sent: true, skipped: false, channel: "whatsapp", body: message };
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      await markFailed(leadId, error);
-      await logOutreach(lead, agentId, "whatsapp", false, message, error);
-      return { sent: false, skipped: false, channel: "whatsapp", body: message, error };
-    }
-  } catch (err) {
-    // AI generation (or other pre-send step) failed — nothing was sent.
-    const error = err instanceof Error ? err.message : String(err);
+  if (channels.length === 0) {
+    const error = "Lead has no email or phone number.";
     await markFailed(leadId, error);
-    return { sent: false, skipped: false, channel: useWhatsApp ? "whatsapp" : "email", error: `AI generation failed: ${error}` };
+    return { sent: false, skipped: false, channel: null, error };
   }
+
+  const channelResults: ChannelResult[] = [];
+  let subject: string | undefined;
+  let firstBody: string | undefined;
+
+  for (const channel of channels) {
+    try {
+      if (channel === "email") {
+        const cfg = await getEmailConfig(agentId);
+        if (!cfg) {
+          channelResults.push({ channel, sent: false, error: "Email not configured — add SMTP/API settings in Settings." });
+          continue;
+        }
+
+        const generated = await generateOutreachEmail(agentId, {
+          ...info,
+          senderName: opts.senderName || cfg.fromName || "our team",
+        });
+        subject = generated.subject;
+        firstBody = firstBody ?? generated.body;
+
+        const baseUrl = opts.baseUrl || getAppBaseUrl();
+        const content = `Subject: ${generated.subject}\n\n${generated.body}`;
+
+        try {
+          await withRetry(() => sendEmail(cfg, lead.email, generated.subject, generated.body, buildResponseButtonsHtml(baseUrl, leadId)));
+          channelResults.push({ channel, sent: true });
+          await logOutreach(lead, agentId, "email", true, content);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          channelResults.push({ channel, sent: false, error });
+          await logOutreach(lead, agentId, "email", false, content, error);
+        }
+      } else {
+        const waCfg = await getWhatsAppConfig(agentId);
+        if (!waCfg) {
+          channelResults.push({ channel, sent: false, error: "WhatsApp not configured — add API key and Session ID in Settings." });
+          continue;
+        }
+
+        const message = await generateWhatsAppMessage(agentId, info);
+        firstBody = firstBody ?? message;
+        const target = lead.phone || lead.whatsappLid!;
+
+        try {
+          await withRetry(() => sendWhatsAppMessage(waCfg, target, message));
+          channelResults.push({ channel, sent: true });
+          await logOutreach(lead, agentId, "whatsapp", true, message);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          channelResults.push({ channel, sent: false, error });
+          await logOutreach(lead, agentId, "whatsapp", false, message, error);
+        }
+      }
+    } catch (err) {
+      // AI generation (or other pre-send step) failed for this channel.
+      const error = err instanceof Error ? err.message : String(err);
+      channelResults.push({ channel, sent: false, error: `AI generation failed: ${error}` });
+    }
+  }
+
+  const anySent = channelResults.some((r) => r.sent);
+  const failures = channelResults.filter((r) => !r.sent);
+  const errorSummary = failures.length
+    ? failures.map((f) => `${f.channel}: ${f.error}`).join(" | ")
+    : undefined;
+
+  if (anySent) {
+    await markSent(leadId);
+    if (errorSummary) {
+      // partial success — record which channel failed without blocking the lead
+      await Lead.findByIdAndUpdate(leadId, { lastOutreachError: `Partial: ${errorSummary}`.slice(0, 500) });
+    }
+  } else {
+    await markFailed(leadId, errorSummary ?? "Unknown error");
+  }
+
+  return {
+    sent: anySent,
+    skipped: false,
+    channel: channels[0],
+    channelResults,
+    subject,
+    body: firstBody,
+    error: anySent ? undefined : errorSummary,
+  };
 }

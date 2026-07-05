@@ -13,6 +13,7 @@ import { createCronsSlice, CronsSlice } from "./slices/crons.slice";
 import { createCampaignSlice, CampaignSlice } from "./slices/campaign.slice";
 import { createDashboardSlice, DashboardSlice } from "./slices/dashboard.slice";
 import { createUiSlice, UiSlice } from "./slices/ui.slice";
+import { createSyncSlice, SyncSlice } from "./slices/sync.slice";
 
 export type AppState =
   AuthSlice &
@@ -22,7 +23,8 @@ export type AppState =
   CronsSlice &
   CampaignSlice &
   DashboardSlice &
-  UiSlice;
+  UiSlice &
+  SyncSlice;
 
 export const useAppStore = create<AppState>()((...args) => ({
   ...createAuthSlice(...args),
@@ -33,4 +35,5 @@ export const useAppStore = create<AppState>()((...args) => ({
   ...createCampaignSlice(...args),
   ...createDashboardSlice(...args),
   ...createUiSlice(...args),
+  ...createSyncSlice(...args),
 }));

@@ -7,7 +7,20 @@ export interface OutreachLeadInfo {
   jobTitle?: string;
   company?: string;
   source?: string;
+  location?: string;
+  website?: string;
   senderName?: string;
+}
+
+/** Compact bullet list of the specific facts we actually know about this lead. */
+function leadFactsBlock(lead: OutreachLeadInfo, sourcePhrase: string): string {
+  const facts: string[] = [];
+  if (lead.company) facts.push(`- Business name: ${lead.company}`);
+  if (lead.jobTitle) facts.push(`- Business type / role: ${lead.jobTitle}`);
+  if (lead.location) facts.push(`- City / area: ${lead.location}`);
+  if (lead.website) facts.push(`- Website: ${lead.website}`);
+  facts.push(`- How we found them: ${lead.source || "online"} (${sourcePhrase})`);
+  return facts.join("\n");
 }
 
 async function callGroq(
@@ -75,35 +88,40 @@ export async function generateOutreachEmail(
   const ctx = await getBusinessContext(agentId);
   const businessContext = buildBusinessContextBlock(ctx);
   const sourcePhrase = sourcePhraseFor(lead.source);
+  const facts = leadFactsBlock(lead, sourcePhrase);
 
-  const prompt = `You are a sales outreach expert. Write a short, warm, personalized cold outreach email.
-${businessContext ? `Business context and instructions:\n${businessContext}\n` : ""}
-Lead details:
-- Name: ${lead.fullName}
-- Job title: ${lead.jobTitle || "N/A"}
-- Company: ${lead.company || "N/A"}
-- Discovered via: ${lead.source || "online"} (${sourcePhrase})
-- Sender name: ${lead.senderName || "our team"}
+  const prompt = `You are writing a 1:1 cold outreach email from one real person to another. It must read like it was written by hand specifically for THIS business — never like a template blasted to many people.
 
-Rules:
-1. Subject line: plain, specific, lowercase-ish and human — like a 1:1 email a real person types. ≤8 words. NEVER use spam-trigger words (free, guarantee, act now, limited time, offer, deal, discount, $$$), NO ALL-CAPS, NO emojis, NO exclamation marks.
-2. Body: 3 short paragraphs, conversational, like a personal note — not marketing copy.
-   - Para 1: mention you noticed them ${sourcePhrase} and mention one observation based only on the provided data.
-   - Do not compliment.
-Do not praise.
-Do not invent facts.
-   - Para 2: one plain sentence on what you help businesses like theirs with using our services/business description. No hype, no superlatives.
+WHO WE ARE (use this to say what we help with — do not dump it verbatim):
+${businessContext || "(No business details provided — keep the value proposition generic but human.)"}
+Sender name: ${lead.senderName || "our team"}
+
+WHO WE'RE WRITING TO (personalize using these exact facts):
+${facts}
+
+PERSONALIZATION (most important):
+- Open by referring to THEIR specific business by name (${lead.company || "their business"})${lead.location ? ` in ${lead.location}` : ""} and what they do (${lead.jobTitle || "their line of work"}). The first line must be unique to this business, not reusable for anyone else.
+- Connect what we offer to what a business like theirs would actually care about.
+- Only use facts provided above. Never invent details, numbers, or compliments.
+
+HARD BANS (these make it look mass-sent — never use them):
+- "I hope this email finds you well", "hope you're doing well", "I hope you are doing great"
+- "We came across your business", "I stumbled upon", "I wanted to reach out"
+- Generic praise like "impressive", "amazing work", "love what you do"
+
+FORMAT:
+1. Subject: plain, specific, lowercase-ish, ≤8 words, like a person types. No spam words (free, offer, deal, discount), NO ALL-CAPS, no emojis, no exclamation marks.
+2. Body: 3 short paragraphs, under 110 words total, plain sentences.
+   - Para 1: the personalized opener above.
+   - Para 2: one plain sentence on what we help businesses like theirs with.
    - Para 3: soft CTA — ask if they're open to a quick 15-min chat. No pressure.
-3. Address ${lead.firstName} by first name and if the first name appears to be a business name,
-use "Hi there," instead of addressing them by name.
-4. Do NOT use generic openers like "I hope this email finds you well".
-5. Avoid spammy patterns: no multiple links, no URLs at all except our Website or Resource Document Link if contextually relevant, no phone numbers, no "click here", no excessive punctuation, no markdown, no bullet lists.
-6. End the body with a sign-off on its own line: "Best,\\n${lead.senderName || "our team"}". Use exactly that name — do NOT invent a name like "Agent 1".
-7. Keep total body under 120 words. Plain sentences only.
-8. Return ONLY valid JSON (no markdown fences):
+3. Address ${lead.firstName} by first name; if that looks like a business name, use "Hi there,".
+4. No URLs except our Website if truly relevant. No phone numbers, no "click here", no markdown, no bullet lists.
+5. End with a sign-off on its own line: "Best,\\n${lead.senderName || "our team"}".
+6. Return ONLY valid JSON (no markdown fences):
 {"subject":"<subject>","body":"<body with \\n for line breaks>"}`;
 
-  const raw = await callGroq(agentId, prompt, { json: true });
+  const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.75 });
 
   let clean = raw.replace(/```json|```/g, "").trim();
   const start = clean.indexOf("{");
@@ -127,20 +145,28 @@ export async function generateWhatsAppMessage(
   lead: OutreachLeadInfo
 ): Promise<string> {
   const ctx = await getBusinessContext(agentId);
+  const businessContext = buildBusinessContextBlock(ctx);
+  const sourcePhrase = sourcePhraseFor(lead.source);
+  const facts = leadFactsBlock(lead, sourcePhrase);
 
-  const prompt = `Write a short, friendly WhatsApp outreach message (under 80 words).
-Lead: ${lead.fullName}${lead.company ? `, ${lead.company}` : ""}.
-${ctx.businessServices ? `We offer: ${ctx.businessServices}.` : ""}
-${ctx.businessWebsite ? `Our website: ${ctx.businessWebsite}.` : ""}
-${ctx.customPrompt ? `Instructions: ${ctx.customPrompt}` : ""}
-Sender name: ${lead.senderName || "our team"}.
+  const prompt = `Write a short, friendly WhatsApp outreach message (under 55 words) that reads like a real person typed it just for THIS business — not a template sent to everyone.
 
-Rules:
-- Conversational, warm, not salesy. Address them by first name (${lead.firstName}).
-- One soft CTA asking if they'd like a quick chat.
-- No HTML, no links, no emojis unless natural.
+WHO WE ARE (use to say what we help with; don't dump verbatim):
+${businessContext || "(No business details provided — keep it human and generic.)"}
+Sender name: ${lead.senderName || "our team"}
+
+WHO WE'RE MESSAGING (personalize with these exact facts):
+${facts}
+
+RULES:
+- Open by naming THEIR specific business (${lead.company || "their business"})${lead.location ? ` in ${lead.location}` : ""} and what they do (${lead.jobTitle || "their work"}). The opening line must be unique to this business.
+- Address them by first name (${lead.firstName}); if that looks like a business name, skip the name and greet warmly.
+- One plain sentence connecting what we do to a business like theirs, then one soft CTA asking if they're open to a quick chat.
+- Only use the facts above — never invent details or compliments.
+- NEVER use: "hope you're doing well", "we came across your business", "hope this message finds you", generic praise.
+- Conversational and warm, not salesy. No links unless truly relevant. No markdown. Emojis only if natural (at most one).
 - End with: "– ${lead.senderName || "our team"}"
-- Return ONLY the message text, no JSON, no quotes.`;
+- Return ONLY the message text — no JSON, no quotes, no preamble.`;
 
-  return callGroq(agentId, prompt, { temperature: 0.5, maxTokens: 200 });
+  return callGroq(agentId, prompt, { temperature: 0.8, maxTokens: 220 });
 }

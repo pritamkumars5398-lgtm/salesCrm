@@ -60,7 +60,7 @@ interface Props {
 }
 
 export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Props) {
-  const { openDrawer, updateLead, showToast } = useAppStore();
+  const { openDrawer, updateLead, showToast, activeAgent } = useAppStore();
   const [visible, setVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -68,6 +68,24 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
   const [activeTab, setActiveTab] = useState<"details" | "notes" | "history">("details");
   const [newNote, setNewNote] = useState("");
   const [postingNote, setPostingNote] = useState(false);
+  const [sequence, setSequence] = useState<any>(null);
+
+  useEffect(() => {
+    if (!activeAgent) {
+      setSequence(null);
+      return;
+    }
+    fetch(`/api/sequences?agentId=${activeAgent._id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.length > 0) {
+          setSequence(data[0]);
+        } else {
+          setSequence(null);
+        }
+      })
+      .catch((err) => console.error("Error loading sequence in LeadDetailPanel", err));
+  }, [activeAgent?._id]);
 
   async function handleCall() {
     if (!lead.phone || calling) return;
@@ -674,6 +692,40 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                             >
                               <IconMessageCircle size={12} /> View convo
                             </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sequence */}
+                {sequence && sequence.steps && sequence.steps.length > 0 && (
+                  <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+                      Outreach Sequence
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", padding: "12px 14px", borderRadius: 10 }}>
+                      {sequence.steps.map((step: any, idx: number) => {
+                        const meta = CHANNEL_META[step.channel] || { label: step.channel, Icon: IconX, color: "var(--color-text2)", bg: "var(--color-bg4)" };
+                        const isWhatsApp = step.channel === "whatsapp";
+                        return (
+                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <div 
+                              style={{ 
+                                display: "flex", alignItems: "center", gap: 6, 
+                                padding: "4px 8px", borderRadius: 6, 
+                                background: isWhatsApp ? "rgba(34,201,122,0.12)" : "var(--color-bg2)", 
+                                border: isWhatsApp ? "1px solid #22c97a" : "1px solid var(--color-bg4)",
+                                color: isWhatsApp ? "#22c97a" : "var(--color-text2)"
+                              }}
+                              title={`Day ${step.dayOffset} at ${step.sendTime}`}
+                            >
+                              <meta.Icon size={12} />
+                              <span style={{ fontSize: 11, fontWeight: 600 }}>{meta.label}</span>
+                              <span style={{ fontSize: 9.5, opacity: 0.8 }}>(Day {step.dayOffset})</span>
+                            </div>
+                            {idx < sequence.steps.length - 1 && <span style={{ fontSize: 12, color: "var(--color-text3)" }}>→</span>}
                           </div>
                         );
                       })}

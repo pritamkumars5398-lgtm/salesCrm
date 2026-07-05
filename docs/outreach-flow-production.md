@@ -8,6 +8,19 @@ _Last reviewed: 2026-07-04 (branch `dev`)_
 > middleware + `CRON_SECRET`, client API layer (`lib/api/`), and store slices
 > (`store/slices/`). Still open: breaking up the giant page components (§4.4 step 4),
 > JWT/session auth upgrade, and secret encryption at rest (§2 P2-11).
+>
+> **Revision (2026-07-04, later):** Publish semantics changed by product decision —
+> **publishing arms the schedules but sends nothing by itself.** Outreach fires when
+> a schedule runs (a `sync_apify` cron now does scrape → import → outreach in one
+> action via `apify.service.runFullSync`), or when the user presses **Run** on the
+> Leads page (`POST /api/campaigns` with `{agentId, limit}` — works in Draft,
+> `ignoreAgentStatus`). Publish also re-enables schedules that unpublish disabled
+> (the "schedules don't persist" bug; Crons.tsx also now checks `res.ok`). Outreach
+> is sequence-aware: a sequence whose earliest steps share the same day+time sends
+> ALL those channels (email + WhatsApp both). Leads UI: sync-date + outreach-status
+> filters, live "Sending…" row highlight during a run, per-lead outreach badges
+> (✓ Outreached / ✗ Failed with reason / Queued), and an already-outreached confirm
+> guard. Sidebar shows "✓ Outreach completed" at 100%.
 
 This doc explains how the publish → outreach flow works **today**, where it breaks
 (especially failure handling and user experience), and what must change to run this

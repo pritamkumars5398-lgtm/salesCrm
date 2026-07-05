@@ -15,7 +15,8 @@ export async function POST(
   if (!campaign) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const baseUrl = getAppBaseUrl(req);
-  void processCampaign(id, { baseUrl }).catch((err) => {
+  // Retry is an explicit user action — allowed even while the agent is in Draft.
+  void processCampaign(id, { baseUrl, ignoreAgentStatus: true }).catch((err) => {
     console.error(`[retry] campaign ${id} processing error:`, err);
   });
 

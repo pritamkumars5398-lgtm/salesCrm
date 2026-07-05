@@ -39,6 +39,8 @@ export interface ILead extends Document {
   lastOutreachError?: string;
   lastContactedAt?: Date;
   outreachAttempts: number;
+  /** soft-delete timestamp; null/absent = active, set = in Trash */
+  deletedAt?: Date | null;
   whatsappLid?: string;
   website?: string;
   location?: string;
@@ -68,6 +70,7 @@ const LeadSchema = new Schema<ILead>(
     lastOutreachError: { type: String },
     lastContactedAt:   { type: Date },
     outreachAttempts:  { type: Number, default: 0 },
+    deletedAt:         { type: Date, default: null },
     whatsappLid:   { type: String, trim: true },
     website:       { type: String, trim: true },
     location:      { type: String, trim: true, default: "" },
@@ -94,6 +97,7 @@ LeadSchema.pre("save", function (next) {
 
 LeadSchema.index({ agentId: 1, status: 1 });
 LeadSchema.index({ agentId: 1, outreachStatus: 1 });
+LeadSchema.index({ agentId: 1, deletedAt: 1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
 
 export const Lead: Model<ILead> =

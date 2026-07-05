@@ -6,7 +6,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { avatarColor, getInitials } from "@/lib/utils/avatar";
 import { PAGE_TITLES } from "@/lib/constants/pages";
 import { publishAgent, updateAgentStatus } from "@/lib/api/agents.api";
-import { getActiveCampaigns, getCampaign } from "@/lib/api/campaigns.api";
+import { getActiveCampaigns } from "@/lib/api/campaigns.api";
 import { ApiError } from "@/lib/api/client";
 import CampaignProgress from "@/components/ui/CampaignProgress";
 
@@ -18,7 +18,7 @@ interface Props {
 
 export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const router = useRouter();
-  const { currentPage, activeAgent, userName, setSidebarOpenMobile, updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign, setCampaignPanelOpen } = useAppStore();
+  const { currentPage, activeAgent, userName, setSidebarOpenMobile, updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign } = useAppStore();
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
@@ -54,14 +54,11 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     try {
       const res = await publishAgent(activeAgent._id);
       updateAgent(activeAgent._id, { status: "active" });
+      setCronJobs(cronJobs.map((c) => ({ ...c, enabled: true })));
       setStatusMenuOpen(false);
 
-      if (res.campaignId) {
-        showToast(`Agent published — sending outreach to ${res.total} lead${res.total !== 1 ? "s" : ""}…`, "success");
-        try {
-          setActiveCampaign(await getCampaign(res.campaignId));
-        } catch { /* progress chip appears on next poll */ }
-        setCampaignPanelOpen(true);
+      if (res.schedules && res.schedules > 0) {
+        showToast(`Agent published — ${res.schedules} schedule${res.schedules !== 1 ? "s" : ""} armed. Outreach runs at the scheduled times.`, "success");
       } else {
         showToast("Agent published successfully!", "success");
       }

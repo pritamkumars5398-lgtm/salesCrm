@@ -8,6 +8,7 @@ export interface LeadsSlice {
   updateLead: (id: string, patch: Partial<Lead>) => void;
   addLead: (lead: Lead) => void;
   addLeads: (leads: Lead[]) => void;
+  removeLeads: (ids: string[]) => void;
 }
 
 export const createLeadsSlice: StateCreator<AppState, [], [], LeadsSlice> = (set) => ({
@@ -34,5 +35,20 @@ export const createLeadsSlice: StateCreator<AppState, [], [], LeadsSlice> = (set
       ? { ...s.activeAgent, leadCount: s.activeAgent.leadCount + newLeads.length }
       : s.activeAgent;
     return { leads: [...newLeads, ...s.leads], agents, activeAgent };
+  }),
+  removeLeads: (ids) => set((s) => {
+    const idSet = new Set(ids);
+    const removed = s.leads.filter((l) => idSet.has(l._id));
+    if (removed.length === 0) return {};
+    // Count how many removed leads belong to each agent, to fix leadCount.
+    const perAgent = new Map<string, number>();
+    removed.forEach((l) => perAgent.set(l.agentId, (perAgent.get(l.agentId) ?? 0) + 1));
+    const agents = s.agents.map((a) =>
+      perAgent.has(a._id) ? { ...a, leadCount: Math.max(0, a.leadCount - perAgent.get(a._id)!) } : a
+    );
+    const activeAgent = s.activeAgent && perAgent.has(s.activeAgent._id)
+      ? { ...s.activeAgent, leadCount: Math.max(0, s.activeAgent.leadCount - perAgent.get(s.activeAgent._id)!) }
+      : s.activeAgent;
+    return { leads: s.leads.filter((l) => !idSet.has(l._id)), agents, activeAgent };
   }),
 });

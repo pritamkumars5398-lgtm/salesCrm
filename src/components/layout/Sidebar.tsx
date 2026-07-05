@@ -258,7 +258,7 @@ export default function Sidebar() {
                     <div className="mx-2.5 mb-1">
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[9.5px] font-semibold" style={{ color: "#22c97a" }}>
-                          {inOutreachCount} in outreach
+                          {outreachPct >= 100 ? "✓ Outreach completed" : `${inOutreachCount} in outreach`}
                         </span>
                         <span className="text-[9.5px]" style={{ color: "var(--color-text3)" }}>{outreachPct}%</span>
                       </div>
@@ -272,12 +272,16 @@ export default function Sidebar() {
                           overflow: "hidden",
                           transition: "width 0.5s ease",
                         }}>
-                          <span style={{
-                            position: "absolute",
-                            inset: 0,
-                            background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.45) 50%,transparent 100%)",
-                            animation: "shimmer 1.4s infinite",
-                          }} />
+                          {/* Shimmer only while outreach is still in progress; a finished
+                              (100%) bar stays solid so it reads as "completed", not "working". */}
+                          {outreachPct < 100 && (
+                            <span style={{
+                              position: "absolute",
+                              inset: 0,
+                              background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.45) 50%,transparent 100%)",
+                              animation: "shimmer 1.4s infinite",
+                            }} />
+                          )}
                         </div>
                       </div>
                     </div>

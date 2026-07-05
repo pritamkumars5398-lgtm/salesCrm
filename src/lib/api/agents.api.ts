@@ -3,8 +3,8 @@ import type { Agent } from "@/store/types";
 
 export interface PublishResult {
   published: boolean;
-  campaignId?: string;
-  total?: number;
+  /** number of schedules armed on publish */
+  schedules?: number;
   issues?: string[];
   warnings?: string[];
 }

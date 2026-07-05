@@ -7,13 +7,22 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agentId");
   const filter = agentId ? { agentId } : {};
-  const sequences = await Sequence.find(filter).lean();
+  // Newest first so a single-sequence UI always loads the latest saved version,
+  // even if older duplicate sequences exist from before the upsert fix.
+  const sequences = await Sequence.find(filter).sort({ updatedAt: -1 }).lean();
   return NextResponse.json(sequences);
 }
 
 export async function POST(req: Request) {
   await connectDB();
   const body = await req.json();
-  const sequence = await Sequence.create(body);
-  return NextResponse.json(sequence, { status: 201 });
+  if (!body.agentId) {
+    return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+  }
+  const sequence = await Sequence.findOneAndUpdate(
+    { agentId: body.agentId },
+    body,
+    { upsert: true, new: true }
+  );
+  return NextResponse.json(sequence, { status: 200 });
 }
