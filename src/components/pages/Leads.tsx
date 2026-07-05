@@ -250,7 +250,11 @@ export default function Leads({ onAddLead }: Props) {
       const data = await startLeadOutreach(lead._id, activeAgent?.name || "our team");
 
       if (data.sent) {
-        updateLead(lead._id, { status: "in_outreach" });
+        updateLead(lead._id, { 
+          status: "in_outreach", 
+          outreachStatus: "sent", 
+          lastContactedAt: new Date().toISOString() 
+        });
         showToast(
           data.channel === "whatsapp"
             ? `WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`
@@ -258,15 +262,18 @@ export default function Leads({ onAddLead }: Props) {
           "success"
         );
       } else if (data.skipped) {
+        updateLead(lead._id, { outreachStatus: "none" });
         showToast(data.reason ?? `Outreach already in progress for ${lead.fullName}.`, "error");
+      } else {
+        updateLead(lead._id, { outreachStatus: "failed", lastOutreachError: data.reason || "Outreach failed" });
+        showToast(`Outreach failed: ${data.reason || "Unknown error"}`, "error");
       }
     } catch (err: unknown) {
-      if (err instanceof ApiError && err.payload && typeof err.payload === "object") {
-        const p = err.payload as { error?: string };
-        showToast(p.error ?? err.message, "error");
-      } else {
-        showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, "error");
-      }
+      const reason = err instanceof ApiError && err.payload && typeof err.payload === "object"
+        ? ((err.payload as { error?: string }).error ?? err.message)
+        : err instanceof Error ? err.message : String(err);
+      updateLead(lead._id, { outreachStatus: "failed", lastOutreachError: reason });
+      showToast(`Error: ${reason}`, "error");
     }
   }
 
@@ -385,19 +392,29 @@ export default function Leads({ onAddLead }: Props) {
 
     // Cap parallel sends so we don't hammer the AI/SMTP providers.
     await mapWithConcurrency(ids, 3, async (id) => {
+      updateLead(id, { outreachStatus: "sending" });
       try {
         const data = await startLeadOutreach(id, activeAgent?.name || "our team");
         if (data.sent) {
           sent++;
-          updateLead(id, { status: "in_outreach" });
+          updateLead(id, { 
+            status: "in_outreach", 
+            outreachStatus: "sent", 
+            lastContactedAt: new Date().toISOString() 
+          });
         } else {
           failures.push({ id, reason: data.reason ?? "Skipped" });
+          updateLead(id, { 
+            outreachStatus: data.skipped ? "none" : "failed", 
+            lastOutreachError: data.reason ?? "Skipped" 
+          });
         }
       } catch (err) {
         const reason = err instanceof ApiError && err.payload && typeof err.payload === "object"
           ? ((err.payload as { error?: string }).error ?? err.message)
           : err instanceof Error ? err.message : String(err);
         failures.push({ id, reason });
+        updateLead(id, { outreachStatus: "failed", lastOutreachError: reason });
       }
     });
 

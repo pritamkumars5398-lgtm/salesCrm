@@ -61,11 +61,17 @@ export async function POST(req: Request) {
       console.log(`[WhatsApp] Sending Payload to Twilio from: ${twilioPhoneNumber}`);
       try {
         const client = twilio(sessionId, apiKey);
-        const msg = await client.messages.create({
-          body: text,
+        const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
+        const payload: any = {
           from: `whatsapp:${twilioPhoneNumber}`,
           to: `whatsapp:+${cleanTo}`,
-        });
+        };
+        if (isImageUrl) {
+          payload.mediaUrl = [text];
+        } else {
+          payload.body = text;
+        }
+        const msg = await client.messages.create(payload);
         console.log(`[WhatsApp] Twilio Success Response: MSG SID ${msg.sid}`);
         return NextResponse.json({ ok: true });
       } catch (err: any) {
@@ -73,7 +79,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Twilio API error: ${err.message}` }, { status: 500 });
       }
     } else if (provider === "Meta Cloud API") {
-      const payload = {
+      const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
+      const payload = isImageUrl ? {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: cleanTo,
+        type: "image",
+        image: {
+          link: text
+        }
+      } : {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: cleanTo,
@@ -93,7 +108,13 @@ export async function POST(req: Request) {
         body: JSON.stringify(payload),
       });
     } else {
-      const payload = {
+      const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
+      const payload = isImageUrl ? {
+        sessionId: sessionId,
+        to: cleanTo,
+        image: text,
+        caption: "📷 Image",
+      } : {
         sessionId: sessionId,
         to: cleanTo,
         text: text,

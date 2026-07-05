@@ -14,6 +14,7 @@ export async function handleAgentReply(
   channel: string = "email"
 ) {
   try {
+    eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "agent", isTyping: true });
     // Check if agent is published
     const agent = await Agent.findById(agentId).lean();
     if (agent && agent.status === "inactive") {
@@ -29,11 +30,34 @@ export async function handleAgentReply(
       "businessPhone",
       "businessServices",
       "docLink",
-      "customPrompt"
+      "customPrompt",
+      "waProvider",
+      "waApiKey",
+      "waSessionId"
     ];
     const settingsRows = await Setting.find({ agentId, key: { $in: configKeys } }).lean();
     const settingsMap: Record<string, string> = {};
     settingsRows.forEach((r) => { settingsMap[r.key] = r.value; });
+
+    // If it's a whatsapp channel, trigger composing status on WhatsApp immediately
+    if (channel === "whatsapp") {
+      const waProvider = settingsMap.waProvider || "WireWeb";
+      const waApiKey = settingsMap.waApiKey || "";
+      const waSessionId = settingsMap.waSessionId || "";
+      if (waProvider === "WireWeb" && waApiKey && waSessionId) {
+        let phone = lead.phone ? lead.phone.replace(/\D/g, "") : "";
+        if (phone && phone.length === 10) phone = "91" + phone;
+        const targetNumber = phone || lead.whatsappLid;
+        if (targetNumber) {
+          const { sendWhatsAppPresence } = await import("@/server/services/whatsapp.service");
+          sendWhatsAppPresence(
+            { provider: waProvider, apiKey: waApiKey, sessionId: waSessionId },
+            targetNumber,
+            "composing"
+          ).catch((e) => console.error("Error setting composing status:", e));
+        }
+      }
+    }
 
     const apiKey = settingsMap.llmApiKey || process.env.GROQ_API_KEY || "";
     const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -230,5 +254,34 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
 
   } catch (err) {
     console.error("Auto agent reply failed:", err);
+  } finally {
+    eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "agent", isTyping: false });
+    // Clear composing status on WhatsApp
+    if (channel === "whatsapp") {
+      try {
+        const settingsRows = await Setting.find({
+          agentId,
+          key: { $in: ["waProvider", "waApiKey", "waSessionId"] }
+        }).lean();
+        const m: Record<string, string> = {};
+        settingsRows.forEach((r) => { m[r.key] = r.value; });
+        const provider = m.waProvider || "WireWeb";
+        if (provider === "WireWeb" && m.waApiKey && m.waSessionId) {
+          let phone = lead.phone ? lead.phone.replace(/\D/g, "") : "";
+          if (phone && phone.length === 10) phone = "91" + phone;
+          const targetNumber = phone || lead.whatsappLid;
+          if (targetNumber) {
+            const { sendWhatsAppPresence } = await import("@/server/services/whatsapp.service");
+            await sendWhatsAppPresence(
+              { provider, apiKey: m.waApiKey, sessionId: m.waSessionId },
+              targetNumber,
+              "paused"
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Error clearing WhatsApp composing status:", err);
+      }
+    }
   }
 }

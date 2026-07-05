@@ -28,7 +28,20 @@ export async function GET(req: Request) {
         }
       };
 
+      const onTyping = (data: any) => {
+        if (data.leadId === leadId) {
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "typing", leadId, role: data.role, isTyping: data.isTyping })}\n\n`)
+            );
+          } catch {
+            // Stream might already be closed
+          }
+        }
+      };
+
       eventEmitter.on("message", onMessage);
+      eventEmitter.on("typing", onTyping);
 
       // Send initial connection heartbeat
       try {
@@ -38,7 +51,10 @@ export async function GET(req: Request) {
       }
 
       // 2. Start background silent IMAP sync check every 25 seconds while drawer is open
-      const syncUrl = `${origin}/api/conversations/sync?leadId=${leadId}`;
+      const host = req.headers.get("host") || "localhost:3000";
+      const syncUrl = origin.startsWith("https://")
+        ? `http://${host}/api/conversations/sync?leadId=${leadId}`
+        : `${origin}/api/conversations/sync?leadId=${leadId}`;
       intervalId = setInterval(async () => {
         try {
           await fetch(syncUrl);
@@ -50,6 +66,7 @@ export async function GET(req: Request) {
       // Handle abort / client disconnect
       req.signal.addEventListener("abort", () => {
         eventEmitter.off("message", onMessage);
+        eventEmitter.off("typing", onTyping);
         if (intervalId) {
           clearInterval(intervalId);
         }
@@ -72,6 +89,7 @@ export async function GET(req: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }

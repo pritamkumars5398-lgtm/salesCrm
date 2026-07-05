@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   IconX, IconRobot, IconBrandWhatsapp, IconMail, IconMessage, IconPhone, IconSend,
-  IconAlertCircle, IconCalendarCheck, IconRefresh,
+  IconAlertCircle, IconCalendarCheck, IconRefresh, IconPhoto, IconLoader2,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel } from "@/store/types";
@@ -43,11 +43,72 @@ export default function ConversationDrawer() {
   const [syncing, setSyncing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const [agentTyping, setAgentTyping] = useState(false);
+  const [leadTyping, setLeadTyping] = useState(false);
+  
+  const isCurrentlyTyping = useRef(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const sendTypingStatus = async (isTyping: boolean) => {
+    if (!lead || !activeAgent) return;
+    try {
+      await fetch("/api/conversations/typing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: lead._id,
+          role: sendAs,
+          isTyping,
+          by: "user",
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to send typing status", err);
+    }
+  };
+
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      
+      // Auto-send the uploaded image URL directly as a message!
+      await sendReply(data.url);
+    } catch (err: any) {
+      showToast("Failed to upload image. Please try again.", "error");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   useEffect(() => {
     if (!lead) return;
     setAgentOn(lead.agentEnabled);
     setSendAs("agent");
-  }, [lead?._id]);
+    setAgentTyping(false);
+    setLeadTyping(false);
+    isCurrentlyTyping.current = false;
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [lead?._id, open]);
 
   // Real-time Server-Sent Events (SSE) connection
   useEffect(() => {
@@ -76,6 +137,14 @@ export default function ConversationDrawer() {
         const data = JSON.parse(event.data);
         if (data.type === "message") {
           loadData();
+        } else if (data.type === "typing") {
+          if (data.by !== "user") {
+            if (data.role === "agent") {
+              setAgentTyping(data.isTyping);
+            } else if (data.role === "lead") {
+              setLeadTyping(data.isTyping);
+            }
+          }
         }
       } catch (err) {
         console.error("SSE parsing error:", err);
@@ -159,13 +228,22 @@ export default function ConversationDrawer() {
     }
   }
 
-  async function sendReply() {
-    if (!replyText.trim() || !lead || !activeAgent || sending) return;
-    const content = replyText.trim();
+  async function sendReply(customText?: string) {
+    const textToSubmit = customText || replyText;
+    if (!textToSubmit.trim() || !lead || !activeAgent || sending) return;
+    const content = textToSubmit.trim();
     const role = sendAs;
     const subject = emailSubject.trim();
 
-    setReplyText("");
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    isCurrentlyTyping.current = false;
+    sendTypingStatus(false);
+
+    if (!customText) {
+      setReplyText("");
+    }
     if (channel === "email") {
       setEmailSubject("");
     }
@@ -383,9 +461,9 @@ export default function ConversationDrawer() {
 
           {/* Conversation body */}
           <div className="flex-1 overflow-hidden">
-            {channel === "whatsapp" && <WAConvo messages={currentConvo?.messages ?? []} lead={lead} />}
-            {channel === "email"    && <EmailConvo messages={currentConvo?.messages ?? []} lead={lead} />}
-            {channel === "sms"      && <SMSConvo messages={currentConvo?.messages ?? []} lead={lead} />}
+            {channel === "whatsapp" && <WAConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
+            {channel === "email"    && <EmailConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
+            {channel === "sms"      && <SMSConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
             {channel === "call"     && <CallConvo messages={currentConvo?.messages ?? []} lead={lead} />}
           </div>
 
@@ -450,8 +528,19 @@ export default function ConversationDrawer() {
             <div className="flex gap-2 items-end">
               <textarea
                 ref={textareaRef}
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setReplyText(val);
+                  if (!isCurrentlyTyping.current && val.trim().length > 0) {
+                    isCurrentlyTyping.current = true;
+                    sendTypingStatus(true);
+                  }
+                  if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                  typingTimeoutRef.current = setTimeout(() => {
+                    isCurrentlyTyping.current = false;
+                    sendTypingStatus(false);
+                  }, 1500);
+                }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
                 placeholder={
                   sendAs === "lead"
@@ -470,14 +559,44 @@ export default function ConversationDrawer() {
                   maxHeight: 100,
                 }}
               />
+              {channel === "whatsapp" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || sending}
+                    className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors border"
+                    style={{
+                      borderColor: "rgba(0,0,0,0.08)",
+                      background: "var(--color-bg3)",
+                      color: "var(--color-text3)",
+                      cursor: (uploading || sending) ? "wait" : "pointer"
+                    }}
+                    title="Upload image"
+                  >
+                    {uploading ? (
+                      <IconLoader2 size={15} className="animate-spin" />
+                    ) : (
+                      <IconPhoto size={15} />
+                    )}
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </>
+              )}
               <button
-                onClick={sendReply}
-                disabled={sending}
+                onClick={() => sendReply()}
+                disabled={sending || uploading}
                 className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{ 
-                  background: sending ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"), 
+                  background: (sending || uploading) ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"), 
                   color: "#fff", 
-                  cursor: sending ? "wait" : "pointer" 
+                  cursor: (sending || uploading) ? "wait" : "pointer" 
                 }}
               >
                 <IconSend size={14} />

@@ -85,11 +85,16 @@ export default function CampaignProgress() {
         }}
         title="Outreach campaign status"
       >
-        {isActive ? (
+        {isActive && done < activeCampaign.total ? (
           <>
             <IconLoader2 size={12} className="animate-spin" />
             <span>Sending {done}/{activeCampaign.total}</span>
             {hasFailures && <span className="text-red-500">· {activeCampaign.failed} failed</span>}
+          </>
+        ) : isActive ? (
+          <>
+            {hasFailures ? <IconAlertTriangle size={12} /> : <IconCheck size={12} />}
+            <span>Wrapping up… {done}/{activeCampaign.total}</span>
           </>
         ) : hasFailures ? (
           <>

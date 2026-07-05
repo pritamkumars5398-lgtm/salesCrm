@@ -26,11 +26,16 @@ function parseEmail(content: string) {
   };
 }
 
-interface Props { messages: Message[]; lead: Lead; }
+interface Props { 
+  messages: Message[]; 
+  lead: Lead; 
+  agentTyping?: boolean; 
+  leadTyping?: boolean; 
+}
 
-export default function EmailConvo({ messages, lead }: Props) {
+export default function EmailConvo({ messages, lead, agentTyping, leadTyping }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight); }, [messages]);
+  useEffect(() => { bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight); }, [messages, agentTyping, leadTyping]);
 
   // Extract the thread subject from the first email that contains one
   const threadSubject = messages
@@ -109,7 +114,7 @@ export default function EmailConvo({ messages, lead }: Props) {
               {/* Message Body (Indented pl-[38px] to line up with the sender text, matching compact layout) */}
               <div
                 className="pl-[38px] pr-2 text-[12.5px] leading-[1.5] whitespace-pre-wrap font-[family-name:var(--font-sans)]"
-                style={{ color: "var(--color-text)" }}
+                style={{ color: "var(--color-text)", wordBreak: "break-word" }}
               >
                 {body}
               </div>

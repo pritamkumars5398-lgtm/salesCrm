@@ -48,3 +48,21 @@ export async function sendWhatsAppMessage(config: WhatsAppConfig, to: string, te
   });
   if (!res.ok) throw new Error(`WhatsApp API error: ${await res.text()}`);
 }
+
+export async function sendWhatsAppPresence(config: WhatsAppConfig, to: string, presence: "composing" | "paused") {
+  if (config.provider !== "WireWeb") return;
+
+  const phone = normalizePhone(to);
+  try {
+    const res = await fetch("https://app.wireweb.co.in/api/v1/messages/presence", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: config.sessionId, to: phone, presence }),
+    });
+    if (!res.ok) {
+      console.warn(`WireWeb presence update responded: ${res.status}`);
+    }
+  } catch (err) {
+    console.error("Failed to send WhatsApp presence update:", err);
+  }
+}

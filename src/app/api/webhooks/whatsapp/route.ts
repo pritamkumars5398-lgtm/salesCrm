@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       params.forEach((value, key) => {
         payload[key] = value;
       });
-      if (payload.SmsSid || payload.MessageSid) {
+      if (payload.SmsSid || payload.MessageSid || payload.EventType) {
         isTwilio = true;
       }
     } else {
@@ -60,7 +60,86 @@ export async function POST(req: Request) {
     }
 
     console.log("[WhatsApp Webhook] Received payload:", payload);
-    
+
+    // WireWeb presence check (e.g. typing)
+    if (payload.event === "presence.update" || payload.event === "presence") {
+      const fromNumber = payload.id || payload.from || "";
+      const presence = payload.presence || ""; // "composing" | "recording" | "paused"
+      
+      if (fromNumber && presence) {
+        let cleanFrom = fromNumber.replace(/\D/g, "");
+        const last10 = cleanFrom.slice(-10);
+        
+        const { searchParams } = new URL(req.url);
+        let agentId = searchParams.get("agentId");
+        if (!agentId && payload.sessionId) {
+          const { Setting } = await import("@/lib/models/Setting");
+          const setting = await Setting.findOne({ key: "waSessionId", value: payload.sessionId }).lean();
+          if (setting) agentId = setting.agentId.toString();
+        }
+        
+        if (agentId) {
+          const lead = await Lead.findOne({
+            agentId,
+            $or: [
+              { phone: new RegExp(last10 + "$") },
+              { whatsappLid: fromNumber },
+            ],
+          }).lean();
+          
+          if (lead) {
+            const isTyping = presence === "composing" || presence === "recording";
+            eventEmitter.emit("typing", {
+              leadId: lead._id.toString(),
+              role: "lead",
+              isTyping,
+            });
+            console.log(`[WhatsApp Webhook] Traced customer typing presence: ${presence} for lead: ${lead.fullName}`);
+          }
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Twilio Conversations typing check
+    if (payload.EventType === "onTypingStarted" || payload.EventType === "onTypingEnded") {
+      const isTyping = payload.EventType === "onTypingStarted";
+      const identity = payload.Identity || ""; // e.g. whatsapp:+917800730968
+      
+      if (identity) {
+        let cleanFrom = identity.replace("whatsapp:", "").replace(/\D/g, "");
+        const last10 = cleanFrom.slice(-10);
+        
+        const { searchParams } = new URL(req.url);
+        let agentId = searchParams.get("agentId");
+        if (!agentId && payload.AccountSid) {
+          const { Setting } = await import("@/lib/models/Setting");
+          const setting = await Setting.findOne({ key: "waSessionId", value: payload.AccountSid }).lean();
+          if (setting) agentId = setting.agentId.toString();
+        }
+        
+        if (agentId) {
+          const lead = await Lead.findOne({
+            agentId,
+            $or: [
+              { phone: new RegExp(last10 + "$") },
+              { whatsappLid: identity }
+            ]
+          }).lean();
+          
+          if (lead) {
+            eventEmitter.emit("typing", {
+              leadId: lead._id.toString(),
+              role: "lead",
+              isTyping
+            });
+            console.log(`[Twilio Webhook] Traced participant typing: ${payload.EventType} for lead: ${lead.fullName}`);
+          }
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     // DEBUG: Write payload to file so we can inspect it
     try {
       fs.appendFileSync("webhook.log", JSON.stringify(payload) + "\n");
@@ -83,12 +162,12 @@ export async function POST(req: Request) {
     const isMeta = payload.object === "whatsapp_business_account";
 
     if (isTwilio) {
-      from = payload.From || ""; 
+      from = payload.From || "";
       if (from.startsWith("whatsapp:")) from = from.replace("whatsapp:", "");
       text = payload.Body || "";
       timestamp = new Date();
       pushName = payload.ProfileName || "";
-      sessionId = payload.To || ""; 
+      sessionId = payload.To || "";
       if (sessionId.startsWith("whatsapp:")) sessionId = sessionId.replace("whatsapp:", "");
       isGroup = false;
       chat = from;
@@ -135,6 +214,10 @@ export async function POST(req: Request) {
       sender = payload.sender || "";
     }
 
+    if (payload.MediaUrl0 && !text) {
+      text = "📷 Image";
+    }
+
     if (!from || typeof text !== 'string') {
       console.log("[WhatsApp Webhook] Missing 'from' or 'text' in payload.");
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -148,10 +231,10 @@ export async function POST(req: Request) {
         console.log("[WhatsApp Webhook] Missing 'agentId' in URL and 'sessionId' in payload.");
         return NextResponse.json({ error: "Missing routing identifier" }, { status: 400 });
       }
-      
+
       const { Setting } = await import("@/lib/models/Setting");
       const setting = await Setting.findOne({ key: "waSessionId", value: sessionId });
-      
+
       if (!setting) {
         console.log(`[WhatsApp Webhook] No agent found configured with sessionId: ${sessionId}. Ignoring.`);
         return NextResponse.json({ ok: true });
@@ -174,7 +257,7 @@ export async function POST(req: Request) {
     }
 
     // 3. Query the Lead database strictly scoped to this Agent
-    let lead = await Lead.findOne({ 
+    let lead = await Lead.findOne({
       agentId: agentId,
       $or: [
         { phone: new RegExp(last10 + "$") },
@@ -186,7 +269,7 @@ export async function POST(req: Request) {
     let matchedByFallback = false;
     if (!lead && (from.length > 12 || (sender && sender.includes("@lid"))) && pushName) {
       const nameRegex = new RegExp(`^${pushName.split(" ")[0]}`, "i");
-      
+
       const matchingLeads = await Lead.find({
         agentId: agentId,
         $or: [{ firstName: nameRegex }, { fullName: nameRegex }]
@@ -196,7 +279,7 @@ export async function POST(req: Request) {
         // To handle duplicates with the same name, strictly prioritize leads we've ALREADY messaged
         const leadIds = matchingLeads.map(l => l._id);
         const conversations = await Conversation.find({ leadId: { $in: leadIds }, channel: "whatsapp" });
-        
+
         if (conversations.length > 0) {
           // We have an existing conversation! Link to this exact lead.
           lead = matchingLeads.find(l => l._id.toString() === conversations[0].leadId.toString()) || matchingLeads[0];
@@ -205,7 +288,7 @@ export async function POST(req: Request) {
           lead = matchingLeads[0];
         }
       }
-      
+
       if (lead) {
         console.log(`[WhatsApp Webhook] Fallback matched lead by pushName: '${pushName}'`);
         matchedByFallback = true;
@@ -249,11 +332,19 @@ export async function POST(req: Request) {
       });
     }
 
+    // Emit customer typing start
+    eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "lead", isTyping: true });
+    // Brief sleep to simulate typing
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Emit customer typing stop
+    eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "lead", isTyping: false });
+
     // Append the new message
     conversation.messages.push({
       role: "lead",
       content: text,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
+      meta: payload.MediaUrl0 ? { mediaUrl: payload.MediaUrl0 } : undefined,
     });
 
     await conversation.save();
@@ -264,13 +355,10 @@ export async function POST(req: Request) {
     console.log("[WhatsApp Webhook] Successfully saved incoming message.");
 
     // ==========================================
-    // AI AUTO-REPLY LOGIC (Intent Detection)
+    // AI AUTO-REPLY LOGIC
     // ==========================================
-    const intentRegex = /(interested|agree|yes|sure|okay|ok|tell me more|how much|price|details)/i;
-    const isInterested = intentRegex.test(text);
-
-    if (isInterested) {
-      console.log(`[WhatsApp Webhook] Lead showed interest. Triggering handleAgentReply...`);
+    if (lead.agentEnabled !== false) {
+      console.log(`[WhatsApp Webhook] Triggering handleAgentReply for incoming message...`);
       const { handleAgentReply } = await import("@/lib/agent-reply");
       // Fire and forget so we don't block the webhook response
       handleAgentReply(lead, agentId as string, text, "whatsapp").catch((err) => {

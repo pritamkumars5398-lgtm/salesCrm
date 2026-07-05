@@ -161,8 +161,9 @@ ${facts}
 RULES:
 - Open by naming THEIR specific business (${lead.company || "their business"})${lead.location ? ` in ${lead.location}` : ""} and what they do (${lead.jobTitle || "their work"}). The opening line must be unique to this business.
 - Address them by first name (${lead.firstName}); if that looks like a business name, skip the name and greet warmly.
-- One plain sentence connecting what we do to a business like theirs, then one soft CTA asking if they're open to a quick chat.
-- Only use the facts above — never invent details or compliments.
+- State CONCRETELY what we do for a business like theirs, using OUR services above. Do NOT write vague filler like "various needs", "we can help with your needs", or "assist you" — name the actual service.
+- Then one soft CTA asking if they're open to a quick chat.
+- Only use the facts above — never invent details. Do NOT praise them ("amazing", "great work", "impressive") — just be plain and direct.
 - NEVER use: "hope you're doing well", "we came across your business", "hope this message finds you", generic praise.
 - Conversational and warm, not salesy. No links unless truly relevant. No markdown. Emojis only if natural (at most one).
 - End with: "– ${lead.senderName || "our team"}"

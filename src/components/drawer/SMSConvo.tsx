@@ -5,11 +5,16 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-interface Props { messages: Message[]; lead: Lead; }
+interface Props { 
+  messages: Message[]; 
+  lead: Lead; 
+  agentTyping?: boolean; 
+  leadTyping?: boolean; 
+}
 
-export default function SMSConvo({ messages, lead }: Props) {
+export default function SMSConvo({ messages, lead, agentTyping, leadTyping }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight); }, [messages]);
+  useEffect(() => { bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight); }, [messages, agentTyping, leadTyping]);
 
   return (
     <div ref={bodyRef} className="h-full overflow-y-auto p-4 flex flex-col gap-2.5" style={{ background: "var(--color-bg)" }}>
@@ -32,6 +37,7 @@ export default function SMSConvo({ messages, lead }: Props) {
                 background: isAgent ? "linear-gradient(135deg, #3b82f6, #1d4ed8)" : "var(--color-bg3)",
                 borderColor: isAgent ? "rgba(59, 130, 246, 0.15)" : "rgba(0,0,0,0.06)",
                 color: isAgent ? "#fff" : "var(--color-text)",
+                wordBreak: "break-word",
               }}
             >
               {msg.content}
