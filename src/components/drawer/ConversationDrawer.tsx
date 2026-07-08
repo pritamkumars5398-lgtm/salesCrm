@@ -14,16 +14,16 @@ import CallConvo from "./CallConvo";
 
 const CHANNEL_TABS: { id: Channel; label: string; Icon: React.ElementType; color: string }[] = [
   { id: "whatsapp", label: "WhatsApp", Icon: IconBrandWhatsapp, color: "#22c97a" },
-  { id: "email",    label: "Email",    Icon: IconMail,          color: "#4dabf7" },
-  { id: "sms",      label: "SMS",      Icon: IconMessage,       color: "#cc99ff" },
-  { id: "call",     label: "Call",     Icon: IconPhone,         color: "#f5a623" },
+  { id: "email", label: "Email", Icon: IconMail, color: "#4dabf7" },
+  { id: "sms", label: "SMS", Icon: IconMessage, color: "#cc99ff" },
+  { id: "call", label: "Call", Icon: IconPhone, color: "#f5a623" },
 ];
 
 const REPLY_HINTS: Record<Channel, { icon: React.ElementType; color: string; label: string }> = {
   whatsapp: { icon: IconBrandWhatsapp, color: "#22c97a", label: "Sending via WhatsApp" },
-  email:    { icon: IconMail,          color: "#4dabf7", label: "Sending via Email" },
-  sms:      { icon: IconMessage,       color: "#cc99ff", label: "Sending via SMS" },
-  call:     { icon: IconPhone,         color: "#f5a623", label: "Voice call — send follow-up text" },
+  email: { icon: IconMail, color: "#4dabf7", label: "Sending via Email" },
+  sms: { icon: IconMessage, color: "#cc99ff", label: "Sending via SMS" },
+  call: { icon: IconPhone, color: "#f5a623", label: "Voice call — send follow-up text" },
 };
 
 export default function ConversationDrawer() {
@@ -45,7 +45,7 @@ export default function ConversationDrawer() {
 
   const [agentTyping, setAgentTyping] = useState(false);
   const [leadTyping, setLeadTyping] = useState(false);
-  
+
   const isCurrentlyTyping = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -73,11 +73,11 @@ export default function ConversationDrawer() {
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
-    
+
     try {
       const res = await fetch("/api/upload", {
         method: "POST",
@@ -85,7 +85,7 @@ export default function ConversationDrawer() {
       });
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
-      
+
       // Auto-send the uploaded image URL directly as a message!
       await sendReply(data.url);
     } catch (err: any) {
@@ -118,12 +118,12 @@ export default function ConversationDrawer() {
       fetch(`/api/conversations?leadId=${lead._id}`)
         .then((r) => r.json())
         .then((data) => setConversations(lead._id, data))
-        .catch(() => {});
+        .catch(() => { });
 
       fetch(`/api/leads/${lead._id}`)
         .then((r) => r.json())
         .then((data) => updateLead(lead._id, data))
-        .catch(() => {});
+        .catch(() => { });
     };
 
     // Load data initially
@@ -203,7 +203,7 @@ export default function ConversationDrawer() {
       } else {
         if (data.count > 0) {
           showToast(`Synced! Found ${data.count} new reply email(s).`, "success");
-          
+
           // Fetch updated standard conversation document list
           const convoRes = await fetch(`/api/conversations?leadId=${lead._id}`);
           if (convoRes.ok) {
@@ -265,7 +265,7 @@ export default function ConversationDrawer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leadId:  lead._id,
+          leadId: lead._id,
           agentId: activeAgent._id,
           channel,
           role,
@@ -300,9 +300,9 @@ export default function ConversationDrawer() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               agentId: activeAgent._id,
-              to:      lead.email,
+              to: lead.email,
               subject: finalSubject,
-              body:    content,
+              body: content,
             }),
           });
           const data = await emailSendRes.json();
@@ -321,8 +321,8 @@ export default function ConversationDrawer() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               agentId: activeAgent._id,
-              to:      lead.phone,
-              text:    content,
+              to: lead.phone,
+              text: content,
             }),
           });
           const data = await waSendRes.json();
@@ -330,6 +330,26 @@ export default function ConversationDrawer() {
             showToast(data.error ?? "WhatsApp send failed", "error");
           } else {
             showToast(`WhatsApp message sent to ${lead.phone}`);
+          }
+        }
+      } else if (role === "agent" && channel === "sms") {
+        if (!lead.phone) {
+          showToast("Lead has no phone number", "error");
+        } else {
+          const smsSendRes = await fetch("/api/sms/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: activeAgent._id,
+              to: lead.phone,
+              text: content,
+            }),
+          });
+          const data = await smsSendRes.json();
+          if (!smsSendRes.ok) {
+            showToast(data.error ?? "SMS send failed", "error");
+          } else {
+            showToast(`SMS message sent to ${lead.phone}`);
           }
         }
       } else {
@@ -422,6 +442,7 @@ export default function ConversationDrawer() {
               <label className="relative w-9 h-5 shrink-0">
                 <input
                   type="checkbox"
+                  className="peer sr-only"
                   checked={agentOn}
                   onChange={(e) => toggleAgent(e.target.checked)}
                 />
@@ -462,9 +483,9 @@ export default function ConversationDrawer() {
           {/* Conversation body */}
           <div className="flex-1 overflow-hidden">
             {channel === "whatsapp" && <WAConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
-            {channel === "email"    && <EmailConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
-            {channel === "sms"      && <SMSConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
-            {channel === "call"     && <CallConvo messages={currentConvo?.messages ?? []} lead={lead} />}
+            {channel === "email" && <EmailConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
+            {channel === "sms" && <SMSConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
+            {channel === "call" && <CallConvo messages={currentConvo?.messages ?? []} lead={lead} />}
           </div>
 
           {/* Reply box */}
@@ -528,6 +549,7 @@ export default function ConversationDrawer() {
             <div className="flex gap-2 items-end">
               <textarea
                 ref={textareaRef}
+                value={replyText}
                 onChange={(e) => {
                   const val = e.target.value;
                   setReplyText(val);
@@ -546,8 +568,8 @@ export default function ConversationDrawer() {
                   sendAs === "lead"
                     ? `Reply as ${lead.fullName.split(" ")[0]}...`
                     : channel === "call"
-                    ? "Send a follow-up text..."
-                    : "Type a message..."
+                      ? "Send a follow-up text..."
+                      : "Type a message..."
                 }
                 rows={1}
                 className="flex-1 rounded-[8px] px-3 py-2 text-[12px] outline-none resize-none border transition-colors duration-150 font-[family-name:var(--font-sans)]"
@@ -593,10 +615,10 @@ export default function ConversationDrawer() {
                 onClick={() => sendReply()}
                 disabled={sending || uploading}
                 className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors"
-                style={{ 
-                  background: (sending || uploading) ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"), 
-                  color: "#fff", 
-                  cursor: (sending || uploading) ? "wait" : "pointer" 
+                style={{
+                  background: (sending || uploading) ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"),
+                  color: "#fff",
+                  cursor: (sending || uploading) ? "wait" : "pointer"
                 }}
               >
                 <IconSend size={14} />

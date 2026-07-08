@@ -3,8 +3,12 @@ import type { WhatsAppConfig } from "./settings.service";
 
 /** Normalize an Indian-default phone number to digits with country code. */
 export function normalizePhone(raw: string): string {
+  const hasPlus = raw.trim().startsWith("+");
   let phone = raw.replace(/\D/g, "");
-  if (phone.length === 10) phone = "91" + phone;
+  // If it's exactly 10 digits AND the user didn't explicitly provide a + country code, assume India.
+  if (!hasPlus && phone.length === 10) {
+    phone = "91" + phone;
+  }
   return phone;
 }
 

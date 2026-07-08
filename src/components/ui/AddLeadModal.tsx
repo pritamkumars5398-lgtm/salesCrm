@@ -15,10 +15,54 @@ interface Props {
 
 const DEFAULT_FORM = {
   firstName: "", lastName: "", jobTitle: "", company: "",
-  email: "", phone: "", source: "Manual",
+  email: "", phone: "", countryCode: "+91", source: "Manual",
   channels: [] as Channel[],
   website: "",
 };
+
+const COUNTRY_CODES = [
+  { code: "+91", label: "🇮🇳 +91" },
+  { code: "+92", label: "🇵🇰 +92" },
+  { code: "+880", label: "🇧🇩 +880" },
+  { code: "+977", label: "🇳🇵 +977" },
+  { code: "+94", label: "🇱🇰 +94" },
+  { code: "+975", label: "🇧🇹 +975" },
+  { code: "+960", label: "🇲🇻 +960" },
+  { code: "+95", label: "🇲🇲 +95" },
+  { code: "+1", label: "🇺🇸/🇨🇦 +1" },
+  { code: "+44", label: "🇬🇧 +44" },
+  { code: "+61", label: "🇦🇺 +61" },
+  { code: "+971", label: "🇦🇪 +971" },
+  { code: "+65", label: "🇸🇬 +65" },
+  { code: "+49", label: "🇩🇪 +49" },
+  { code: "+33", label: "🇫🇷 +33" },
+  { code: "+39", label: "🇮🇹 +39" },
+  { code: "+34", label: "🇪🇸 +34" },
+  { code: "+55", label: "🇧🇷 +55" },
+  { code: "+52", label: "🇲🇽 +52" },
+  { code: "+81", label: "🇯🇵 +81" },
+  { code: "+82", label: "🇰🇷 +82" },
+  { code: "+86", label: "🇨🇳 +86" },
+  { code: "+27", label: "🇿🇦 +27" },
+  { code: "+234", label: "🇳🇬 +234" },
+  { code: "+966", label: "🇸🇦 +966" },
+  { code: "+31", label: "🇳🇱 +31" },
+  { code: "+46", label: "🇸🇪 +46" },
+  { code: "+41", label: "🇨🇭 +41" },
+  { code: "+64", label: "🇳🇿 +64" },
+  { code: "+62", label: "🇮🇩 +62" },
+  { code: "+60", label: "🇲🇾 +60" },
+  { code: "+63", label: "🇵🇭 +63" },
+  { code: "+32", label: "🇧🇪 +32" },
+  { code: "+43", label: "🇦🇹 +43" },
+  { code: "+45", label: "🇩🇰 +45" },
+  { code: "+353", label: "🇮🇪 +353" },
+  { code: "+47", label: "🇳🇴 +47" },
+  { code: "+48", label: "🇵🇱 +48" },
+  { code: "+7", label: "🇷🇺 +7" },
+  { code: "+90", label: "🇹🇷 +90" },
+  { code: "+20", label: "🇪🇬 +20" },
+];
 
 export default function AddLeadModal({ open, onClose }: Props) {
   const { activeAgent, addLead, addLeads, showToast } = useAppStore();
@@ -26,6 +70,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
 
   // Manual Form State
   const [form, setForm] = useState(DEFAULT_FORM);
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   // AI Extractor State
   const [pastedText, setPastedText] = useState("");
@@ -65,8 +110,14 @@ export default function AddLeadModal({ open, onClose }: Props) {
     }
     setSaving(true);
     try {
+      const finalPhone = form.phone.trim() ? `${form.countryCode}${form.phone.trim().replace(/^0+/, '')}` : "";
+      
+      // We exclude countryCode from the final payload because it's merged into phone
+      const { countryCode, ...formWithoutCountryCode } = form;
+
       const body = {
-        ...form,
+        ...formWithoutCountryCode,
+        phone: finalPhone,
         agentId: activeAgent._id,
         status: startOutreach ? "in_outreach" : "new",
       };
@@ -380,7 +431,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-5 flex-1 overflow-y-auto flex flex-col gap-4">
+        <div className={`p-5 flex-1 ${showCountryDropdown ? 'overflow-visible relative z-[100]' : 'overflow-y-auto relative z-10'} flex flex-col gap-4`}>
           
           {/* 1. Manual Mode */}
           {importMode === "manual" && (
@@ -418,7 +469,46 @@ export default function AddLeadModal({ open, onClose }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Phone / WhatsApp</label>
-                  <input className="form-input" placeholder="+91xxxxxxxxxx" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+                  <div className="form-input !p-0 flex items-stretch focus-within:border-[var(--color-accent)] focus-within:bg-[var(--color-bg2)] transition-all">
+                    <div className="relative h-full flex items-center" style={{ borderRight: "1px solid rgba(0,0,0,0.08)" }}>
+                      <button
+                        type="button"
+                        className="bg-[var(--color-bg3)] hover:bg-[var(--color-bg4)] border-none h-full py-[6px] pl-2 pr-1 text-[12px] font-medium outline-none text-[var(--color-text)] cursor-pointer transition-colors flex items-center gap-1 rounded-l-[4px]"
+                        onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                      >
+                        {COUNTRY_CODES.find(c => c.code === form.countryCode)?.label || form.countryCode}
+                        <span className="text-[9px] opacity-60">▼</span>
+                      </button>
+                      
+                      {showCountryDropdown && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowCountryDropdown(false)} />
+                          <div className="absolute bottom-full left-0 mb-1 w-36 bg-[var(--color-bg)] border border-[rgba(0,0,0,0.1)] rounded-md shadow-lg z-50 max-h-[250px] overflow-y-auto py-1">
+                            {COUNTRY_CODES.map((country) => (
+                              <button
+                                key={country.code}
+                                type="button"
+                                className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[var(--color-bg2)] text-[var(--color-text)] flex items-center justify-between"
+                                onClick={() => {
+                                  set("countryCode", country.code);
+                                  setShowCountryDropdown(false);
+                                }}
+                              >
+                                <span>{country.label}</span>
+                                {form.countryCode === country.code && <span className="text-[var(--color-accent)] font-bold text-[10px]">✓</span>}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      className="bg-transparent border-none px-2.5 flex-1 outline-none min-w-0 text-[12.5px] text-[var(--color-text)]"
+                      placeholder="9876543210"
+                      value={form.phone}
+                      onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Source</label>

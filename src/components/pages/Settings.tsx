@@ -29,6 +29,14 @@ export default function Settings() {
   const [playingTest, setPlayingTest] = useState(false);
   const [testPhoneNumber, setTestPhoneNumber] = useState("");
   const [callingReal, setCallingReal] = useState(false);
+  const [checkingSms, setCheckingSms] = useState(false);
+  const [lastReceivedSms, setLastReceivedSms] = useState<{ text: string, timestamp: string, senderName: string, senderPhone: string } | null>(null);
+  const [checkingWa, setCheckingWa] = useState(false);
+  const [lastReceivedWa, setLastReceivedWa] = useState<{ text: string, timestamp: string, senderName: string, senderPhone: string } | null>(null);
+  const [testWaTo, setTestWaTo] = useState("");
+  const [sendingTestWa, setSendingTestWa] = useState(false);
+  const [waStatusLabel, setWaStatusLabel] = useState("Sending…");
+  const [testWaResult, setTestWaResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -168,6 +176,78 @@ export default function Settings() {
       showToast(err.message || "Failed to trigger test call", "error");
     } finally {
       setCallingReal(false);
+    }
+  }
+
+  async function checkReceivedSms() {
+    if (!activeAgent) return;
+    setCheckingSms(true);
+    setLastReceivedSms(null);
+    try {
+      const res = await fetch(`/api/sms/test?agentId=${activeAgent._id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to fetch last SMS", "error");
+      } else if (!data.message) {
+        showToast("No incoming SMS messages found yet.", "success");
+      } else {
+        setLastReceivedSms(data.message);
+        showToast("Fetched latest SMS successfully", "success");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to check SMS", "error");
+    } finally {
+      setCheckingSms(false);
+    }
+  }
+
+  async function checkReceivedWa() {
+    if (!activeAgent) return;
+    setCheckingWa(true);
+    setLastReceivedWa(null);
+    try {
+      const res = await fetch(`/api/whatsapp/test?agentId=${activeAgent._id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to fetch last WhatsApp message", "error");
+      } else if (!data.message) {
+        showToast("No incoming WhatsApp messages found yet.", "success");
+      } else {
+        setLastReceivedWa(data.message);
+        showToast("Fetched latest WhatsApp message successfully", "success");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to check WhatsApp message", "error");
+    } finally {
+      setCheckingWa(false);
+    }
+  }
+
+  async function sendTestWa() {
+    if (!activeAgent || sendingTestWa) return;
+    if (!testWaTo.trim()) {
+      showToast("Enter a phone number to send the test to", "error");
+      return;
+    }
+    setSendingTestWa(true);
+    setWaStatusLabel("Sending…");
+    setTestWaResult(null);
+    try {
+      const res = await fetch("/api/whatsapp/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: activeAgent._id, to: testWaTo.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTestWaResult({ ok: false, msg: data.error || "Send failed" });
+        return;
+      }
+      setTestWaResult({ ok: true, msg: data.msg || "Message sent successfully" });
+    } catch (err: any) {
+      setTestWaResult({ ok: false, msg: err.message || "Failed to send WhatsApp message" });
+    } finally {
+      setSendingTestWa(false);
     }
   }
 
@@ -468,6 +548,24 @@ export default function Settings() {
                 let displayPlaceholder = f.placeholder;
                 let displayHint = f.hint;
 
+                if (activeCard.key === "sms") {
+                  const currentProvider = values["smsProvider"] || "Twilio SMS";
+                  
+                  if (currentProvider === "MSG91" && f.key === "smsAccountSid") {
+                    return null;
+                  }
+
+                  if (currentProvider !== "Twilio SMS" && f.key === "smsWebhookUrl") {
+                    return null;
+                  }
+
+                  if (currentProvider === "Twilio SMS") {
+                    if (f.key === "smsWebhookUrl") {
+                      displayHint = "Copy this and paste into your Twilio Sandbox or Phone Number Webhook settings to receive SMS replies.";
+                    }
+                  }
+                }
+
                 if (activeCard.key === "whatsapp") {
                   const currentProvider = values["waProvider"] || "WireWeb";
                   if (currentProvider !== "Meta Cloud API" && f.key === "waVerifyToken") {
@@ -648,12 +746,12 @@ export default function Settings() {
                           className="form-input bg-slate-50 dark:bg-slate-900/50 cursor-default flex-1"
                           style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
                         >
-                          {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`}
+                          {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`}
                         </div>
                         <button
                           type="button"
                           onClick={() => {
-                            const url = `${window.location.origin}/api/webhooks/whatsapp?agentId=${activeAgent?._id || ""}`;
+                            const url = `${window.location.origin}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`;
                             navigator.clipboard.writeText(url);
                             showToast("Webhook URL copied to clipboard!");
                           }}
@@ -677,6 +775,139 @@ export default function Settings() {
                 );
               })}
             </div>
+
+
+            {/* WhatsApp send test panel */}
+            {activeCard.key === "whatsapp" && (
+              <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
+                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
+                  <IconMessage size={15} style={{ color: "#22c97a" }} />
+                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Send a Test WhatsApp</span>
+                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
+                </div>
+                <div className="p-5 flex flex-col gap-3">
+                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                    Sends a real test message to verify your WhatsApp credentials. Save settings first.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      value={testWaTo}
+                      onChange={(e) => { setTestWaTo(e.target.value); setTestWaResult(null); }}
+                      placeholder="+91xxxxxxxxxx"
+                      className="flex-1 text-[13px] rounded-lg px-3 py-2 outline-none"
+                      style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                    />
+                    <button
+                      onClick={sendTestWa}
+                      disabled={sendingTestWa || !values["waApiKey"]}
+                      className="flex items-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                      style={{
+                        padding: "8px 16px",
+                        background: sendingTestWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
+                        color: !values["waApiKey"] ? "var(--color-text3)" : "#22c97a",
+                        border: "1px solid rgba(34,201,122,0.3)",
+                        cursor: (sendingTestWa || !values["waApiKey"]) ? "not-allowed" : "pointer",
+                        opacity: !values["waApiKey"] ? 0.55 : 1,
+                        whiteSpace: "nowrap",
+                      }}
+                      title={!values["waApiKey"] ? "Save your API key first" : "Send test WhatsApp"}
+                    >
+                      {sendingTestWa ? (
+                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> {waStatusLabel}</>
+                      ) : (
+                        <><IconMessage size={13} /> Send Test</>
+                      )}
+                    </button>
+                  </div>
+                  {testWaResult && (
+                    testWaResult.ok ? (
+                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)" }}>
+                        <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
+                          <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <IconCheck size={13} style={{ color: "#fff" }} />
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Message sent successfully!</span>
+                        </div>
+                        <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
+                          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
+                            Delivered to {testWaTo}
+                          </p>
+                          <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
+                            SalesAgent test: Your WhatsApp integration is working!
+                          </div>
+                          <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
+                            {testWaResult.msg}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 text-[12px] px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
+                        <IconAlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>{testWaResult.msg}</span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* WhatsApp receive test panel */}
+            {activeCard.key === "whatsapp" && (
+              <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
+                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
+                  <IconMessage size={15} style={{ color: "#22c97a" }} />
+                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test WhatsApp Message</span>
+                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
+                </div>
+                <div className="p-5 flex flex-col gap-3">
+                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                    Fetch the last received WhatsApp message to verify your webhook is working.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={checkReceivedWa}
+                      disabled={checkingWa || !activeAgent}
+                      className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all w-full"
+                      style={{
+                        padding: "8px 16px",
+                        background: checkingWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
+                        color: "#22c97a",
+                        border: "1px solid rgba(34,201,122,0.3)",
+                        cursor: checkingWa ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {checkingWa ? (
+                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
+                      ) : (
+                        <><IconMessage size={13} /> Check Last Received Message</>
+                      )}
+                    </button>
+                  </div>
+                  {lastReceivedWa && (
+                    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
+                      <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
+                        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <IconCheck size={13} style={{ color: "#fff" }} />
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
+                      </div>
+                      <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
+                        <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
+                          From: {lastReceivedWa.senderName} ({lastReceivedWa.senderPhone})
+                        </p>
+                        <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
+                          {lastReceivedWa.text}
+                        </div>
+                        <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
+                          Received at: {new Date(lastReceivedWa.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Voice call preview panel */}
             {activeCard.key === "voice" && (
@@ -943,6 +1174,63 @@ export default function Settings() {
                         <span>{testSmsResult.msg}</span>
                       </div>
                     )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Receive SMS test panel */}
+            {activeCard.key === "sms" && (
+              <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
+                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
+                  <IconMessage size={15} style={{ color: "#cc99ff" }} />
+                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test SMS</span>
+                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(204,153,255,0.15)", color: "#cc99ff" }}>Live</span>
+                </div>
+                <div className="p-5 flex flex-col gap-3">
+                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                    Fetch the last received SMS message to verify your webhook is working.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={checkReceivedSms}
+                      disabled={checkingSms || !activeAgent}
+                      className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                      style={{
+                        padding: "8px 16px",
+                        background: checkingSms ? "rgba(204,153,255,0.08)" : "rgba(204,153,255,0.15)",
+                        color: "#cc99ff",
+                        border: "1px solid rgba(204,153,255,0.3)",
+                        cursor: checkingSms ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {checkingSms ? (
+                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #cc99ff44", borderTopColor: "#cc99ff", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
+                      ) : (
+                        <><IconMessage size={13} /> Check Last Received Message</>
+                      )}
+                    </button>
+                  </div>
+                  {lastReceivedSms && (
+                    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
+                      <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
+                        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <IconCheck size={13} style={{ color: "#fff" }} />
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
+                      </div>
+                      <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
+                        <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
+                          From: {lastReceivedSms.senderName} ({lastReceivedSms.senderPhone})
+                        </p>
+                        <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
+                          {lastReceivedSms.text}
+                        </div>
+                        <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
+                          Received at: {new Date(lastReceivedSms.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

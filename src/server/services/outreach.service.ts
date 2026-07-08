@@ -8,7 +8,7 @@ import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 
-export type OutreachChannel = "email" | "whatsapp";
+export type OutreachChannel = "email" | "whatsapp" | "sms";
 
 export interface ChannelResult {
   channel: OutreachChannel;
@@ -99,7 +99,7 @@ async function markSent(leadId: string) {
 async function logOutreach(
   lead: ILead,
   agentId: string,
-  channel: "email" | "whatsapp",
+  channel: OutreachChannel,
   sent: boolean,
   content: string,
   error?: string
@@ -111,8 +111,8 @@ async function logOutreach(
       leadName: lead.fullName || `${lead.firstName} ${lead.lastName}`,
       channel,
       event: sent
-        ? (channel === "email" ? "AI Email Sent" : "AI WhatsApp Sent")
-        : (channel === "email" ? "AI Email Failed" : "AI WhatsApp Failed"),
+        ? (channel === "email" ? "AI Email Sent" : channel === "whatsapp" ? "AI WhatsApp Sent" : "AI SMS Sent")
+        : (channel === "email" ? "AI Email Failed" : channel === "whatsapp" ? "AI WhatsApp Failed" : "AI SMS Failed"),
       detail: (error ? `Error: ${error}\n\n${content}` : content).slice(0, 2000),
     });
     // Only record messages that were actually delivered in the conversation thread.
@@ -149,6 +149,7 @@ function buildResponseButtonsHtml(baseUrl: string, leadId: string): string {
 async function channelsForLead(lead: ILead): Promise<OutreachChannel[]> {
   const canEmail = !!lead.email;
   const canWhatsApp = !!(lead.phone || lead.whatsappLid);
+  const canSms = !!lead.phone;
 
   // Check lead's specific sequence, or fall back to agent's sequence
   const seq = lead.sequenceId
@@ -164,13 +165,14 @@ async function channelsForLead(lead: ILead): Promise<OutreachChannel[]> {
       (s) => s.dayOffset === first.dayOffset && s.sendTime === first.sendTime
     );
     const channels = [...new Set(sameSlot.map((s) => s.channel))]
-      .filter((c): c is OutreachChannel => c === "email" || c === "whatsapp")
-      .filter((c) => (c === "email" ? canEmail : canWhatsApp));
+      .filter((c): c is OutreachChannel => c === "email" || c === "whatsapp" || c === "sms")
+      .filter((c) => (c === "email" ? canEmail : c === "whatsapp" ? canWhatsApp : canSms));
     if (channels.length > 0) return channels;
   }
 
   if (canEmail) return ["email"];
   if (canWhatsApp) return ["whatsapp"];
+  if (canSms) return ["sms"];
   return [];
 }
 
@@ -259,7 +261,7 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
           channelResults.push({ channel, sent: false, error });
           await logOutreach(lead, agentId, "email", false, content, error);
         }
-      } else {
+      } else if (channel === "whatsapp") {
         const waCfg = await getWhatsAppConfig(agentId);
         if (!waCfg) {
           channelResults.push({ channel, sent: false, error: "WhatsApp not configured — add API key and Session ID in Settings." });
@@ -278,6 +280,39 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
           const error = err instanceof Error ? err.message : String(err);
           channelResults.push({ channel, sent: false, error });
           await logOutreach(lead, agentId, "whatsapp", false, message, error);
+        }
+      } else if (channel === "sms") {
+        const baseUrl = opts.baseUrl || getAppBaseUrl();
+        const message = await generateWhatsAppMessage(agentId, info); // Reuse short-form generator for SMS
+        firstBody = firstBody ?? message;
+        const target = lead.phone;
+
+        if (!target) {
+           channelResults.push({ channel, sent: false, error: "Lead has no phone number for SMS." });
+           continue;
+        }
+
+        try {
+          await withRetry(async () => {
+            const smsSendRes = await fetch(`${baseUrl}/api/sms/send`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                to: target,
+                text: message,
+              }),
+            });
+            const data = await smsSendRes.json();
+            if (!smsSendRes.ok) throw new Error(data.error || "SMS dispatch failed");
+          });
+          
+          channelResults.push({ channel, sent: true });
+          await logOutreach(lead, agentId, "sms", true, message);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          channelResults.push({ channel, sent: false, error });
+          await logOutreach(lead, agentId, "sms", false, message, error);
         }
       }
     } catch (err) {

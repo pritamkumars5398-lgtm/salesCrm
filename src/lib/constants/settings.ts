@@ -134,6 +134,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Account SID / Auth ID", key: "smsAccountSid", placeholder: "Twilio Account SID or Plivo Auth ID", hint: "Required for Twilio & Plivo. Leave blank for MSG91." },
       { label: "Auth Token / API Key", key: "smsApiKey", type: "password", placeholder: "Twilio Auth Token or MSG91/Plivo API key" },
       { label: "From Number / Sender ID", key: "smsFrom", placeholder: "+91xxxxxxxxxx or SENDER", hint: "Registered number or sender ID with your provider" },
+      { label: "Webhook URL", key: "smsWebhookUrl", type: "webhook-url", hint: "Copy this and paste in your Provider dashboard" },
     ],
   },
   {

@@ -1,6 +1,66 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { Conversation } from "@/lib/models/Conversation";
+import { Lead } from "@/lib/models/Lead";
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const agentId = searchParams.get("agentId");
+    
+    if (!agentId) {
+      return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+    }
+
+    await connectDB();
+    
+    // Find the most recent SMS conversation for this agent
+    // Since we don't have a direct "last received SMS" timestamp index on Conversation, 
+    // we'll find conversations for this agent on the SMS channel, sort by updated, and look for a lead message.
+    const conversations = await Conversation.find({ agentId, channel: "sms" })
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .lean();
+
+    let lastMessage: any = null;
+    let senderName = "Unknown";
+    let senderPhone = "";
+
+    for (const convo of conversations) {
+      // Find the last message in this conversation with role === "lead"
+      const leadMessages = (convo.messages || []).filter((m: any) => m.role === "lead");
+      if (leadMessages.length > 0) {
+        const latest = leadMessages[leadMessages.length - 1];
+        if (!lastMessage || new Date(latest.timestamp) > new Date(lastMessage.timestamp)) {
+          lastMessage = latest;
+          // Get the lead to get their name and phone
+          const lead = await Lead.findById(convo.leadId).lean();
+          if (lead) {
+            senderName = lead.fullName || `${lead.firstName || ""} ${lead.lastName || ""}`.trim();
+            senderPhone = lead.phone || "";
+          }
+        }
+      }
+    }
+
+    if (!lastMessage) {
+      return NextResponse.json({ message: null });
+    }
+
+    return NextResponse.json({
+      message: {
+        text: lastMessage.content,
+        timestamp: lastMessage.timestamp,
+        senderName,
+        senderPhone
+      }
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -58,8 +118,9 @@ export async function POST(req: Request) {
     // ── MSG91 ────────────────────────────────────────────────────────────────
     // Uses the simple sendhttp API (no template required).
     if (provider === "MSG91") {
+      const hasPlus = to.trim().startsWith("+");
       let mobile = to.replace(/\D/g, "");
-      if (mobile.length === 10) mobile = "91" + mobile;
+      if (!hasPlus && mobile.length === 10) mobile = "91" + mobile;
 
       const params = new URLSearchParams({
         authkey: apiKey,

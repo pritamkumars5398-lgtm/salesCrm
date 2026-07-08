@@ -240,6 +240,20 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
           }
         }
       }
+    } else if (channel === "sms") {
+      const { getAppBaseUrl } = await import("@/server/services/settings.service");
+      const baseUrl = getAppBaseUrl();
+      if (lead.phone) {
+        await fetch(`${baseUrl}/api/sms/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            to: lead.phone,
+            text: parsed.body,
+          }),
+        });
+      }
     }
 
     // 8. Log activity

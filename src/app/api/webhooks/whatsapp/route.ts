@@ -65,11 +65,11 @@ export async function POST(req: Request) {
     if (payload.event === "presence.update" || payload.event === "presence") {
       const fromNumber = payload.id || payload.from || "";
       const presence = payload.presence || ""; // "composing" | "recording" | "paused"
-      
+
       if (fromNumber && presence) {
         let cleanFrom = fromNumber.replace(/\D/g, "");
         const last10 = cleanFrom.slice(-10);
-        
+
         const { searchParams } = new URL(req.url);
         let agentId = searchParams.get("agentId");
         if (!agentId && payload.sessionId) {
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
           const setting = await Setting.findOne({ key: "waSessionId", value: payload.sessionId }).lean();
           if (setting) agentId = setting.agentId.toString();
         }
-        
+
         if (agentId) {
           const lead = await Lead.findOne({
             agentId,
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
               { whatsappLid: fromNumber },
             ],
           }).lean();
-          
+
           if (lead) {
             const isTyping = presence === "composing" || presence === "recording";
             eventEmitter.emit("typing", {
@@ -105,11 +105,11 @@ export async function POST(req: Request) {
     if (payload.EventType === "onTypingStarted" || payload.EventType === "onTypingEnded") {
       const isTyping = payload.EventType === "onTypingStarted";
       const identity = payload.Identity || ""; // e.g. whatsapp:+917800730968
-      
+
       if (identity) {
         let cleanFrom = identity.replace("whatsapp:", "").replace(/\D/g, "");
         const last10 = cleanFrom.slice(-10);
-        
+
         const { searchParams } = new URL(req.url);
         let agentId = searchParams.get("agentId");
         if (!agentId && payload.AccountSid) {
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
           const setting = await Setting.findOne({ key: "waSessionId", value: payload.AccountSid }).lean();
           if (setting) agentId = setting.agentId.toString();
         }
-        
+
         if (agentId) {
           const lead = await Lead.findOne({
             agentId,
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
               { whatsappLid: identity }
             ]
           }).lean();
-          
+
           if (lead) {
             eventEmitter.emit("typing", {
               leadId: lead._id.toString(),
