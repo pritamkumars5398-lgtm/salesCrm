@@ -61,12 +61,12 @@ export async function POST(req: Request) {
       console.log(`[WhatsApp] Sending Payload to Twilio from: ${twilioPhoneNumber}`);
       try {
         const client = twilio(sessionId, apiKey);
-        const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
+        const isMediaUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp|pdf|doc|docx)/i.test(text);
         const payload: any = {
           from: `whatsapp:${twilioPhoneNumber}`,
           to: `whatsapp:+${cleanTo}`,
         };
-        if (isImageUrl) {
+        if (isMediaUrl) {
           payload.mediaUrl = [text];
         } else {
           payload.body = text;
@@ -79,13 +79,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Twilio API error: ${err.message}` }, { status: 500 });
       }
     } else if (provider === "Meta Cloud API") {
-      const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
-      const payload = isImageUrl ? {
+      const isMediaUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp|pdf|doc|docx)/i.test(text);
+      const payload = isMediaUrl ? {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: cleanTo,
-        type: "image",
-        image: {
+        type: /\.(pdf|doc|docx)/i.test(text) ? "document" : "image",
+        [/\.(pdf|doc|docx)/i.test(text) ? "document" : "image"]: {
           link: text
         }
       } : {
@@ -108,12 +108,13 @@ export async function POST(req: Request) {
         body: JSON.stringify(payload),
       });
     } else {
-      const isImageUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(text);
-      const payload = isImageUrl ? {
+      const isMediaUrl = text.startsWith("http") && /\.(jpeg|jpg|gif|png|webp|pdf|doc|docx)/i.test(text);
+      const isDoc = /\.(pdf|doc|docx)/i.test(text);
+      const payload = isMediaUrl ? {
         sessionId: sessionId,
         to: cleanTo,
-        image: text,
-        caption: "📷 Image",
+        [isDoc ? "document" : "image"]: text,
+        caption: isDoc ? "📄 Document" : "📷 Image",
       } : {
         sessionId: sessionId,
         to: cleanTo,

@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
-  IconCalendar, IconActivity, IconSettings, IconPlus, IconClock,
+  IconCalendar, IconActivity, IconSettings, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX, IconEdit, IconCheck,
+  IconShield, IconX, IconChevronRight,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Page } from "@/store/types";
@@ -27,28 +27,119 @@ interface MiniUsage {
   leadsLimit: number;
 }
 
-
 const OUTREACH_CHANNELS = [
-  { key: "email",    label: "Email",     Icon: IconMail,           color: "#4dabf7", enabledKey: "emailEnabled",    valueKey: "smtpFrom"     },
-  { key: "whatsapp", label: "WhatsApp",  Icon: IconBrandWhatsapp,  color: "#22c97a", enabledKey: "whatsappEnabled", valueKey: "waSessionId"  },
-  { key: "sms",      label: "SMS",       Icon: IconMessage,        color: "#cc99ff", enabledKey: "smsEnabled",      valueKey: "smsFrom"      },
-  { key: "voice",    label: "Voice",     Icon: IconPhone,          color: "#f5a623", enabledKey: "voiceEnabled",    valueKey: "voiceProvider"},
+  { key: "email",    label: "Email",    Icon: IconMail,          color: "var(--color-email)",    bg: "var(--color-email-bg)",    enabledKey: "emailEnabled",    valueKey: "smtpFrom"      },
+  { key: "whatsapp", label: "WhatsApp", Icon: IconBrandWhatsapp, color: "var(--color-whatsapp)", bg: "var(--color-whatsapp-bg)", enabledKey: "whatsappEnabled", valueKey: "waSessionId"   },
+  { key: "sms",      label: "SMS",      Icon: IconMessage,       color: "var(--color-sms)",      bg: "var(--color-sms-bg)",      enabledKey: "smsEnabled",      valueKey: "smsFrom"       },
+  { key: "voice",    label: "Voice",    Icon: IconPhone,         color: "var(--color-voice)",    bg: "var(--color-voice-bg)",    enabledKey: "voiceEnabled",    valueKey: "voiceProvider" },
 ] as const;
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        color: "var(--color-text4)",
+        padding: "0 12px",
+        marginTop: 20,
+        marginBottom: 4,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function NavItem({
+  id,
+  label,
+  Icon,
+  active,
+  badge,
+  pulseBadge,
+  onClick,
+}: {
+  id: string;
+  label: string;
+  Icon: React.ElementType;
+  active: boolean;
+  badge?: React.ReactNode;
+  pulseBadge?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`nav-item ${active ? "active" : ""}`}
+      style={{ marginBottom: 1 }}
+      aria-current={active ? "page" : undefined}
+    >
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: "var(--radius-md)",
+          background: active ? "var(--color-primary-subtle)" : "transparent",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          transition: "background var(--transition-fast)",
+        }}
+      >
+        <Icon size={15} />
+      </span>
+      <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
+      {badge}
+      {pulseBadge && (
+        <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}>
+          <span
+            className="animate-ping"
+            style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "var(--color-green)", opacity: 0.5 }}
+          />
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--color-green)", display: "block", position: "relative" }} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function CountBadge({ count, color }: { count: number; color?: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "1px 6px",
+        borderRadius: "var(--radius-full)",
+        background: color ? `${color}22` : "var(--color-bg4)",
+        color: color ?? "var(--color-text3)",
+        fontFamily: "var(--font-mono)",
+        lineHeight: 1.6,
+      }}
+    >
+      {count}
+    </span>
+  );
+}
 
 export default function Sidebar() {
   const router = useRouter();
-  const { agents, activeAgent, setActiveAgent, currentPage, setPage, leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast, userEmail, setSidebarOpenMobile } =
-    useAppStore();
-  const [miniUsage, setMiniUsage] = useState<MiniUsage | null>(null);
-  const [outreach, setOutreach] = useState<Record<string, string>>({});
-  const [agentStats, setAgentStats] = useState<Record<string, { newCount: number; inOutreachCount: number; totalCount: number }>>({});
+  const {
+    agents, activeAgent, setActiveAgent, currentPage, setPage,
+    leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast,
+    userEmail, setSidebarOpenMobile,
+  } = useAppStore();
+
+  const [miniUsage, setMiniUsage]     = useState<MiniUsage | null>(null);
+  const [outreach, setOutreach]       = useState<Record<string, string>>({});
+  const [agentStats, setAgentStats]   = useState<Record<string, { newCount: number; inOutreachCount: number; totalCount: number }>>({});
   const [liveInOutreach, setLiveInOutreach] = useState(0);
 
-  // Agent Rename State
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [savingName, setSavingName] = useState(false);
-
+  // ── All existing data fetches preserved exactly ──────────────
   useEffect(() => {
     if (!activeAgent) return;
     fetch(`/api/usage?agentId=${activeAgent._id}`)
@@ -67,14 +158,12 @@ export default function Sidebar() {
       .then((r) => r.json())
       .then((d) => setCronJobs(d))
       .catch(() => {});
-    // Live in-outreach count from DB (not stale store)
     fetch(`/api/dashboard?agentId=${activeAgent._id}`)
       .then((r) => r.json())
       .then((d) => setLiveInOutreach(d.stats?.inOutreach ?? 0))
       .catch(() => {});
   }, [activeAgent?._id]);
 
-  // Fetch per-agent stats for all agents (to detect "done" agents)
   useEffect(() => {
     if (!userEmail) return;
     fetch(`/api/agents/summary?userEmail=${encodeURIComponent(userEmail)}`)
@@ -87,200 +176,242 @@ export default function Sidebar() {
       .catch(() => {});
   }, [userEmail, agents.length]);
 
+  // ── Computed values (preserved exactly) ──────────────────────
   const enabledCronsCount = cronJobs.filter((j) => j.enabled).length;
-  // Use live DB count; fall back to store count if dashboard hasn't loaded yet
-  const inOutreachCount = (currentPage === "leads")
-    ? leads.filter((l) => l.status === "in_outreach").length
-    : (liveInOutreach || (activeAgent ? (agentStats[activeAgent._id]?.inOutreachCount ?? 0) : 0));
-  const totalLeadCount    = activeAgent ? activeAgent.leadCount : 0;
-  const outreachPct       = totalLeadCount > 0 ? Math.round((inOutreachCount / totalLeadCount) * 100) : 0;
-
-  async function handleNewAgent() {
-    const name = prompt("Agent name:");
-    if (!name?.trim()) return;
-    try {
-      const res = await fetch("/api/agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), userEmail }),
-      });
-      const agent = await res.json();
-      addAgent(agent);
-      showToast(`${agent.name} created`);
-      router.push(`/${currentPage}/${agent._id}`);
-    } catch {
-      showToast("Failed to create agent", "error");
-    }
-  }
-
-  async function handleRenameAgent() {
-    if (!activeAgent || !newName.trim() || savingName) return;
-    setSavingName(true);
-    try {
-      const res = await fetch(`/api/agents/${activeAgent._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim() }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      updateAgent(activeAgent._id, { name: newName.trim() });
-      showToast("Agent renamed successfully");
-      setIsEditingName(false);
-    } catch {
-      showToast("Failed to rename agent", "error");
-    } finally {
-      setSavingName(false);
-    }
-  }
-
-  const leadCount = activeAgent ? activeAgent.leadCount : 0;
-  const planColor = miniUsage ? PLANS[miniUsage.planId].color : "#6366f1";
-  const usagePct  = miniUsage && miniUsage.leadsLimit !== -1
+  const inOutreachCount =
+    currentPage === "leads"
+      ? leads.filter((l) => l.status === "in_outreach").length
+      : (liveInOutreach || (activeAgent ? (agentStats[activeAgent._id]?.inOutreachCount ?? 0) : 0));
+  const totalLeadCount  = activeAgent ? activeAgent.leadCount : 0;
+  const outreachPct     = totalLeadCount > 0 ? Math.round((inOutreachCount / totalLeadCount) * 100) : 0;
+  const leadCount       = activeAgent ? activeAgent.leadCount : 0;
+  const planColor       = miniUsage ? PLANS[miniUsage.planId].color : "var(--color-primary-light)";
+  const usagePct        = miniUsage && miniUsage.leadsLimit !== -1
     ? Math.min(100, Math.round((miniUsage.leadsScraped / miniUsage.leadsLimit) * 100))
     : 0;
   const nearLimit = usagePct >= 80;
 
   return (
     <aside
-      className="flex flex-col overflow-y-auto flex-shrink-0 border-r h-screen"
       style={{
-        width: 220,
-        minWidth: 220,
-        background: "#ffffff",
-        borderColor: "#e2e8f0",
+        width: 240,
+        minWidth: 240,
+        height: "100vh",
+        background: "var(--color-bg2)",
+        backdropFilter: "blur(16px)",
+        borderRight: "1px solid var(--color-bg4)",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        overflow: "hidden",
+        zIndex: 10,
       }}
     >
-      {/* Logo */}
+      {/* ── Logo / Workspace Header ── */}
       <div
-        className="px-[18px] py-5 text-[15px] font-semibold tracking-tight flex items-center justify-between border-b"
-        style={{ borderColor: "#e2e8f0" }}
+        style={{
+          padding: "0 16px",
+          height: 54,
+          borderBottom: "1px solid var(--color-bg4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+        }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: currentPage === "superadmin" ? "#ef4444" : "#6c63ff" }} />
-          {currentPage === "superadmin" ? (
-            <span className="truncate">Sales<span style={{ color: "#ef4444" }}>Admin</span></span>
-          ) : (
-            <span className="truncate" style={{ color: "var(--color-text)" }}>
-              {activeAgent?.name || "Workspace"}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "var(--radius-md)",
+              background: currentPage === "superadmin"
+                ? "linear-gradient(135deg, #ef4444, #f87171)"
+                : "linear-gradient(135deg, var(--color-primary), var(--color-primary-light))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              boxShadow: "0 2px 8px rgba(79,70,229,0.3)",
+            }}
+          >
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 800 }}>
+              {currentPage === "superadmin" ? "SA" : "S"}
             </span>
-          )}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--color-text)",
+                margin: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                lineHeight: 1.2,
+              }}
+            >
+              {currentPage === "superadmin" ? "Admin Portal" : (activeAgent?.name || "Workspace")}
+            </p>
+            <p style={{ fontSize: 10, color: "var(--color-text4)", margin: 0, fontWeight: 500 }}>
+              {currentPage === "superadmin" ? "Superadmin" : "AI Sales Agent"}
+            </p>
+          </div>
         </div>
+
+        {/* Close (mobile) */}
         <button
           onClick={() => setSidebarOpenMobile(false)}
-          className="p-1 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-none bg-transparent cursor-pointer md:hidden flex items-center justify-center"
+          aria-label="Close sidebar"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--color-text3)",
+            alignItems: "center",
+            padding: 4,
+            borderRadius: "var(--radius-sm)",
+            transition: "background var(--transition-fast)",
+          }}
+          className="flex md:hidden"
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg3)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
         >
-          <IconX size={16} />
+          <IconX size={15} />
         </button>
       </div>
 
-      {currentPage === "superadmin" ? (
-        <>
-          {/* Admin Navigation */}
-          <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Admin Portal
-          </div>
-          <div className="px-2.5 flex flex-col gap-0.5">
-            <button
-              onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left text-[var(--color-accent2)]"
-              style={{ background: "rgba(108,99,255,0.12)" }}
-            >
-              <IconShield size={16} />
-              Superadmin Portal
-            </button>
-          </div>
+      {/* ── Scrollable Content ── */}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "8px 8px 0" }}>
 
-          {/* Quick Actions */}
-          <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Client Access
-          </div>
-          <div className="px-2.5 flex flex-col gap-0.5">
-            <button
-              onClick={() => router.push(`/dashboard/${activeAgent?._id || "default"}`)}
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left text-[var(--color-text2)] hover:text-[var(--color-text)]"
-            >
-              <IconLayoutDashboard size={16} />
-              Switch to Agent CRM
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Agents */}
-          <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Workspace Status
-          </div>
-          <div className="px-2.5 pb-2 flex flex-col gap-0.5">
-            {/* Multi-agent code commented out as requested
-            {agents.map((agent) => { ... })} 
-            */}
-
+        {currentPage === "superadmin" ? (
+          <>
+            <SectionLabel>Admin Portal</SectionLabel>
+            <div style={{ padding: "0 4px" }}>
+              <NavItem
+                id="superadmin"
+                label="Superadmin Portal"
+                Icon={IconShield}
+                active={true}
+                onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
+              />
+            </div>
+            <SectionLabel>Client Access</SectionLabel>
+            <div style={{ padding: "0 4px" }}>
+              <NavItem
+                id="dashboard"
+                label="Switch to Agent CRM"
+                Icon={IconLayoutDashboard}
+                active={false}
+                onClick={() => router.push(`/dashboard/${activeAgent?._id || "default"}`)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ── Agent Status Card ── */}
             {activeAgent && (() => {
-              const agent = activeAgent;
-              const isActive      = true;
-              const stats         = agentStats[agent._id];
-              const hasOutreach   = isActive && inOutreachCount > 0;
-              const isDone        = false;
-              const agentInOut    = inOutreachCount;
-
+              const hasOutreach = inOutreachCount > 0;
               return (
-                <div key={agent._id} className="flex flex-col">
-                  <div
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-[10px] text-[13px] transition-all duration-200 w-full text-left`}
-                    style={{
-                      background:  "rgba(108,99,255,0.12)",
-                      color:       "var(--color-accent2)",
-                      boxShadow:   hasOutreach ? "inset 3px 0 0 #22c97a" : undefined,
-                    }}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ background: agent.status === "active" ? "#22c97a" : "var(--color-text3)" }}
-                    />
-                    <span className="truncate flex-1 text-left font-medium">Overview</span>
-
-                    <span className="ml-auto flex items-center gap-1 flex-shrink-0">
-                      {agentInOut > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
-                          style={{ background: "rgba(34,201,122,0.1)", color: "#22c97a" }}>
-                          {agentInOut}
-                        </span>
+                <div
+                  style={{
+                    margin: "8px 4px",
+                    padding: "10px 12px",
+                    borderRadius: "var(--radius-lg)",
+                    background: "var(--color-primary-subtle)",
+                    border: "1px solid rgba(99,102,241,0.15)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Status dot */}
+                    <span style={{ position: "relative", display: "inline-flex" }}>
+                      {activeAgent.status === "active" && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: "50%",
+                            background: "var(--color-green)",
+                            animation: "pulse-ring 1.8s ease-out infinite",
+                            opacity: 0.5,
+                          }}
+                        />
                       )}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
-                        style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}>
-                        {agent.leadCount}
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: activeAgent.status === "active" ? "var(--color-green)" : "var(--color-text4)",
+                          display: "block",
+                          position: "relative",
+                        }}
+                      />
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-primary-light)", flex: 1 }}>
+                      Workspace
+                    </span>
+                    {inOutreachCount > 0 && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "1px 7px",
+                          borderRadius: "var(--radius-full)",
+                          background: "var(--color-green-bg)",
+                          color: "var(--color-green)",
+                        }}
+                      >
+                        {inOutreachCount} live
                       </span>
+                    )}
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: "var(--radius-full)",
+                        background: "rgba(99,102,241,0.12)",
+                        color: "var(--color-primary-light)",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      {activeAgent.leadCount}
                     </span>
                   </div>
 
-                  {/* Outreach progress bar — active agent with in-outreach leads */}
+                  {/* Outreach progress bar */}
                   {hasOutreach && (
-                    <div className="mx-2.5 mb-1">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[9.5px] font-semibold" style={{ color: "#22c97a" }}>
-                          {outreachPct >= 100 ? "✓ Outreach completed" : `${inOutreachCount} in outreach`}
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--color-green)" }}>
+                          {outreachPct >= 100 ? "✓ Outreach done" : `${inOutreachCount} in outreach`}
                         </span>
-                        <span className="text-[9.5px]" style={{ color: "var(--color-text3)" }}>{outreachPct}%</span>
+                        <span style={{ fontSize: 9.5, color: "var(--color-text3)" }}>{outreachPct}%</span>
                       </div>
-                      <div style={{ height: 3, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
-                        <div style={{
-                          height: "100%",
-                          width: `${outreachPct}%`,
-                          borderRadius: 99,
-                          background: "linear-gradient(90deg,#22c97a,#10b981)",
-                          position: "relative",
-                          overflow: "hidden",
-                          transition: "width 0.5s ease",
-                        }}>
-                          {/* Shimmer only while outreach is still in progress; a finished
-                              (100%) bar stays solid so it reads as "completed", not "working". */}
+                      <div style={{ height: 3, borderRadius: 99, background: "rgba(99,102,241,0.15)", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${outreachPct}%`,
+                            borderRadius: 99,
+                            background: "linear-gradient(90deg, var(--color-green), #059669)",
+                            transition: "width 0.5s ease",
+                            position: "relative",
+                            overflow: "hidden",
+                          }}
+                        >
                           {outreachPct < 100 && (
-                            <span style={{
-                              position: "absolute",
-                              inset: 0,
-                              background: "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.45) 50%,transparent 100%)",
-                              animation: "shimmer 1.4s infinite",
-                            }} />
+                            <span
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
+                                animation: "shimmer 1.4s infinite",
+                              }}
+                            />
                           )}
                         </div>
                       </div>
@@ -290,197 +421,212 @@ export default function Sidebar() {
               );
             })()}
 
-            {/* Commenting out New Agent button
-            <button
-              onClick={handleNewAgent}
-              className="flex items-center gap-1.5 px-2.5 py-2 rounded-[10px] text-[12px] border border-dashed transition-colors duration-150 mt-1 w-full"
-              style={{ borderColor: "rgba(0,0,0,0.15)", color: "var(--color-text3)" }}
-            >
-              <IconPlus size={14} />
-              New agent
-            </button>
-            */}
-          </div>
+            {/* ── Navigation ── */}
+            <SectionLabel>Navigation</SectionLabel>
+            <nav style={{ padding: "0 4px", display: "flex", flexDirection: "column" }}>
+              {NAV_ITEMS.map(({ id, label, Icon }) => (
+                <NavItem
+                  key={id}
+                  id={id}
+                  label={label}
+                  Icon={Icon}
+                  active={currentPage === id}
+                  onClick={() => router.push(`/${id}/${activeAgent?._id || "default"}`)}
+                  badge={
+                    id === "leads" && leadCount > 0 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {inOutreachCount > 0 && (
+                          <CountBadge count={inOutreachCount} color="var(--color-green)" />
+                        )}
+                        <CountBadge count={leadCount} />
+                      </div>
+                    ) : undefined
+                  }
+                  pulseBadge={id === "crons" && enabledCronsCount > 0}
+                />
+              ))}
+            </nav>
 
-          {/* Menu */}
-          <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Menu
-          </div>
-          <nav className="px-2.5 flex flex-col gap-0.5">
-            {NAV_ITEMS.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                onClick={() => router.push(`/${id}/${activeAgent?._id || "default"}`)}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                  currentPage === id
-                    ? "text-[var(--color-accent2)]"
-                    : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
-                }`}
-                style={currentPage === id ? { background: "rgba(108,99,255,0.12)" } : undefined}
-              >
-                <Icon size={16} className="flex-shrink-0" />
-                {label}
-
-                {/* Leads: total + in-outreach badge */}
-                {id === "leads" && (
-                  <span className="ml-auto flex items-center gap-1">
-                    {inOutreachCount > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-semibold"
-                        style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>
-                        {inOutreachCount} live
-                      </span>
-                    )}
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
-                      style={{ background: "var(--color-bg4)", color: "var(--color-text3)" }}>
-                      {leadCount}
-                    </span>
-                  </span>
-                )}
-
-                {/* Schedules: pulsing dot when active crons exist */}
-                {id === "crons" && enabledCronsCount > 0 && (
-                  <span className="ml-auto relative flex items-center justify-center w-4 h-4">
-                    <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full opacity-60"
-                      style={{ background: "#22c97a" }} />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5"
-                      style={{ background: "#22c97a" }} />
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-
-          {/* Outreach Channels */}
-          <div className="px-[18px] pt-4 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Outreach
-          </div>
-          <div className="px-2.5 pb-2 flex flex-col gap-1">
-            {OUTREACH_CHANNELS.map(({ key, label, Icon, color, enabledKey, valueKey }) => {
-              const enabled = outreach[enabledKey] !== "false";
-              const value = outreach[valueKey] || "";
-              return (
-                <div
-                  key={key}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-[10px]"
-                  style={{ background: enabled ? `${color}0d` : "transparent", opacity: enabled ? 1 : 0.45 }}
-                >
-                  <span
-                    className="shrink-0 flex items-center justify-center rounded-[7px]"
-                    style={{ width: 26, height: 26, background: enabled ? `${color}22` : "var(--color-bg3)" }}
+            {/* ── Outreach Channels ── */}
+            <SectionLabel>Channels</SectionLabel>
+            <div style={{ padding: "0 4px", display: "flex", flexDirection: "column", gap: 2, marginBottom: 4 }}>
+              {OUTREACH_CHANNELS.map(({ key, label, Icon, color, bg, enabledKey, valueKey }) => {
+                const enabled = outreach[enabledKey] !== "false";
+                const value   = outreach[valueKey] || "";
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "7px 10px",
+                      borderRadius: "var(--radius-lg)",
+                      background: enabled ? bg : "transparent",
+                      opacity: enabled ? 1 : 0.45,
+                      transition: "opacity var(--transition-fast)",
+                    }}
                   >
-                    <Icon size={13} style={{ color: enabled ? color : "var(--color-text3)" }} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11.5px] font-semibold leading-none" style={{ color: "var(--color-text2)" }}>
-                      {label}
+                    <span
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: "var(--radius-md)",
+                        background: enabled ? `${bg}` : "var(--color-bg3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon size={13} style={{ color: enabled ? color : "var(--color-text4)" }} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)", margin: 0, lineHeight: 1.2 }}>
+                        {label}
+                      </p>
+                      <p
+                        style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                        title={value}
+                      >
+                        {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
+                      </p>
                     </div>
-                    <div className="text-[10px] mt-0.5 truncate" style={{ color: enabled && value ? color : "var(--color-text3)" }} title={value}>
-                      {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
-                    </div>
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: enabled ? "var(--color-green)" : "var(--color-bg5)",
+                        flexShrink: 0,
+                      }}
+                    />
                   </div>
-                  <span
-                    className="shrink-0 w-1.5 h-1.5 rounded-full"
-                    style={{ background: enabled ? "#22c97a" : "#cbd5e1" }}
+                );
+              })}
+            </div>
+
+            {/* ── Config ── */}
+            <SectionLabel>Config</SectionLabel>
+            <div style={{ padding: "0 4px", display: "flex", flexDirection: "column" }}>
+              <NavItem
+                id="settings"
+                label="Settings"
+                Icon={IconSettings}
+                active={currentPage === "settings"}
+                onClick={() => router.push(`/settings/${activeAgent?._id || "default"}`)}
+              />
+              <NavItem
+                id="plans"
+                label="Plans"
+                Icon={IconCreditCard}
+                active={currentPage === "plans"}
+                onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
+                badge={
+                  miniUsage ? (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: "var(--radius-full)",
+                        background: nearLimit ? "var(--color-red-bg)" : "var(--color-bg4)",
+                        color: nearLimit ? "var(--color-red)" : "var(--color-text3)",
+                      }}
+                    >
+                      {PLANS[miniUsage.planId].name}
+                    </span>
+                  ) : undefined
+                }
+              />
+            </div>
+
+            {/* ── Admin (conditional) ── */}
+            {userEmail?.toLowerCase() === "admin@salesagent.ai" && (
+              <>
+                <SectionLabel>Admin</SectionLabel>
+                <div style={{ padding: "0 4px" }}>
+                  <NavItem
+                    id="superadmin"
+                    label="Superadmin"
+                    Icon={IconShield}
+                    active={(currentPage as string) === "superadmin"}
+                    onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
                   />
                 </div>
-              );
-            })}
-          </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
-          {/* Config */}
-          <div className="px-[18px] pt-2 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-            Config
-          </div>
-          <div className="px-2.5 flex flex-col gap-0.5">
-            <button
-              onClick={() => router.push(`/settings/${activeAgent?._id || "default"}`)}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                currentPage === "settings" ? "text-[var(--color-accent2)]" : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
-              }`}
-              style={currentPage === "settings" ? { background: "rgba(108,99,255,0.12)" } : undefined}
-            >
-              <IconSettings size={16} />
-              Settings
-            </button>
-            <button
-              onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                currentPage === "plans" ? "text-[var(--color-accent2)]" : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
-              }`}
-              style={currentPage === "plans" ? { background: "rgba(108,99,255,0.12)" } : undefined}
-            >
-              <IconCreditCard size={16} />
-              Plans
-              {miniUsage && (
-                <span
-                  className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
-                  style={{
-                    background: nearLimit ? "rgba(239,68,68,0.1)" : "var(--color-bg4)",
-                    color: nearLimit ? "#ef4444" : "var(--color-text3)",
-                  }}
-                >
-                  {PLANS[miniUsage.planId].name}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Admin */}
-          {userEmail?.toLowerCase() === "admin@salesagent.ai" && (
-            <>
-              <div className="px-[18px] pt-2 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-                Admin
-              </div>
-              <div className="px-2.5 flex flex-col gap-0.5">
-                <button
-                  onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
-                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] transition-colors duration-150 cursor-pointer w-full text-left ${
-                    (currentPage as string) === "superadmin" ? "text-[var(--color-accent2)]" : "text-[var(--color-text2)] hover:text-[var(--color-text)]"
-                  }`}
-                  style={(currentPage as string) === "superadmin" ? { background: "rgba(108,99,255,0.12)" } : undefined}
-                >
-                  <IconShield size={16} />
-                  Superadmin
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* Usage mini-bar */}
-          {miniUsage && (
-            <div
-              className="mx-2.5 mt-auto mb-3 rounded-[10px] p-3"
-              style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)" }}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-semibold" style={{ color: "var(--color-text3)" }}>
-                  Leads this month
-                </span>
-                <span className="text-[11px] font-bold" style={{ color: nearLimit ? "#ef4444" : "var(--color-text2)" }}>
-                  {miniUsage.leadsScraped}/{miniUsage.leadsLimit === -1 ? "∞" : miniUsage.leadsLimit}
-                </span>
-              </div>
-              <div style={{ height: 4, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
-                <div style={{
+      {/* ── Usage Mini-bar (Footer) ── */}
+      {miniUsage && (
+        <div
+          style={{
+            padding: "12px",
+            borderTop: "1px solid var(--color-bg4)",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius-lg)",
+              background: "var(--color-bg3)",
+              border: "1px solid var(--color-bg4)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--color-text3)" }}>
+                Monthly quota
+              </span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: nearLimit ? "var(--color-red)" : "var(--color-text2)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {miniUsage.leadsScraped}/{miniUsage.leadsLimit === -1 ? "∞" : miniUsage.leadsLimit}
+              </span>
+            </div>
+            <div style={{ height: 4, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
+              <div
+                style={{
                   height: "100%",
                   width: miniUsage.leadsLimit === -1 ? "5%" : `${usagePct}%`,
                   borderRadius: 99,
-                  background: nearLimit ? "#ef4444" : planColor,
+                  background: nearLimit ? "var(--color-red)" : planColor,
                   transition: "width 0.4s ease",
-                }} />
-              </div>
-              {nearLimit && (
-                <button
-                  onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
-                  className="w-full mt-2 text-[11px] font-semibold py-1 rounded-md"
-                  style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "none", cursor: "pointer" }}
-                >
-                  Upgrade plan →
-                </button>
-              )}
+                }}
+              />
             </div>
-          )}
-        </>
+            {nearLimit && (
+              <button
+                onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  padding: "5px 0",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--color-red-bg)",
+                  color: "var(--color-red)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  cursor: "pointer",
+                  transition: "background var(--transition-fast)",
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.15)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-red-bg)")}
+              >
+                Upgrade plan →
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </aside>
   );

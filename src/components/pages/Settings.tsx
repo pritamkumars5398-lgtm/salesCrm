@@ -1081,7 +1081,7 @@ export default function Settings() {
 
                 {/* Edge-case warnings */}
                 {(!values["callGreeting"] || !values["callScript"] || !values["callerPhone"]) && (
-                  <div className="px-5 pb-4 flex flex-col gap-2">
+                  <div className="px-5 pb-4 flex flex-col" style={{ gap: 8 }}>
                     {!values["callerPhone"] && (
                       <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
                         <IconAlertTriangle size={13} /> Caller Phone Number is missing — outbound calls will fail.

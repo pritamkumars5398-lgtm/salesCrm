@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { IconChecks } from "@tabler/icons-react";
+import { IconChecks, IconFileText, IconDownload } from "@tabler/icons-react";
 import type { Message, Lead } from "@/store/types";
 
 function formatTime(iso: string) {
@@ -49,7 +49,7 @@ export default function WAConvo({ messages, lead, agentTyping, leadTyping }: Pro
 
       {messages.map((msg, i) => {
         const isAgent = msg.role === "agent";
-        const rawMediaUrl = (msg.meta?.mediaUrl as string | undefined) || (msg.content.startsWith("http") && /\.(jpeg|jpg|gif|png|webp)/i.test(msg.content) ? msg.content : null);
+        const rawMediaUrl = (msg.meta?.mediaUrl as string | undefined) || (msg.content.startsWith("http") && /\.(jpeg|jpg|gif|png|webp|pdf|doc|docx)/i.test(msg.content) ? msg.content : null);
         const mediaUrl = rawMediaUrl && rawMediaUrl.includes("api.twilio.com")
           ? `/api/whatsapp/media?agentId=${lead.agentId}&url=${encodeURIComponent(rawMediaUrl)}`
           : rawMediaUrl;
@@ -69,19 +69,44 @@ export default function WAConvo({ messages, lead, agentTyping, leadTyping }: Pro
                   borderColor: isAgent ? "rgba(34, 201, 122, 0.18)" : "rgba(0,0,0,0.06)",
                 }}
               >
-                <img 
-                  src={mediaUrl} 
-                  alt="WhatsApp Media" 
-                  className="max-w-full rounded-[10px] object-cover max-h-[220px] block" 
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                    const fallback = e.currentTarget.parentElement?.querySelector(".img-fallback");
-                    if (fallback) (fallback as HTMLElement).style.display = "block";
-                  }}
-                />
-                <div className="img-fallback hidden px-2 py-1.5 text-[13px] leading-[1.5]" style={{ color: "var(--color-text)", wordBreak: "break-word" }}>
-                  {msg.content}
-                </div>
+                {/\.(pdf|doc|docx)/i.test(mediaUrl) ? (
+                  <a 
+                    href={mediaUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-3 rounded-[10px] transition-colors"
+                    style={{ background: "var(--color-bg4)", textDecoration: "none" }}
+                  >
+                    <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center flex-shrink-0 text-blue-500">
+                      <IconFileText size={18} />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="text-[12px] font-medium truncate" style={{ color: "var(--color-text)" }}>
+                        {mediaUrl.split('/').pop() || "Document"}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text3)" }}>
+                        Click to view
+                      </div>
+                    </div>
+                    <IconDownload size={16} style={{ color: "var(--color-text3)" }} />
+                  </a>
+                ) : (
+                  <>
+                    <img 
+                      src={mediaUrl} 
+                      alt="WhatsApp Media" 
+                      className="max-w-full rounded-[10px] object-cover max-h-[220px] block" 
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                        const fallback = e.currentTarget.parentElement?.querySelector(".img-fallback");
+                        if (fallback) (fallback as HTMLElement).style.display = "block";
+                      }}
+                    />
+                    <div className="img-fallback hidden px-2 py-1.5 text-[13px] leading-[1.5]" style={{ color: "var(--color-text)", wordBreak: "break-word" }}>
+                      {msg.content}
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center justify-end gap-1 mt-1 px-1.5 pb-0.5 text-[9.5px]" style={{ color: "var(--color-text3)" }}>
                   <span>
                     {formatTime(msg.timestamp)}

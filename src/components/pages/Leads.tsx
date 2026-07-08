@@ -4,12 +4,15 @@ import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
   IconExternalLink, IconAlertCircle, IconTrash, IconRestore, IconTrashX,
+  IconUsers,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
 import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
+import EmptyState from "@/components/ui/EmptyState";
+import { SkeletonTableRow } from "@/components/ui/Skeleton";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 import { startLeadOutreach, mapWithConcurrency, deleteLeads, restoreLeads, permanentlyDeleteLeads } from "@/lib/api/leads.api";
@@ -186,16 +189,8 @@ export default function Leads({ onAddLead }: Props) {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading leads...</div>
-        </div>
-      </div>
-    );
-  }
+  // loading state — table with skeleton rows (no full-screen spinner)
+  const isLoading = loading;
 
   /** Leads that still qualify for a run: new, has contact info, not already sent/in-flight. */
   const remainingEligible = leads.filter(
@@ -437,42 +432,69 @@ export default function Leads({ onAddLead }: Props) {
     (lead.channels?.[0] as Channel) ?? "whatsapp";
 
   return (
-    <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-[20px] font-semibold tracking-tight">
-          Leads{" "}
-          <span className="text-[13px] font-normal" style={{ color: "var(--color-text3)" }}>
-            Manage and start outreach
-          </span>
+    <div style={{ padding: "28px 28px 40px", minHeight: "100vh", background: "var(--color-bg)" }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text)", letterSpacing: "-0.02em", margin: 0 }}>
+          {trashView ? "🗑 Trash" : "Leads"}
         </h1>
+        <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "4px 0 0", fontWeight: 400 }}>
+          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${leads.length > 0 ? ` · ${leads.length} leads` : ""}`}
+        </p>
       </div>
 
 
-      {/* Status tabs */}
+      {/* Status pill tabs */}
       <div
-        className="flex gap-1 mb-5 rounded-[14px] p-1 w-full md:w-fit overflow-x-auto flex-nowrap border"
-        style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 16,
+          padding: 4,
+          background: "var(--color-bg2)",
+          border: "1px solid var(--color-bg4)",
+          borderRadius: "var(--radius-xl)",
+          width: "fit-content",
+          maxWidth: "100%",
+          overflowX: "auto",
+          flexWrap: "nowrap",
+        }}
       >
         {STATUS_TABS.map((tab) => {
           const count = tab.value === "all"
             ? leads.length
             : leads.filter((l) => l.status === tab.value).length;
+          const isActive = statusFilter === tab.value;
           return (
             <button
               key={tab.value}
               onClick={() => setStatusFilter(tab.value)}
-              className="flex items-center gap-1.5 px-4 py-[7px] rounded-lg text-[12.5px] font-medium transition-colors duration-150 whitespace-nowrap"
               style={{
-                background: statusFilter === tab.value ? "var(--color-bg4)" : "transparent",
-                color: statusFilter === tab.value ? "var(--color-text)" : "var(--color-text2)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px",
+                borderRadius: "var(--radius-lg)",
+                border: isActive ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
+                background: isActive ? "var(--color-primary-subtle)" : "transparent",
+                color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
+                fontSize: 12.5,
+                fontWeight: isActive ? 700 : 500,
+                cursor: "pointer",
+                transition: "all var(--transition-fast)",
+                whiteSpace: "nowrap",
               }}
             >
               {tab.label}
               <span
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
                 style={{
-                  background: statusFilter === tab.value ? "rgba(108,99,255,0.12)" : "var(--color-bg)",
-                  color: statusFilter === tab.value ? "var(--color-accent2)" : "var(--color-text3)",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  borderRadius: "var(--radius-full)",
+                  background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
+                  color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
+                  fontFamily: "var(--font-mono)",
                 }}
               >
                 {count}
@@ -483,18 +505,37 @@ export default function Leads({ onAddLead }: Props) {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2.5 mb-4 w-full">
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        {/* Search */}
         <div
-          className="flex items-center gap-2 px-3 py-[7px] rounded-[10px] w-full sm:max-w-[280px] border transition-colors focus-within:border-[#6c63ff]"
-          style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 12px",
+            borderRadius: "var(--radius-lg)",
+            background: "var(--color-bg2)",
+            border: "1px solid var(--color-bg4)",
+            width: "100%",
+            maxWidth: 280,
+            boxShadow: "var(--shadow-xs)",
+            transition: "border-color var(--transition-fast), box-shadow var(--transition-fast)",
+          }}
+          onFocusCapture={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-primary-light)";
+            (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 3px var(--color-primary-glow)";
+          }}
+          onBlurCapture={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-bg4)";
+            (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-xs)";
+          }}
         >
-          <IconSearch size={15} style={{ color: "var(--color-text3)" }} />
+          <IconSearch size={14} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, company, email..."
-            className="bg-transparent border-none outline-none text-[13px] w-full"
-            style={{ color: "var(--color-text)" }}
+            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--color-text)", width: "100%" }}
           />
         </div>
         <select
@@ -571,7 +612,7 @@ export default function Leads({ onAddLead }: Props) {
             <button
               onClick={() => setRunOpen((v) => !v)}
               disabled={campaignRunning}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold !border-none !text-white transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ease-out border-none text-white"
               style={{
                 background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
                 cursor: campaignRunning ? "not-allowed" : "pointer",
@@ -633,11 +674,11 @@ export default function Leads({ onAddLead }: Props) {
           )}
           <button
             onClick={() => setMissingContact((v) => !v)}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
             style={{
-              background: missingContact ? "rgba(255,107,107,0.1)" : "var(--color-bg2)",
-              borderColor: missingContact ? "#ff6b6b" : "rgba(0,0,0,0.1)",
-              color: missingContact ? "#ff6b6b" : "var(--color-text2)",
+              background: missingContact ? "var(--color-red-bg)" : "var(--color-bg2)",
+              borderColor: missingContact ? "var(--color-red)" : "var(--color-bg4)",
+              color: missingContact ? "var(--color-red)" : "var(--color-text2)",
             }}
             title="Show leads missing email & phone"
           >
@@ -645,7 +686,7 @@ export default function Leads({ onAddLead }: Props) {
           </button>
           <button
             onClick={cleanupIncomplete}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
             style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
             title="Delete all leads missing email or phone"
           >
@@ -653,34 +694,59 @@ export default function Leads({ onAddLead }: Props) {
           </button>
           <button
             onClick={() => { setTrashView((v) => !v); setSelected(new Set()); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border transition-all duration-150"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
             style={{
-              background: trashView ? "rgba(99,102,241,0.12)" : "var(--color-bg2)",
-              borderColor: trashView ? "#6366f1" : "rgba(0,0,0,0.1)",
-              color: trashView ? "#6366f1" : "var(--color-text2)",
+              background: trashView ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+              borderColor: trashView ? "var(--color-primary-light)" : "var(--color-bg4)",
+              color: trashView ? "var(--color-primary-light)" : "var(--color-text2)",
             }}
             title={trashView ? "Back to active leads" : "View trashed leads"}
           >
             <IconTrash size={14} /> {trashView ? "Viewing Trash" : "Trash"}
           </button>
-          <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={onAddLead}>
+          <button className="btn btn-secondary btn-sm" onClick={onAddLead}>
             <IconPlus size={14} /> Add manually
           </button>
-          <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg">
+          <button className="btn btn-primary btn-sm">
             <IconRefresh size={14} /> Sync Apify
           </button>
         </div>
       </div>
 
-      {/* Bulk bar */}
+      {/* Bulk action bar — slides in when items selected */}
       {selected.size > 0 && (
         <div
-          className="flex items-center gap-3 px-[18px] py-2.5 mb-2 text-[12.5px] rounded-t-[14px] border-b"
-          style={{ background: "rgba(108,99,255,0.12)", borderColor: "rgba(0,0,0,0.1)", color: "var(--color-accent2)" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 16px",
+            marginBottom: 8,
+            background: "var(--color-primary-subtle)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
+            animation: "slideDown 150ms ease both",
+          }}
         >
-          <IconCheck size={14} />
-          <span>{selected.size} lead{selected.size > 1 ? "s" : ""} selected</span>
-          <div className="ml-auto flex gap-2">
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "var(--radius-md)",
+              background: "var(--color-primary-subtle)",
+              border: "1px solid rgba(99,102,241,0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--color-primary-light)",
+            }}
+          >
+            <IconCheck size={12} />
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-primary-light)" }}>
+            {selected.size} lead{selected.size > 1 ? "s" : ""} selected
+          </span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {trashView ? (
               <>
                 <button
@@ -725,13 +791,10 @@ export default function Leads({ onAddLead }: Props) {
       )}
 
       {/* Table */}
-      <div
-        className="rounded-[14px] overflow-x-auto border"
-        style={{ background: "var(--color-bg2)", borderColor: "rgba(0,0,0,0.1)" }}
-      >
-        <table className="w-full border-collapse min-w-[950px]">
+      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+        <table className="data-table min-w-[1100px]">
           <thead>
-            <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.1)" }}>
+            <tr>
               <th className="px-4 py-3 text-left" style={{ width: 40 }}>
                 <input
                   type="checkbox"
@@ -752,10 +815,18 @@ export default function Leads({ onAddLead }: Props) {
             </tr>
           </thead>
           <tbody>
-            {leads.length === 0 && (
+            {isLoading && Array.from({ length: 8 }).map((_, i) => (
+              <SkeletonTableRow key={i} cols={9} />
+            ))}
+            {!isLoading && leads.length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center py-12 text-[12px]" style={{ color: "var(--color-text3)" }}>
-                  {trashView ? "Trash is empty." : "No leads found. Add your first lead or sync Apify."}
+                <td colSpan={9}>
+                  <EmptyState
+                    icon={<IconUsers size={24} />}
+                    title={trashView ? "Trash is empty" : "No leads found"}
+                    description={trashView ? "Deleted leads appear here." : "Add your first lead or sync from Apify."}
+                    compact
+                  />
                 </td>
               </tr>
             )}
@@ -763,12 +834,11 @@ export default function Leads({ onAddLead }: Props) {
               <tr
                 key={lead._id}
                 onClick={() => openDrawer(lead, primaryChannel(lead))}
-                className={`cursor-pointer transition-colors hover:bg-white/[0.02] ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
+                className={`cursor-pointer transition-colors ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
                 style={{
                   background: lead.outreachStatus === "sending"
-                    ? "rgba(99,102,241,0.12)"
-                    : selected.has(lead._id) ? "rgba(108,99,255,0.06)" : undefined,
-                  borderBottom: i < leads.length - 1 ? "1px solid rgba(0,0,0,0.1)" : "none",
+                    ? "var(--color-primary-subtle)"
+                    : selected.has(lead._id) ? "rgba(99,102,241,0.06)" : undefined,
                 }}
               >
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>

@@ -233,12 +233,21 @@ export default function Home({ params }: PageProps) {
   if (!mounted) {
     return (
       <div
-        className="flex h-screen items-center justify-center bg-slate-950 text-slate-100"
-        style={{ fontFamily: "var(--font-sans)" }}
+        style={{
+          display: "flex",
+          height: "100vh",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--color-bg)",
+          color: "var(--color-text)",
+          fontFamily: "var(--font-sans)",
+        }}
       >
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-500 animate-ping opacity-75" />
-          <div className="text-sm font-semibold tracking-wide text-slate-400">Loading SalesAgent...</div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <div className="live-dot" style={{ transform: "scale(1.5)" }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text3)", letterSpacing: "0.02em" }}>
+            Loading SalesAgent...
+          </div>
         </div>
       </div>
     );

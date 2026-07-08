@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   IconX, IconRobot, IconBrandWhatsapp, IconMail, IconMessage, IconPhone, IconSend,
-  IconAlertCircle, IconCalendarCheck, IconRefresh, IconPhoto, IconLoader2,
+  IconAlertCircle, IconCalendarCheck, IconRefresh, IconPhoto, IconLoader2, IconPaperclip
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel } from "@/store/types";
@@ -73,6 +73,12 @@ export default function ConversationDrawer() {
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File is too large. Max size is 5MB.", "error");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setUploading(true);
     const formData = new FormData();
@@ -383,7 +389,7 @@ export default function ConversationDrawer() {
             className="flex items-center gap-2 px-4 py-2 flex-shrink-0 border-b"
             style={{ borderColor: "rgba(0,0,0,0.1)" }}
           >
-            <Avatar name={lead.fullName} size={30} />
+            <Avatar name={lead.fullName} size="md" />
             <div className="flex-1 min-w-0">
               <div className="text-[13.5px] font-semibold truncate">{lead.fullName}</div>
               <div className="text-[11px] truncate" style={{ color: "var(--color-text3)" }}>
@@ -494,7 +500,7 @@ export default function ConversationDrawer() {
             style={{ borderColor: "rgba(0,0,0,0.1)", background: "var(--color-bg2)" }}
           >
             {/* Simulation role toggle */}
-            <div className="flex items-center justify-between mb-2 px-1">
+            <div className="flex items-center justify-between mb-2 px-1 flex-wrap gap-2" style={{ rowGap: 8 }}>
               <div className="flex gap-0.5 bg-[var(--color-bg3)] p-0.5 rounded-lg border border-[rgba(0,0,0,0.06)]">
                 <button
                   type="button"
@@ -526,8 +532,8 @@ export default function ConversationDrawer() {
 
             {!agentOn && sendAs === "agent" && (
               <div
-                className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 mb-2 text-[11.5px] border border-dashed"
-                style={{ background: "rgba(255,107,107,0.05)", borderColor: "rgba(255,107,107,0.2)", color: "#ff6b6b" }}
+                className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 mb-2 text-[11.5px] border border-dashed w-full"
+                style={{ background: "rgba(255,107,107,0.05)", borderColor: "rgba(255,107,107,0.2)", color: "#ff6b6b", marginTop: 4 }}
               >
                 <IconAlertCircle size={14} />
                 Agent paused — you are replying manually
@@ -599,14 +605,14 @@ export default function ConversationDrawer() {
                     {uploading ? (
                       <IconLoader2 size={15} className="animate-spin" />
                     ) : (
-                      <IconPhoto size={15} />
+                      <IconPaperclip size={15} />
                     )}
                   </button>
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleImageUpload}
-                    accept="image/*"
+                    accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     className="hidden"
                   />
                 </>

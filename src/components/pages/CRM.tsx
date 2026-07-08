@@ -81,7 +81,7 @@ export default function CRM() {
                       onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(0,0,0,0.1)")}
                     >
                       <div className="flex items-center gap-2 mb-1 min-w-0">
-                        <Avatar name={lead.fullName} size={24} />
+                        <Avatar name={lead.fullName} size="sm" />
                         <div className="text-[13px] font-medium truncate" title={lead.fullName}>{lead.fullName}</div>
                       </div>
                       <div className="text-[11.5px] truncate" style={{ color: "var(--color-text3)" }} title={lead.company}>{lead.company}</div>

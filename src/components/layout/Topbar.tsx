@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle } from "@tabler/icons-react";
+import {
+  IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle,
+} from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { avatarColor, getInitials } from "@/lib/utils/avatar";
 import { PAGE_TITLES } from "@/lib/constants/pages";
@@ -18,12 +20,16 @@ interface Props {
 
 export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const router = useRouter();
-  const { currentPage, activeAgent, userName, setSidebarOpenMobile, updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign } = useAppStore();
+  const {
+    currentPage, activeAgent, userName,
+    setSidebarOpenMobile, updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
+  } = useAppStore();
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // ── Click-outside to close status menu (preserved exactly) ───
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -34,8 +40,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Resume progress display if this agent already has a campaign in flight
-  // (e.g. after a page reload while sending).
+  // ── Resume campaign progress (preserved exactly) ─────────────
   useEffect(() => {
     if (!activeAgent) return;
     let cancelled = false;
@@ -47,6 +52,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     return () => { cancelled = true; };
   }, [activeAgent?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Business logic handlers (preserved exactly) ──────────────
   async function handlePublish() {
     if (!activeAgent || updatingStatus) return;
     setUpdatingStatus(true);
@@ -56,7 +62,6 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
       updateAgent(activeAgent._id, { status: "active" });
       setCronJobs(cronJobs.map((c) => ({ ...c, enabled: true })));
       setStatusMenuOpen(false);
-
       if (res.schedules && res.schedules > 0) {
         showToast(`Agent published — ${res.schedules} schedule${res.schedules !== 1 ? "s" : ""} armed. Outreach runs at the scheduled times.`, "success");
       } else {
@@ -93,177 +98,346 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     }
   }
 
-  const initials = getInitials(userName || "U");
-  const bgColor  = avatarColor(userName || "U");
-
+  const initials   = getInitials(userName || "U");
+  const bgColor    = avatarColor(userName || "U");
   const isPublished = activeAgent?.status === "active";
+  const pageTitle   = PAGE_TITLES[currentPage] ?? currentPage;
 
   return (
     <header
-      className="flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-20 border-b"
       style={{
         height: 54,
-        background: "rgba(255,255,255,0.7)", backdropFilter: "blur(12px)",
-        borderColor: "#e2e8f0",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 20px",
+        background: "var(--color-bg2)",
+        opacity: 0.95,
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderBottom: "1px solid var(--color-bg4)",
+        flexShrink: 0,
+        zIndex: 20,
+        position: "sticky",
+        top: 0,
       }}
     >
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Hamburger Menu Icon */}
+      {/* ── Left: Hamburger + Title ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Mobile hamburger */}
         <button
           onClick={() => setSidebarOpenMobile(true)}
-          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-none bg-transparent cursor-pointer md:hidden flex items-center justify-center"
+          className="md:hidden"
+          aria-label="Open sidebar"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--color-text3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 6,
+            borderRadius: "var(--radius-md)",
+            transition: "background var(--transition-fast)",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg3)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
         >
           <IconMenu2 size={18} />
         </button>
 
-        <span className="text-[13px] sm:text-[14px] font-medium">{PAGE_TITLES[currentPage] ?? currentPage}</span>
-        {activeAgent && (
-          <span className="text-[11px] sm:text-[12px] font-mono truncate max-w-[100px] sm:max-w-none" style={{ color: "var(--color-text3)" }}>
-            / {activeAgent.name}
+        {/* Page breadcrumb */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", letterSpacing: "-0.01em" }}>
+            {pageTitle}
           </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 sm:gap-2.5">
-        <CampaignProgress />
-        {activeAgent && (
-          <div ref={menuRef} className="relative">
-            <button
-              onClick={() => setStatusMenuOpen(!statusMenuOpen)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] sm:text-[10px] font-semibold tracking-wide uppercase cursor-pointer transition-all duration-150 select-none bg-white hover:bg-slate-50"
-              style={{
-                borderColor: isPublished ? "rgba(34, 201, 122, 0.2)" : "rgba(148, 163, 184, 0.2)",
-                color: isPublished ? "#22c97a" : "#64748b",
-              }}
-            >
+          {activeAgent && (
+            <>
+              <span style={{ fontSize: 14, color: "var(--color-bg5)", fontWeight: 300 }}>/</span>
               <span
-                className="w-1.5 h-1.5 rounded-full inline-block shrink-0"
                 style={{
-                  background: isPublished ? "#22c97a" : "#94a3b8",
-                }}
-              />
-              <span>{isPublished ? "Published" : "Draft"}</span>
-              <IconChevronDown size={12} className={`transition-transform duration-200 ${statusMenuOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {statusMenuOpen && (
-              <div
-                className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50 flex flex-col gap-2 transition-all duration-150"
-                style={{
-                  borderColor: "#e2e8f0",
-                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "var(--color-text3)",
+                  fontFamily: "var(--font-mono)",
+                  maxWidth: 120,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
-                <div className="px-2 py-1.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 m-0">Agent Visibility</p>
-                  <p className="text-[12px] text-slate-600 mt-1 mb-0 leading-normal">
+                {activeAgent.name}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Right: Actions ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Campaign progress widget */}
+        <CampaignProgress />
+
+        {/* Agent status pill + dropdown */}
+        {activeAgent && (
+          <div ref={menuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setStatusMenuOpen(!statusMenuOpen)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 10px",
+                borderRadius: "var(--radius-full)",
+                border: `1px solid ${isPublished ? "rgba(16,185,129,0.25)" : "rgba(148,163,184,0.3)"}`,
+                background: isPublished ? "var(--color-green-bg)" : "var(--color-bg3)",
+                color: isPublished ? "var(--color-green)" : "var(--color-text3)",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                cursor: "pointer",
+                transition: "all var(--transition-fast)",
+                userSelect: "none",
+              }}
+            >
+              {/* Animated live dot when published */}
+              <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                {isPublished && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      background: "var(--color-green)",
+                      animation: "pulse-ring 1.4s ease-out infinite",
+                    }}
+                  />
+                )}
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: isPublished ? "var(--color-green)" : "var(--color-text4)",
+                    display: "block",
+                    position: "relative",
+                  }}
+                />
+              </span>
+              {isPublished ? "Published" : "Draft"}
+              <IconChevronDown
+                size={12}
+                style={{
+                  transition: "transform 200ms ease",
+                  transform: statusMenuOpen ? "rotate(180deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
+
+            {/* Dropdown */}
+            {statusMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 8px)",
+                  width: 272,
+                  borderRadius: "var(--radius-xl)",
+                  background: "#fff",
+                  border: "1px solid var(--color-bg4)",
+                  boxShadow: "var(--shadow-xl)",
+                  padding: 8,
+                  zIndex: 50,
+                  animation: "slideDown 200ms ease both",
+                }}
+              >
+                {/* Description */}
+                <div style={{ padding: "8px 10px 6px" }}>
+                  <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text4)", margin: "0 0 4px" }}>
+                    Agent Visibility
+                  </p>
+                  <p style={{ fontSize: 12.5, color: "var(--color-text2)", margin: 0, lineHeight: 1.5 }}>
                     {isPublished
-                      ? "Your agent is currently Published. Automated schedules and manual outreach are active."
-                      : "Your agent is currently in Draft (Unpublished). Outreach runs are paused."}
+                      ? "Your agent is Published. Automated schedules and outreach are active."
+                      : "Your agent is in Draft. Outreach runs are paused."}
                   </p>
                 </div>
 
+                {/* Issues */}
                 {publishIssues.length > 0 && (
-                  <div className="mx-1 px-3 py-2 rounded-lg" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-red-500 m-0 flex items-center gap-1">
-                      <IconAlertTriangle size={11} /> Fix before publishing
+                  <div
+                    style={{
+                      margin: "6px 4px",
+                      padding: "10px 12px",
+                      borderRadius: "var(--radius-lg)",
+                      background: "var(--color-red-bg)",
+                      border: "1px solid rgba(239,68,68,0.2)",
+                    }}
+                  >
+                    <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-red)", margin: "0 0 5px", display: "flex", alignItems: "center", gap: 5 }}>
+                      <IconAlertTriangle size={12} /> Fix before publishing
                     </p>
-                    <ul className="m-0 mt-1 pl-4 text-[11px] text-red-600 leading-relaxed">
-                      {publishIssues.map((issue, i) => <li key={i}>{issue}</li>)}
+                    <ul style={{ margin: 0, paddingLeft: 14 }}>
+                      {publishIssues.map((issue, i) => (
+                        <li key={i} style={{ fontSize: 12, color: "var(--color-red)", lineHeight: 1.6 }}>{issue}</li>
+                      ))}
                     </ul>
                   </div>
                 )}
 
-                <div className="border-t my-1" style={{ borderColor: "#f1f5f9" }} />
+                <div style={{ height: 1, background: "var(--color-bg3)", margin: "6px 0" }} />
 
+                {/* Publish option */}
                 <button
                   disabled={updatingStatus || isPublished}
                   onClick={handlePublish}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[13px] font-medium border-none cursor-pointer transition-all duration-150 w-full bg-transparent ${
-                    isPublished
-                      ? "text-emerald-700 font-semibold bg-emerald-50/50"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-lg)",
+                    border: "none",
+                    cursor: isPublished ? "default" : "pointer",
+                    background: isPublished ? "var(--color-green-bg)" : "transparent",
+                    transition: "background var(--transition-fast)",
+                    textAlign: "left",
+                    opacity: updatingStatus ? 0.7 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (!isPublished) (e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg3)"; }}
+                  onMouseLeave={(e) => { if (!isPublished) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full inline-block shrink-0"
-                    style={{ background: "#22c97a" }}
-                  />
-                  <div className="flex-1">
-                    <p className="font-semibold m-0 leading-none text-slate-800 text-[12px]">Publish Agent</p>
-                    <p className="text-[10px] text-slate-400 m-0 mt-1 font-normal">Go live & start outreach</p>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-green)", flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-text)", margin: "0 0 1px" }}>Publish Agent</p>
+                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Go live & start outreach</p>
                   </div>
-                  {isPublished && (
-                    <span className="text-[10px] font-bold text-emerald-600 shrink-0">Active</span>
-                  )}
+                  {isPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-green)" }}>Active</span>}
                 </button>
 
+                {/* Unpublish option */}
                 <button
                   disabled={updatingStatus || !isPublished}
                   onClick={handleUnpublish}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-[13px] font-medium border-none cursor-pointer transition-all duration-150 w-full bg-transparent ${
-                    !isPublished
-                      ? "text-slate-500 font-semibold bg-slate-50"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-lg)",
+                    border: "none",
+                    cursor: !isPublished ? "default" : "pointer",
+                    background: !isPublished ? "var(--color-bg3)" : "transparent",
+                    transition: "background var(--transition-fast)",
+                    textAlign: "left",
+                    opacity: updatingStatus ? 0.7 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (isPublished) (e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg3)"; }}
+                  onMouseLeave={(e) => { if (isPublished) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full inline-block shrink-0"
-                    style={{ background: "#94a3b8" }}
-                  />
-                  <div className="flex-1">
-                    <p className="font-semibold m-0 leading-none text-slate-800 text-[12px]">Unpublish (Draft)</p>
-                    <p className="text-[10px] text-slate-400 m-0 mt-1 font-normal">Pause all campaigns & crons</p>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-text4)", flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-text)", margin: "0 0 1px" }}>Unpublish (Draft)</p>
+                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Pause all campaigns & crons</p>
                   </div>
-                  {!isPublished && (
-                    <span className="text-[10px] font-bold text-slate-400 shrink-0">Draft</span>
-                  )}
+                  {!isPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text4)" }}>Draft</span>}
                 </button>
               </div>
             )}
           </div>
         )}
 
+        {/* Add Lead */}
         <button
-          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3.5 rounded-lg text-[12px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-150 hover:bg-slate-50"
           onClick={onAddLead}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 14px",
+            borderRadius: "var(--radius-lg)",
+            background: "var(--color-bg2)",
+            border: "1px solid var(--color-bg4)",
+            color: "var(--color-text2)",
+            fontSize: 12.5,
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all var(--transition-fast)",
+            boxShadow: "var(--shadow-xs)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg3)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-bg5)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg2)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-bg4)";
+          }}
         >
           <IconPlus size={14} />
           <span className="hidden sm:inline">Add lead</span>
         </button>
 
+        {/* Sync Apify */}
         <button
-          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3.5 rounded-lg text-[12px] font-semibold text-white transition-all duration-150"
-          style={{
-            background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-            border: "none",
-            opacity: syncing ? 0.7 : 1,
-            cursor: syncing ? "not-allowed" : "pointer",
-          }}
           onClick={onSyncApify}
           disabled={syncing}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 14px",
+            borderRadius: "var(--radius-lg)",
+            background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-light))",
+            border: "none",
+            color: "#fff",
+            fontSize: 12.5,
+            fontWeight: 600,
+            cursor: syncing ? "not-allowed" : "pointer",
+            opacity: syncing ? 0.75 : 1,
+            transition: "all var(--transition-fast)",
+            boxShadow: syncing ? "none" : "var(--shadow-primary)",
+          }}
+          onMouseEnter={(e) => {
+            if (!syncing) (e.currentTarget as HTMLButtonElement).style.boxShadow = "var(--shadow-primary-lg)";
+          }}
+          onMouseLeave={(e) => {
+            if (!syncing) (e.currentTarget as HTMLButtonElement).style.boxShadow = "var(--shadow-primary)";
+          }}
         >
           <IconRefresh size={14} className={syncing ? "animate-spin" : ""} />
           <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync Apify"}</span>
           <span className="sm:hidden">{syncing ? "…" : "Sync"}</span>
         </button>
 
-        {/* Profile avatar — navigates to profile page */}
+        {/* Profile avatar */}
         <button
           onClick={() => router.push(`/profile/${activeAgent?._id || "default"}`)}
           title={`${userName} — View profile`}
+          aria-label={`Profile: ${userName}`}
           style={{
-            width: 32, height: 32, borderRadius: "50%",
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
             background: bgColor,
-            border: currentPage === "profile" ? "2px solid #6366f1" : "2px solid transparent",
-            color: "#fff", fontSize: 12, fontWeight: 700,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "border-color 0.15s, box-shadow 0.15s",
-            outline: "none",
+            border: currentPage === "profile" ? `2px solid ${bgColor}` : "2px solid transparent",
+            boxShadow: currentPage === "profile" ? `0 0 0 2px ${bgColor}44` : "none",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "box-shadow var(--transition-fast), border-color var(--transition-fast)",
             flexShrink: 0,
           }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = `0 0 0 3px ${bgColor}33`)}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = "none")}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = `0 0 0 3px ${bgColor}44`)}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.boxShadow = currentPage === "profile" ? `0 0 0 2px ${bgColor}44` : "none")}
         >
           {initials}
         </button>

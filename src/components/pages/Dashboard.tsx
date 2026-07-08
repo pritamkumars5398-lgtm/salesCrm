@@ -1,14 +1,54 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconUsers, IconActivity } from "@tabler/icons-react";
+import {
+  IconUsers, IconActivity, IconTrendingUp, IconCalendarCheck,
+  IconMailForward, IconSparkles, IconArrowRight,
+} from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
-import StatusPill from "@/components/ui/Pill";
+import { StatusBadge } from "@/components/ui/Badge";
+import { SkeletonStat, SkeletonCard } from "@/components/ui/Skeleton";
+import EmptyState from "@/components/ui/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 
-const SYSTEM_STYLE = { bg: "rgba(108,99,255,0.12)", color: "var(--color-accent2)" };
+const SYSTEM_STYLE = { bg: "rgba(108,99,255,0.12)", color: "var(--color-primary-light)" };
+
+const STAT_DEFS = [
+  {
+    label: "Total leads",
+    key: "totalLeads" as const,
+    sub: (stats: any) => `+${Math.max(0, stats?.recentLeads ?? 0)} this week`,
+    icon: IconUsers,
+    color: "var(--color-primary-light)",
+    bg: "var(--color-primary-subtle)",
+  },
+  {
+    label: "In outreach",
+    key: "inOutreach" as const,
+    sub: (stats: any) => `${stats ? Math.round((stats.inOutreach / (stats.totalLeads || 1)) * 100) : 0}% of total`,
+    icon: IconMailForward,
+    color: "var(--color-green)",
+    bg: "var(--color-green-bg)",
+  },
+  {
+    label: "Replied",
+    key: "replied" as const,
+    sub: (stats: any) => `${stats && stats.inOutreach ? Math.round((stats.replied / (stats.inOutreach || 1)) * 100) : 0}% reply rate`,
+    icon: IconTrendingUp,
+    color: "var(--color-blue)",
+    bg: "var(--color-blue-bg)",
+  },
+  {
+    label: "Meetings booked",
+    key: "meetingsThisWeek" as const,
+    sub: () => "this week",
+    icon: IconCalendarCheck,
+    color: "var(--color-amber)",
+    bg: "var(--color-amber-bg)",
+  },
+];
 
 export default function Dashboard() {
   const router = useRouter();
@@ -16,8 +56,9 @@ export default function Dashboard() {
     activeAgent, dashboardStats, dashboardRecentLeads,
     dashboardRecentActivity, setDashboard, openDrawer,
   } = useAppStore();
-  const [loading, setLoading] = useState(true);
 
+  // ── Data fetch (preserved exactly) ───────────────────────────
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     if (!activeAgent) return;
     setLoading(true);
@@ -27,135 +68,290 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [activeAgent?._id]);
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading dashboard...</div>
-        </div>
-      </div>
-    );
-  }
-
   const stats = dashboardStats;
 
   return (
-    <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-[20px] font-semibold tracking-tight">
-          Dashboard{" "}
-          <span className="text-[13px] font-normal" style={{ color: "var(--color-text3)" }}>
-            Overview of all activity
-          </span>
+    <div style={{ padding: "28px 28px 40px", minHeight: "100vh", background: "var(--color-bg)" }}>
+      {/* ── Page Header ── */}
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text)", letterSpacing: "-0.02em", margin: 0 }}>
+          Dashboard
         </h1>
+        <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "4px 0 0", fontWeight: 400 }}>
+          Overview of all outreach activity
+          {activeAgent && (
+            <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--color-text4)" }}>
+              · {activeAgent.name}
+            </span>
+          )}
+        </p>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        {[
-          { label: "Total leads",      val: stats?.totalLeads ?? 0,        sub: "+12 today" },
-          { label: "In outreach",      val: stats?.inOutreach ?? 0,        sub: `${stats ? Math.round((stats.inOutreach / (stats.totalLeads || 1)) * 100) : 0}% of leads` },
-          { label: "Replied",          val: stats?.replied ?? 0,           sub: "reply rate" },
-          { label: "Meetings booked",  val: stats?.meetingsThisWeek ?? 0,  sub: "this week" },
-        ].map(({ label, val, sub }) => (
-          <div
-            key={label}
-            className="rounded-[20px] p-5 bg-white/80 backdrop-blur-md border border-slate-200"
-          >
-            <div className="text-[11.5px] font-bold tracking-widest uppercase mb-2" style={{ color: "var(--color-text3)" }}>
-              {label}
-            </div>
-            <div className="text-[32px] font-bold tracking-tight text-slate-800">{val}</div>
-            <div className="text-[12px] font-medium mt-1" style={{ color: "var(--color-text3)" }}>{sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent leads */}
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight">
-              <IconUsers size={16} style={{ color: "var(--color-accent2)" }} />
-              Recent leads
-            </div>
-            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-white text-slate-700 shadow-sm transition-all duration-200 ease-out hover:bg-slate-50 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-slate-500 !shadow-none hover:!bg-slate-100 hover:!text-slate-900" onClick={() => router.push(`/leads/${activeAgent?._id || "default"}`)}>
-              View all →
-            </button>
-          </div>
-          <div style={{ padding: 0 }}>
-            {dashboardRecentLeads.length === 0 && (
-              <p className="text-center py-8 text-[12px]" style={{ color: "var(--color-text3)" }}>
-                No leads yet. Add your first lead.
-              </p>
-            )}
-            {dashboardRecentLeads.map((lead, i) => (
+      {/* ── Stats Row ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        {loading
+          ? Array.from({ length: 4 }).map((_, i) => <SkeletonStat key={i} />)
+          : STAT_DEFS.map(({ label, key, sub, icon: Icon, color, bg }) => (
               <div
-                key={lead._id}
-                className="flex items-center justify-between px-[18px] py-3 cursor-pointer transition-colors hover:bg-white/[0.02]"
-                style={{ borderBottom: i < dashboardRecentLeads.length - 1 ? "1px solid rgba(0,0,0,0.1)" : "none" }}
-                onClick={() => openDrawer(lead, "whatsapp")}
+                key={label}
+                className="card animate-slide-up"
+                style={{
+                  padding: 20,
+                  position: "relative",
+                  overflow: "hidden",
+                  transition: "transform var(--transition-base), box-shadow var(--transition-base)",
+                  animationDelay: `${STAT_DEFS.findIndex(s => s.key === key) * 60}ms`,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-md)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = "";
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = "";
+                }}
               >
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={lead.fullName} />
-                  <div>
-                    <div className="text-[13.5px] font-medium">{lead.fullName}</div>
-                    <div className="text-[11.5px]" style={{ color: "var(--color-text3)" }}>
-                      {lead.jobTitle} · {lead.company}
-                    </div>
-                  </div>
+                {/* Accent bar top */}
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${color}, ${color}88)`, borderRadius: "var(--radius-xl) var(--radius-xl) 0 0" }} />
+
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", margin: 0 }}>
+                    {label}
+                  </p>
+                  <span style={{ width: 32, height: 32, borderRadius: "var(--radius-md)", background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={16} style={{ color }} />
+                  </span>
                 </div>
-                <StatusPill status={lead.status} />
+
+                <p style={{ fontSize: 36, fontWeight: 800, color: "var(--color-text)", margin: "0 0 4px", letterSpacing: "-0.03em", lineHeight: 1 }}>
+                  {stats?.[key] ?? 0}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--color-text3)", margin: 0, fontWeight: 500 }}>
+                  {sub(stats)}
+                </p>
               </div>
             ))}
+      </div>
+
+      {/* ── Main Grid ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+        {/* Recent leads */}
+        <div className="card animate-slide-up" style={{ overflow: "hidden", animationDelay: "80ms" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "16px 20px",
+              borderBottom: "1px solid var(--color-bg4)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 32, height: 32, borderRadius: "var(--radius-md)", background: "var(--color-primary-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconUsers size={15} style={{ color: "var(--color-primary-light)" }} />
+              </span>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text)", margin: 0, lineHeight: 1.2 }}>Recent leads</p>
+                <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Latest added contacts</p>
+              </div>
+            </div>
+            <button
+              onClick={() => router.push(`/leads/${activeAgent?._id || "default"}`)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "5px 10px",
+                borderRadius: "var(--radius-md)",
+                background: "none",
+                border: "none",
+                color: "var(--color-primary-light)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "background var(--transition-fast)",
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-primary-subtle)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
+            >
+              View all <IconArrowRight size={12} />
+            </button>
           </div>
+
+          {loading ? (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                  <div className="skeleton" style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div className="skeleton" style={{ height: 12, width: "60%", marginBottom: 6 }} />
+                    <div className="skeleton" style={{ height: 11, width: "40%" }} />
+                  </div>
+                  <div className="skeleton" style={{ width: 64, height: 20, borderRadius: "var(--radius-full)" }} />
+                </div>
+              ))}
+            </div>
+          ) : dashboardRecentLeads.length === 0 ? (
+            <EmptyState
+              icon={<IconUsers size={22} />}
+              title="No leads yet"
+              description="Add your first lead to get started with outreach."
+              compact
+            />
+          ) : (
+            dashboardRecentLeads.map((lead, i) => (
+              <div
+                key={lead._id}
+                onClick={() => openDrawer(lead, "whatsapp")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 20px",
+                  borderBottom: i < dashboardRecentLeads.length - 1 ? "1px solid var(--color-bg4)" : "none",
+                  cursor: "pointer",
+                  transition: "background var(--transition-fast)",
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--color-bg3)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <Avatar name={lead.fullName} size="sm" />
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-text)", margin: "0 0 1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {lead.fullName}
+                    </p>
+                    <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {[lead.jobTitle, lead.company].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                <StatusBadge status={lead.status} size="sm" />
+              </div>
+            ))
+          )}
         </div>
 
         {/* Live activity */}
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight">
-              <IconActivity size={16} style={{ color: "var(--color-accent2)" }} />
-              Live activity
+        <div className="card animate-slide-up" style={{ overflow: "hidden", animationDelay: "120ms" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "16px 20px",
+              borderBottom: "1px solid var(--color-bg4)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 32, height: 32, borderRadius: "var(--radius-md)", background: "var(--color-green-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconActivity size={15} style={{ color: "var(--color-green)" }} />
+              </span>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text)", margin: 0, lineHeight: 1.2 }}>Live activity</p>
+                <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Real-time outreach events</p>
+              </div>
             </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold tracking-wide uppercase shadow-sm border border-black/5 bg-emerald-50 text-emerald-600 text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: "#22c97a" }} />
+            {/* Live indicator */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "3px 9px",
+                borderRadius: "var(--radius-full)",
+                background: "var(--color-green-bg)",
+                color: "var(--color-green)",
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "var(--color-green)", animation: "pulse-ring 1.4s ease-out infinite" }} />
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--color-green)", display: "block", position: "relative" }} />
+              </span>
               Live
             </span>
           </div>
-          <div style={{ padding: "8px 0" }}>
-            {dashboardRecentActivity.length === 0 && (
-              <p className="text-center py-6 text-[12px]" style={{ color: "var(--color-text3)" }}>
-                No activity yet
-              </p>
-            )}
-            {dashboardRecentActivity.map((act) => {
-              const cfg = CHANNEL_CONFIG[act.channel as keyof typeof CHANNEL_CONFIG];
-              const style = cfg ?? SYSTEM_STYLE;
-              const Icon = cfg?.Icon ?? IconActivity;
-              return (
-                <div
-                  key={act._id}
-                  className="flex items-start gap-3 px-4 py-3 rounded-[10px] transition-colors hover:bg-white/[0.02] mx-2"
-                >
+
+          <div style={{ padding: "6px 0" }}>
+            {loading ? (
+              <div style={{ padding: "8px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div className="skeleton" style={{ width: 32, height: 32, borderRadius: "var(--radius-md)", flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div className="skeleton" style={{ height: 12, width: "70%", marginBottom: 5 }} />
+                      <div className="skeleton" style={{ height: 11, width: "35%" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : dashboardRecentActivity.length === 0 ? (
+              <EmptyState
+                icon={<IconSparkles size={22} />}
+                title="No activity yet"
+                description="Activity will appear here once outreach starts."
+                compact
+              />
+            ) : (
+              dashboardRecentActivity.map((act) => {
+                const cfg = CHANNEL_CONFIG[act.channel as keyof typeof CHANNEL_CONFIG];
+                const style = cfg ?? SYSTEM_STYLE;
+                const Icon = cfg?.Icon ?? IconActivity;
+                return (
                   <div
-                    className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0"
-                    style={{ background: style.bg, color: style.color }}
+                    key={act._id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 12,
+                      padding: "10px 20px",
+                      transition: "background var(--transition-fast)",
+                    }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "var(--color-bg3)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = "")}
                   >
-                    <Icon size={15} />
-                  </div>
-                  <div>
-                    <div className="text-[13px] leading-[1.5]">
-                      {act.event} · <b className="font-medium" style={{ color: "var(--color-text)" }}>{act.leadName}</b>
+                    {/* Channel icon */}
+                    <div
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: "var(--radius-md)",
+                        background: style.bg,
+                        color: style.color,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon size={14} />
                     </div>
-                    <div className="text-[11.5px] font-mono mt-0.5" style={{ color: "var(--color-text3)" }}>
-                      {formatDistanceToNow(new Date(act.createdAt), { addSuffix: true })}
+                    {/* Text */}
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12.5, color: "var(--color-text2)", margin: "0 0 2px", lineHeight: 1.5 }}>
+                        {act.event} ·{" "}
+                        <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{act.leadName}</span>
+                      </p>
+                      <p style={{ fontSize: 11, color: "var(--color-text4)", margin: 0, fontFamily: "var(--font-mono)" }}>
+                        {formatDistanceToNow(new Date(act.createdAt), { addSuffix: true })}
+                      </p>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </div>
