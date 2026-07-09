@@ -88,6 +88,7 @@ wss.on("connection", async (clientWs, req) => {
 
   let dgLive = null;
   let elevenWs = null;
+  let conversationHistory = [];
 
   // --- 4. Setup ElevenLabs ---
   function connectElevenLabs() {
@@ -127,8 +128,6 @@ wss.on("connection", async (clientWs, req) => {
     });
   }
 
-  connectElevenLabs();
-
   // --- 5. Setup Deepgram WebSocket ---
   const deepgramWsUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&endpointing=500`;
   dgLive = new WebSocket(deepgramWsUrl, {
@@ -141,7 +140,21 @@ wss.on("connection", async (clientWs, req) => {
 
   async function processLLMAndTTS(transcript) {
     if (clientWs.readyState === WebSocket.OPEN) {
+      // Force frontend to clear any lingering audio from previous turns
+      clientWs.send(JSON.stringify({ type: "interruption" }));
       clientWs.send(JSON.stringify({ type: "transcript", text: transcript }));
+    }
+
+    conversationHistory.push({ role: "user", content: transcript });
+
+    // ElevenLabs closes the WebSocket stream after each response. 
+    // We must forcefully open a fresh connection for every new conversational turn
+    // and kill any lingering old connection.
+    if (voiceProvider === "ElevenLabs") {
+      if (elevenWs) {
+        try { elevenWs.close(); } catch (e) {}
+      }
+      connectElevenLabs();
     }
 
     // Cancel any ongoing generation
@@ -152,15 +165,17 @@ wss.on("connection", async (clientWs, req) => {
     const { signal } = currentAbortController;
 
     try {
+      const messages = [
+        {
+          role: "system",
+          content: "You are a highly realistic, conversational human sales agent on a phone call. DO NOT sound like an AI. Keep your answers extremely brief (1 or 2 sentences max). Speak casually and naturally. Occasionally use filler words like 'Umm...', 'Uh...', or 'Hmm...'. NEVER use stage directions, asterisks, or parentheses for actions (e.g., NEVER output '*laughs*' or '(laughs)'). If you want to laugh, just type 'Haha' or 'Hehe'. IMPORTANT: If your previous message ends with '[interrupted by user]', it means you were cut off mid-sentence. DO NOT try to finish your previous sentence. Abandon your previous thought entirely. Instead, naturally acknowledge the interruption (e.g., 'Oh, sorry, go ahead!', or 'My bad, what were you saying?') and respond ONLY to their new input."
+        },
+        ...conversationHistory
+      ];
+
       const stream = await openai.chat.completions.create({
         model: llmModel,
-        messages: [
-          {
-            role: "system",
-            content: "You are a highly realistic, conversational human sales agent on a phone call. DO NOT sound like an AI. Keep your answers extremely brief (1 or 2 sentences max). Speak casually and naturally. Occasionally use filler words like 'Umm...', 'Uh...', or 'Hmm...' at the start or middle of sentences to mimic natural human thought processes. Use casual language and contractions."
-          },
-          { role: "user", content: transcript }
-        ],
+        messages: messages,
         stream: true,
       });
 
@@ -170,26 +185,44 @@ wss.on("connection", async (clientWs, req) => {
       for await (const chunk of stream) {
         if (signal.aborted) {
           console.log("🛑 Generation aborted due to interruption.");
+          conversationHistory.push({ role: "assistant", content: aiFullResponse + " [interrupted by user]" });
           break;
         }
         const textChunk = chunk.choices[0]?.delta?.content || "";
         if (textChunk) {
           aiFullResponse += textChunk;
-          if (voiceProvider === "ElevenLabs" && elevenWs && elevenWs.readyState === WebSocket.OPEN) {
-            elevenWs.send(JSON.stringify({ text: textChunk }));
+          if (voiceProvider === "ElevenLabs" && elevenWs) {
+            if (elevenWs.readyState === WebSocket.OPEN) {
+              elevenWs.send(JSON.stringify({ text: textChunk }));
+            } else if (elevenWs.readyState === WebSocket.CONNECTING) {
+              // Wait for connection to open before sending
+              elevenWs.once('open', () => {
+                elevenWs.send(JSON.stringify({ text: textChunk }));
+              });
+            }
           }
         }
       }
 
       console.log("🤖 Agent full response:", aiFullResponse);
+      
+      if (!signal.aborted) {
+        conversationHistory.push({ role: "assistant", content: aiFullResponse });
+      }
 
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.send(JSON.stringify({ type: "agent_text", text: aiFullResponse, provider: voiceProvider }));
       }
 
       if (voiceProvider === "ElevenLabs") {
-        if (elevenWs && elevenWs.readyState === WebSocket.OPEN) {
-          elevenWs.send(JSON.stringify({ text: "" }));
+        if (elevenWs) {
+          if (elevenWs.readyState === WebSocket.OPEN) {
+            elevenWs.send(JSON.stringify({ text: "" }));
+          } else if (elevenWs.readyState === WebSocket.CONNECTING) {
+            elevenWs.once('open', () => {
+              elevenWs.send(JSON.stringify({ text: "" }));
+            });
+          }
         }
       } else if (voiceProvider === "Deepgram") {
         // --- Deepgram Aura TTS API ---
@@ -253,6 +286,9 @@ wss.on("connection", async (clientWs, req) => {
         if (currentAbortController) {
           currentAbortController.abort();
         }
+        if (voiceProvider === "ElevenLabs" && elevenWs) {
+          try { elevenWs.close(); } catch (e) {}
+        }
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(JSON.stringify({ type: "interruption" }));
         }
@@ -278,6 +314,17 @@ wss.on("connection", async (clientWs, req) => {
       } else if (message.type === "text_in") {
         console.log("👤 User (text):", message.text);
         processLLMAndTTS(message.text);
+      } else if (message.type === "user_typing_interruption") {
+        console.log("⌨️ User started typing (simulated voice interruption)");
+        if (currentAbortController) {
+          currentAbortController.abort();
+        }
+        if (voiceProvider === "ElevenLabs" && elevenWs) {
+          try { elevenWs.close(); } catch (e) {}
+        }
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: "interruption" }));
+        }
       }
     } catch (err) {
       console.error("Error processing browser message:", err);

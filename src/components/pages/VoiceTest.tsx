@@ -10,7 +10,7 @@ export default function VoiceTest() {
   const [textInput, setTextInput] = useState<string>("");
   const [logs, setLogs] = useState<string[]>([]);
   const [volume, setVolume] = useState(0);
-  
+
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -24,23 +24,23 @@ export default function VoiceTest() {
 
   const playNextAudio = async () => {
     if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
-    
+
     isPlayingRef.current = true;
     const base64Audio = audioQueueRef.current.shift();
-    
+
     if (base64Audio) {
       try {
         const audioBlob = await fetch(`data:audio/mp3;base64,${base64Audio}`).then(r => r.blob());
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
         currentAudioRef.current = audio;
-        
+
         audio.onended = () => {
           currentAudioRef.current = null;
           isPlayingRef.current = false;
           playNextAudio(); // play the next chunk
         };
-        
+
         await audio.play();
       } catch (err) {
         console.error("Audio playback error:", err);
@@ -62,25 +62,25 @@ export default function VoiceTest() {
     try {
       setStatus("connecting");
       addLog("Connecting to WebSocket server...");
-      
+
       const ws = new WebSocket(`ws://localhost:8080?agentId=${activeAgent._id}`);
       wsRef.current = ws;
 
       ws.onopen = async () => {
         setStatus("connected");
         addLog("Connected! Requesting microphone access...");
-        
+
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           streamRef.current = stream;
-          
+
           // --- Audio Visualizer Setup ---
           const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
           const source = audioContext.createMediaStreamSource(stream);
           const analyser = audioContext.createAnalyser();
           analyser.fftSize = 256;
           source.connect(analyser);
-          
+
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           const updateVolume = () => {
             if (wsRef.current?.readyState !== WebSocket.OPEN) {
@@ -98,7 +98,7 @@ export default function VoiceTest() {
 
           const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
           mediaRecorderRef.current = mediaRecorder;
-          
+
           mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
               const reader = new FileReader();
@@ -109,7 +109,7 @@ export default function VoiceTest() {
               };
             }
           };
-          
+
           // Capture audio in tiny chunks (every 250ms)
           mediaRecorder.start(250);
           addLog("Microphone active. Start speaking!");
@@ -166,7 +166,7 @@ export default function VoiceTest() {
   const sendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!textInput.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
+
     wsRef.current.send(JSON.stringify({ type: "text_in", text: textInput.trim() }));
     addLog(`You (Text): ${textInput.trim()}`);
     setTranscript(textInput.trim());
@@ -209,8 +209,8 @@ export default function VoiceTest() {
             <div className="p-8 rounded-xl border flex flex-col items-center justify-center min-h-[250px] text-center shadow-sm transition-all" style={{ background: "var(--color-bg)", borderColor: status === "connected" ? "var(--color-green)" : "rgba(0,0,0,0.1)" }}>
               {status === "connected" ? (
                 <div className="mb-8 flex flex-col items-center">
-                  <div 
-                    className="relative flex items-center justify-center rounded-full" 
+                  <div
+                    className="relative flex items-center justify-center rounded-full"
                     style={{
                       width: '80px',
                       height: '80px',
@@ -266,7 +266,13 @@ export default function VoiceTest() {
                 <input
                   type="text"
                   value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.length === 1 && textInput.length === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+                      wsRef.current.send(JSON.stringify({ type: "user_typing_interruption" }));
+                    }
+                    setTextInput(val);
+                  }}
                   placeholder="Type a message to the AI..."
                   className="flex-1 px-4 py-2 rounded-lg border outline-none focus:border-blue-500"
                   style={{ background: "var(--color-bg)", borderColor: "rgba(0,0,0,0.1)", color: "var(--color-text)" }}
