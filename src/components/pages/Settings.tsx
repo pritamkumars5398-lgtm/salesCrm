@@ -547,6 +547,7 @@ export default function Settings() {
                 let displayLabel = f.label;
                 let displayPlaceholder = f.placeholder;
                 let displayHint = f.hint;
+                let displayOptions: any[] | undefined = f.options;
 
                 if (activeCard.key === "sms") {
                   const currentProvider = values["smsProvider"] || "Twilio SMS";
@@ -603,6 +604,46 @@ export default function Settings() {
                   } else {
                     if (f.key === "waWebhookUrl") {
                       displayHint = "Copy this and paste in your WireWeb dashboard";
+                    }
+                  }
+                }
+
+                if (activeCard.key === "voice") {
+                  const currentVoiceProvider = values["voiceProvider"] || "ElevenLabs";
+                  
+                  if (f.key === "voiceApiKey") {
+                    if (currentVoiceProvider === "Deepgram") {
+                      // Deepgram Aura uses the STT API Key, no need for a separate Voice API Key
+                      return null;
+                    } else if (currentVoiceProvider === "ElevenLabs") {
+                      displayLabel = "Voice API Key (ElevenLabs)";
+                      displayPlaceholder = "Enter ElevenLabs API key...";
+                    } else {
+                      displayLabel = `Voice API Key (${currentVoiceProvider})`;
+                      displayPlaceholder = `Enter ${currentVoiceProvider} API key...`;
+                    }
+                  } else if (f.key === "voiceId") {
+                    if (currentVoiceProvider === "Deepgram") {
+                      displayHint = "Select a Deepgram Aura voice";
+                      displayOptions = [
+                        { label: "Asteria (Female, Friendly)", value: "aura-asteria-en" },
+                        { label: "Luna (Female, Professional)", value: "aura-luna-en" },
+                        { label: "Stella (Female, Bright)", value: "aura-stella-en" },
+                        { label: "Orion (Male, Clear)", value: "aura-orion-en" },
+                        { label: "Arcas (Male, Deep)", value: "aura-arcas-en" }
+                      ];
+                    } else if (currentVoiceProvider === "ElevenLabs") {
+                      displayHint = "Select a standard ElevenLabs voice";
+                      displayOptions = [
+                        { label: "Adam (Deep, Professional)", value: "pNInz6obpgDQGcFmaJgB" },
+                        { label: "Rachel (Calm, Professional)", value: "21m00Tcm4TlvDq8ikWAM" },
+                        { label: "Bella (Soft, Warm)", value: "EXAVITQu4vr4xnSDxMaL" },
+                        { label: "Antoni (Well-rounded)", value: "ErXwobaYiN019PkySvjV" },
+                        { label: "Josh (Deep, Authoritative)", value: "TxGEqnHWrfWFTfGW9XjX" }
+                      ];
+                    } else {
+                      displayPlaceholder = `Voice ID for ${currentVoiceProvider}`;
+                      displayHint = `Exact voice name or ID from ${currentVoiceProvider}`;
                     }
                   }
                 }
@@ -724,13 +765,31 @@ export default function Settings() {
                           {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
                         </button>
                       </div>
-                    ) : f.options ? (
+                    ) : displayOptions ? (
                       <select
                         className="form-input"
-                        value={values[f.key] ?? f.options[0]}
-                        onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                        value={values[f.key] ?? (typeof displayOptions[0] === "string" ? displayOptions[0] : displayOptions[0]?.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setValues((p) => {
+                            const newVals = { ...p, [f.key]: val };
+                            if (f.key === "voiceProvider") {
+                              if (val === "Deepgram") {
+                                newVals.voiceId = "aura-asteria-en";
+                              } else if (val === "ElevenLabs") {
+                                newVals.voiceId = "pNInz6obpgDQGcFmaJgB";
+                              }
+                            }
+                            return newVals;
+                          });
+                        }}
                       >
-                        {f.options.map((o) => <option key={o}>{o}</option>)}
+                        {displayOptions.map((o, idx) => {
+                          if (typeof o === "string") {
+                            return <option key={idx} value={o}>{o}</option>;
+                          }
+                          return <option key={idx} value={o.value}>{o.label}</option>;
+                        })}
                       </select>
                     ) : f.type === "textarea" ? (
                       <textarea

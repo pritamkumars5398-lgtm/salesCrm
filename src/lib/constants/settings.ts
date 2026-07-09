@@ -56,7 +56,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     iconColor: "#6366f1",
     fields: [
       { label: "Provider", key: "llmProvider", placeholder: "", options: ["Groq (Llama 3)", "Claude (Anthropic)", "GPT-4o (OpenAI)", "Gemini 1.5 Pro"], hint: "Model used for all AI responses" },
-      { label: "API Key", key: "llmApiKey", type: "password", placeholder: "gsk_...", hint: "Stored encrypted, never exposed" },
+      { label: "LLM API Key (Groq/OpenAI)", key: "llmApiKey", type: "password", placeholder: "Enter your Groq or OpenAI API key...", hint: "Stored encrypted, never exposed" },
     ],
   },
   {
@@ -88,8 +88,10 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Call Provider", key: "callProvider", placeholder: "", options: ["Vapi.ai", "Twilio Voice", "Bland.ai"], hint: "Handles call routing" },
       { label: "Call API Key", key: "callApiKey", type: "password", placeholder: "Enter API key" },
       { label: "Caller Phone Number", key: "callerPhone", placeholder: "+91xxxxxxxxxx", hint: "Outbound number registered with your call provider" },
+      { label: "Speech-to-Text Provider", key: "sttProvider", placeholder: "", options: ["Deepgram", "OpenAI Whisper"], hint: "Real-time transcription engine" },
+      { label: "STT API Key (Deepgram)", key: "sttApiKey", type: "password", placeholder: "Enter Deepgram API key..." },
       { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["ElevenLabs", "Deepgram", "PlayHT"], hint: "Text-to-speech engine" },
-      { label: "Voice API Key", key: "voiceApiKey", type: "password", placeholder: "Enter API key" },
+      { label: "Voice API Key (ElevenLabs)", key: "voiceApiKey", type: "password", placeholder: "Enter ElevenLabs API key..." },
       { label: "Voice Name / ID", key: "voiceId", placeholder: "e.g. Rachel, Adam, Bella (ElevenLabs voice name)", hint: "Exact voice name or ID from your TTS provider" },
       { label: "Call Opening Greeting", key: "callGreeting", type: "textarea", placeholder: "Hi, this is Sarah calling from Acme Corp. Am I speaking with {{leadName}}?", hint: "First words spoken when the call connects. Use {{leadName}} as placeholder." },
       { label: "Call Script / AI Prompt", key: "callScript", type: "textarea", placeholder: "You are a friendly sales assistant for Acme Corp. Your goal is to qualify leads and book a 15-minute meeting...", hint: "Full AI instructions for the call agent" },

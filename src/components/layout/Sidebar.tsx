@@ -5,7 +5,7 @@ import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX, IconChevronRight,
+  IconShield, IconX, IconChevronRight, IconMicrophone,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Page } from "@/store/types";
@@ -19,6 +19,7 @@ const NAV_ITEMS: { id: Page; label: string; Icon: React.ElementType }[] = [
   { id: "calendar",  label: "Calendar",   Icon: IconCalendar },
   { id: "activity",  label: "Activity",   Icon: IconActivity },
   { id: "crons",     label: "Schedules",  Icon: IconClock },
+  { id: "voice",     label: "Voice AI Test", Icon: IconMicrophone },
 ];
 
 interface MiniUsage {

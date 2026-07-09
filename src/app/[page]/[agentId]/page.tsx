@@ -24,6 +24,7 @@ import Settings from "@/components/pages/Settings";
 import Crons from "@/components/pages/Crons";
 import Plans from "@/components/pages/Plans";
 import Superadmin from "@/components/pages/Superadmin";
+import VoiceTest from "@/components/pages/VoiceTest";
 
 // Intercept fetch calls on the frontend to log API calls (dev only)
 if (process.env.NODE_ENV === "development" && typeof window !== "undefined" && !(window as any).__fetch_intercepted__) {
@@ -284,6 +285,7 @@ export default function Home({ params }: PageProps) {
             {currentPage === "crons" && <Crons />}
             {currentPage === "profile" && <Profile />}
             {currentPage === "plans" && <Plans />}
+            {currentPage === "voice" && <VoiceTest />}
             {currentPage === "superadmin" && (
               userEmail?.toLowerCase() === "admin@salesagent.ai" ? (
                 <Superadmin />
