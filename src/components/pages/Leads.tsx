@@ -750,20 +750,30 @@ export default function Leads({ onAddLead }: Props) {
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Business Type</label>
-                  <select
-                    value={jobTitleFilter}
-                    onChange={(e) => setJobTitleFilter(e.target.value)}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Business Type</label>
+                    {jobTitleFilter !== "all" && (
+                      <button
+                        onClick={() => setJobTitleFilter("all")}
+                        style={{ background: "none", border: "none", color: "var(--color-primary-light)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    list="business-types"
+                    value={jobTitleFilter === "all" ? "" : jobTitleFilter}
+                    onChange={(e) => setJobTitleFilter(e.target.value || "all")}
+                    placeholder="Search or type business type..."
                     className="form-input w-full"
-                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
-                  >
-                    <option value="all">All business types</option>
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)", padding: "7px 10px", borderRadius: 8, fontSize: 13 }}
+                  />
+                  <datalist id="business-types">
                     {jobTitles.map((title) => (
-                      <option key={title} value={title}>
-                        {title}
-                      </option>
+                      <option key={title} value={title} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
             )}

@@ -141,7 +141,7 @@ export async function GET(req: Request) {
     statusCounts,
     dateOptions,
     remainingEligible,
-    jobTitles: jobTitles.filter(Boolean),
+    jobTitles: jobTitles.filter(Boolean).sort((a, b) => a.localeCompare(b)),
   });
 }
 
