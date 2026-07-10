@@ -19,7 +19,7 @@ interface ScraperDef {
   iconColor: string;
   defaultActorId: string;
   actorLink?: string;
-  fields: { label: string; key: string; placeholder: string; hint?: string; type?: string; options?: string[] }[];
+  fields: { label: string; key: string; placeholder: string; hint?: string; type?: string; options?: string[]; syncType?: "location" | "keyword" | "keyword+location" }[];
 }
 
 const SCRAPERS: ScraperDef[] = [
@@ -33,8 +33,8 @@ const SCRAPERS: ScraperDef[] = [
     defaultActorId: "nwua9Gu5YrADL7ZDj",
     actorLink: "https://apify.com/compass/crawler-google-places",
     fields: [
-      { label: "Search Keyword", key: "gmKeyword", placeholder: "e.g. Carpenter, Plumber, Electrician", hint: "Combined with location → search query" },
-      { label: "Location", key: "gmLocation", placeholder: "e.g. Lucknow, Mumbai, Delhi NCR" },
+      { label: "Search Keyword", key: "gmKeyword", placeholder: "e.g. Carpenter, Plumber, Electrician", hint: "Combined with location → search query", syncType: "keyword" },
+      { label: "Location", key: "gmLocation", placeholder: "e.g. Lucknow, Mumbai, Delhi NCR", syncType: "location" },
       { label: "Max Results", key: "gmMaxResults", placeholder: "25", hint: "Max businesses to scrape per run (1–100)" },
       { label: "Actor ID", key: "gmActorId", placeholder: "nwua9Gu5YrADL7ZDj", hint: "Leave blank to use default stable actor" },
     ],
@@ -50,7 +50,7 @@ const SCRAPERS: ScraperDef[] = [
     actorLink: "https://apify.com/harvestapi/linkedin-profile-search",
     fields: [
       { label: "Actor ID", key: "liActorId", placeholder: "M2FMdjRVeF1HPGFcc", hint: "Default: harvestapi/linkedin-profile-search (no cookie needed)" },
-      { label: "Search Keywords", key: "liKeywords", placeholder: "e.g. interior designer Lucknow, CEO furniture manufacturer", hint: "People search query — role + location works best" },
+      { label: "Search Keywords", key: "liKeywords", placeholder: "e.g. interior designer Lucknow, CEO furniture manufacturer", hint: "People search query — role + location works best", syncType: "keyword+location" },
       { label: "Max Results", key: "liMaxResults", placeholder: "20", hint: "Max profiles to return" },
     ],
   },
@@ -64,8 +64,8 @@ const SCRAPERS: ScraperDef[] = [
     defaultActorId: "",
     actorLink: "https://apify.com/store?search=justdial",
     fields: [
-      { label: "Category / Keyword", key: "jdCategory", placeholder: "e.g. Carpenters, Furniture Shops, Interior Designers", hint: "Combined with city → sent as search query" },
-      { label: "City", key: "jdCity", placeholder: "e.g. Lucknow, Kanpur, Agra" },
+      { label: "Category / Keyword", key: "jdCategory", placeholder: "e.g. Carpenters, Furniture Shops, Interior Designers", hint: "Combined with city → sent as search query", syncType: "keyword" },
+      { label: "City", key: "jdCity", placeholder: "e.g. Lucknow, Kanpur, Agra", syncType: "location" },
       { label: "Max Results", key: "jdMaxResults", placeholder: "30", hint: "Min 10 — actor requirement" },
       { label: "Actor ID", key: "jdActorId", placeholder: "Paste Apify JustDial actor ID", hint: "codingfrontend/justdial-business-lead-extractor works — needs RESIDENTIAL proxy plan" },
     ],
@@ -88,11 +88,12 @@ const SCRAPERS: ScraperDef[] = [
 // ─── Field Component ─────────────────────────────────────────────────────────
 
 function Field({
-  def, value, onChange,
+  def, value, onChange, onSync,
 }: {
   def: ScraperDef["fields"][0];
   value: string;
   onChange: (v: string) => void;
+  onSync?: () => void;
 }) {
   const base: React.CSSProperties = {
     width: "100%",
@@ -108,7 +109,25 @@ function Field({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)" }}>{def.label}</label>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)" }}>{def.label}</label>
+        {def.syncType && onSync && (
+          <button
+            onClick={onSync}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#6366f1",
+              fontSize: 10.5,
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            Sync from Profile
+          </button>
+        )}
+      </div>
       {def.options ? (
         <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...base, appearance: "none" }}>
           <option value="">Select…</option>
@@ -149,7 +168,7 @@ function Field({
 // ─── Scraper Card ────────────────────────────────────────────────────────────
 
 function ScraperCard({
-  def, values, setValues, isActive, isEnabled, onSetActive, onToggleEnabled, onSave, savedKey,
+  def, values, setValues, isActive, isEnabled, onSetActive, onToggleEnabled, onSave, savedKey, onSyncField,
 }: {
   def: ScraperDef;
   values: Record<string, string>;
@@ -160,6 +179,7 @@ function ScraperCard({
   onToggleEnabled: (v: boolean) => void;
   onSave: (fields: string[]) => void;
   savedKey: string | null;
+  onSyncField: (syncType: string, key: string) => void;
 }) {
   const [open, setOpen] = useState(isActive && isEnabled);
   const isSaved = savedKey === def.type;
@@ -268,6 +288,7 @@ function ScraperCard({
                   def={f}
                   value={values[f.key] ?? ""}
                   onChange={(v) => setValues({ [f.key]: v })}
+                  onSync={f.syncType ? () => onSyncField(f.syncType!, f.key) : undefined}
                 />
               </div>
             ))}
@@ -312,6 +333,7 @@ function ScraperCard({
 export default function ApifySources() {
   const { activeAgent, agents, showToast } = useAppStore();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [agentSettings, setAgentSettings] = useState<Record<string, string>>({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [tokenSaved, setTokenSaved] = useState(false);
   const [copySourceAgentId, setCopySourceAgentId] = useState("");
@@ -329,6 +351,7 @@ export default function ApifySources() {
     fetch(`/api/settings?agentId=${activeAgent._id}`)
       .then((r) => r.json())
       .then((data) => {
+        setAgentSettings(data);
         const filtered: Record<string, string> = {};
         allSettingKeys.forEach((k) => { if (data[k] !== undefined) filtered[k] = data[k]; });
         // Seed defaults
@@ -347,6 +370,42 @@ export default function ApifySources() {
 
   function patchValues(patch: Record<string, string>) {
     setValues((prev) => ({ ...prev, ...patch }));
+  }
+
+  function handleSyncField(syncType: string, key: string) {
+    let locString = agentSettings.leadLocation || "";
+    try {
+      if (agentSettings.leadLocations) {
+        const parsed = JSON.parse(agentSettings.leadLocations);
+        if (Array.isArray(parsed)) {
+          const activeLocs = parsed.filter((l: any) => l.active).map((l: any) => l.name);
+          if (activeLocs.length > 0) {
+            locString = activeLocs.join(", ");
+          }
+        }
+      }
+    } catch (e) {
+      // fallback to leadLocation if parsing fails
+    }
+
+    let newValue = "";
+    if (syncType === "location") {
+      newValue = locString;
+    } else if (syncType === "keyword") {
+      newValue = agentSettings.industry || "";
+    } else if (syncType === "keyword+location") {
+      const parts = [];
+      if (agentSettings.industry) parts.push(agentSettings.industry);
+      if (locString) parts.push(locString);
+      newValue = parts.join(" ");
+    }
+
+    if (newValue) {
+      patchValues({ [key]: newValue });
+      showToast("Synced from business profile");
+    } else {
+      showToast("No data in business profile to sync", "error");
+    }
   }
 
   async function saveSettings(keys: string[]) {
@@ -588,6 +647,7 @@ export default function ApifySources() {
             onToggleEnabled={(v) => handleToggleEnabled(def.type, v)}
             onSave={(keys) => handleSaveCard(def.type, keys)}
             savedKey={savedKey}
+            onSyncField={handleSyncField}
           />
         ))}
       </div>

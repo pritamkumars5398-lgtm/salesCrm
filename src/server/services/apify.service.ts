@@ -70,7 +70,11 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
     const keyword  = m.gmKeyword  || m.industry    || "Carpenter";
     const max      = parseInt(m.gmMaxResults ?? "25", 10) || 25;
     const actorId  = m.gmActorId  || m.apifyActorId || DEFAULT_GM_ACTOR;
-    activeLocations.forEach((location) => {
+    
+    let gmLocs = m.gmLocation ? m.gmLocation.split(",").map(s => s.trim()).filter(Boolean) : [];
+    if (gmLocs.length === 0) gmLocs = activeLocations;
+
+    gmLocs.forEach((location) => {
       configs.push({
         token: m.apifyToken, actorId, scraperType: "google-maps",
         searchLabel: `${keyword} in ${location}`,
@@ -89,7 +93,8 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
   // LinkedIn — harvestapi/linkedin-profile-search, no cookie needed
   if (m.linkedinEnabled !== "false") {
     const actorId  = m.liActorId || DEFAULT_LI_ACTOR;
-    const keywords = m.liKeywords || `carpenter ${activeLocations[0] || "Lucknow"}`;
+    const fallbackKeyword = m.industry || "Carpenter";
+    const keywords = m.liKeywords || `${fallbackKeyword} ${activeLocations[0] || "Lucknow"}`;
     const max      = parseInt(m.liMaxResults ?? "20", 10) || 20;
     configs.push({
       token: m.apifyToken, actorId, scraperType: "linkedin",
@@ -100,9 +105,13 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
 
   // JustDial
   if (m.justdialEnabled !== "false" && m.jdActorId) {
-    const category = m.jdCategory || "Carpenter";
+    const category = m.jdCategory || m.industry || "Carpenter";
     const max      = Math.max(parseInt(m.jdMaxResults ?? "30", 10) || 30, 10);
-    activeLocations.forEach((location) => {
+    
+    let jdLocs = m.jdCity ? m.jdCity.split(",").map(s => s.trim()).filter(Boolean) : [];
+    if (jdLocs.length === 0) jdLocs = activeLocations;
+
+    jdLocs.forEach((location) => {
       configs.push({
         token: m.apifyToken, actorId: m.jdActorId, scraperType: "justdial",
         searchLabel: `JustDial: ${category} in ${location}`,
