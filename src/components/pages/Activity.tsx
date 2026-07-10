@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { IconMail, IconBrandWhatsapp, IconMessage, IconPhone, IconActivity, IconCalendar } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import Pagination from "@/components/ui/Pagination";
 import { formatDistanceToNow } from "date-fns";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; bg: string; color: string }> = {
@@ -17,18 +18,34 @@ export default function Activity() {
   const [channel, setChannel] = useState("all");
   const [range, setRange] = useState("today");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!activeAgent) return;
     setLoading(true);
-    const params = new URLSearchParams({ agentId: activeAgent._id, channel, range });
+    const params = new URLSearchParams({
+      agentId: activeAgent._id,
+      channel,
+      range,
+      page: String(page),
+      limit: String(pageSize),
+    });
     fetch(`/api/activities?${params}`)
       .then((r) => r.json())
-      .then(setActivities)
+      .then((data) => {
+        setActivities(data.activities ?? []);
+        setTotal(data.total ?? 0);
+      })
       .finally(() => setLoading(false));
-  }, [activeAgent?._id, channel, range]);
+  }, [activeAgent?._id, channel, range, page, pageSize]);
 
-  if (loading) {
+  // Changing a filter invalidates the current offset.
+  useEffect(() => { setPage(1); }, [channel, range, pageSize, activeAgent?._id]);
+
+  // Only the first load takes over the page; paging keeps the table in place.
+  if (loading && activities.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
         <div className="flex flex-col items-center gap-3">
@@ -105,6 +122,15 @@ export default function Activity() {
             );
           })}
         </div>
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          label="events"
+          disabled={loading}
+        />
       </div>
     </div>
   );

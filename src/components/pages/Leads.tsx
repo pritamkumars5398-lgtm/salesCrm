@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
@@ -12,6 +12,7 @@ import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import { SkeletonTableRow } from "@/components/ui/Skeleton";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
@@ -43,10 +44,21 @@ function SourceBadge({ source }: { source: string }) {
   );
 }
 
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+  page: number;
+  totalPages: number;
+  statusCounts?: Record<string, number>;
+  dateOptions?: { value: string; count: number }[];
+  remainingEligible?: number;
+  jobTitles?: string[];
+}
+
 interface Props { onAddLead: () => void; }
 
 export default function Leads({ onAddLead }: Props) {
-  const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen } = useAppStore();
+  const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen, syncing } = useAppStore();
   const [deleting, setDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -66,8 +78,19 @@ export default function Leads({ onAddLead }: Props) {
   const [starting, setStarting] = useState(false);
   const [sequence, setSequence] = useState<any>(null);
   const [trashView, setTrashView] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [remainingEligible, setRemainingEligible] = useState(0);
+  // Guards against a slow response from an earlier filter/page overwriting a newer one
+  // — the table also polls every 3s while a run is in flight.
+  const reqIdRef = useRef(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [jobTitleFilter, setJobTitleFilter] = useState("all");
+  const [jobTitles, setJobTitles] = useState<string[]>([]);
+
 
   const dropdownItemStyle = {
     display: "flex",
@@ -106,8 +129,14 @@ export default function Leads({ onAddLead }: Props) {
   const fetchLeads = useCallback(async (background = false) => {
     if (!activeAgent) return;
     if (!background) setLoading(true);
+    const reqId = ++reqIdRef.current;
     try {
-      const params = new URLSearchParams({ agentId: activeAgent._id });
+      const params = new URLSearchParams({
+        agentId: activeAgent._id,
+        page: String(page),
+        limit: String(pageSize),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
       if (trashView) params.set("trashed", "1");
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
@@ -115,35 +144,47 @@ export default function Leads({ onAddLead }: Props) {
       if (locationFilter !== "all") params.set("location", locationFilter);
       if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
       if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
+      if (jobTitleFilter !== "all") params.set("jobTitle", jobTitleFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
-      const data: Lead[] = await fetch(`/api/leads?${params}`).then((r) => r.json());
-      setLeads(data);
+      const data: LeadsResponse = await fetch(`/api/leads?${params}`).then((r) => r.json());
+      if (reqId !== reqIdRef.current) return; // a newer request already landed
+
+      setLeads(data.leads ?? []);
+      setTotal(data.total ?? 0);
+      setStatusCounts(data.statusCounts ?? {});
+      setRemainingEligible(data.remainingEligible ?? 0);
+      if (data.jobTitles) setJobTitles(data.jobTitles);
 
       // Sync-batch options: distinct days leads were added, newest first.
-      if (addedDateFilter === "all" && Array.isArray(data)) {
-        const counts = new Map<string, number>();
-        data.forEach((l) => {
-          if (!l.createdAt) return;
-          const day = new Date(l.createdAt).toLocaleDateString("en-CA"); // YYYY-MM-DD local
-          counts.set(day, (counts.get(day) ?? 0) + 1);
-        });
-        setDateOptions(
-          [...counts.entries()]
-            .sort((a, b) => b[0].localeCompare(a[0]))
-            .map(([day, count]) => ({
-              value: day,
-              label: new Date(`${day}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-              count,
-            }))
-        );
-      }
+      setDateOptions(
+        (data.dateOptions ?? []).map(({ value, count }) => ({
+          value,
+          count,
+          label: new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+        }))
+      );
+
+      // Deleting the last rows of a page can strand us past the end.
+      if (data.total > 0 && page > data.totalPages) setPage(data.totalPages);
     } finally {
-      if (!background) setLoading(false);
+      if (reqId === reqIdRef.current && !background) setLoading(false);
     }
-  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, search, missingContact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Any filter change invalidates the current offset — go back to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, pageSize, activeAgent?._id]);
+
+  // An Apify sync just finished — pull in whatever it imported.
+  const prevSyncing = useRef(syncing);
+  useEffect(() => {
+    if (prevSyncing.current && !syncing) fetchLeads(true);
+    prevSyncing.current = syncing;
+  }, [syncing, fetchLeads]);
 
   // While a run is in flight for this agent, refresh lead statuses in the
   // background so the table shows live "sending…" highlights and results.
@@ -210,14 +251,6 @@ export default function Leads({ onAddLead }: Props) {
 
   // loading state — table with skeleton rows (no full-screen spinner)
   const isLoading = loading;
-
-  /** Leads that still qualify for a run: new, has contact info, not already sent/in-flight. */
-  const remainingEligible = leads.filter(
-    (l) =>
-      l.status === "new" &&
-      (l.email || l.phone) &&
-      !["sent", "sending", "pending"].includes(l.outreachStatus ?? "none")
-  ).length;
 
   async function handleRun() {
     if (!activeAgent || starting) return;
@@ -333,6 +366,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await deleteLeads(activeAgent._id, ids);
       showToast(`Moved ${deleted} lead${deleted !== 1 ? "s" : ""} to Trash`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads(); // reconcile if the server rejected the delete
@@ -350,6 +384,7 @@ export default function Leads({ onAddLead }: Props) {
       const { restored } = await restoreLeads(activeAgent._id, ids);
       updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + restored);
       showToast(`Restored ${restored} lead${restored !== 1 ? "s" : ""}`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to restore leads", "error");
       fetchLeads();
@@ -368,6 +403,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await permanentlyDeleteLeads(activeAgent._id, ids);
       showToast(`Permanently deleted ${deleted} lead${deleted !== 1 ? "s" : ""}`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads();
@@ -458,7 +494,7 @@ export default function Leads({ onAddLead }: Props) {
           {trashView ? "🗑 Trash" : "Leads"}
         </h1>
         <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "4px 0 0", fontWeight: 400 }}>
-          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${leads.length > 0 ? ` · ${leads.length} leads` : ""}`}
+          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${total > 0 ? ` · ${total.toLocaleString()} leads` : ""}`}
         </p>
       </div>
 
@@ -479,9 +515,7 @@ export default function Leads({ onAddLead }: Props) {
           }}
         >
           {STATUS_TABS.map((tab) => {
-            const count = tab.value === "all"
-              ? leads.length
-              : leads.filter((l) => l.status === tab.value).length;
+            const count = statusCounts[tab.value] ?? 0;
             const isActive = statusFilter === tab.value;
             return (
               <button
@@ -714,6 +748,23 @@ export default function Leads({ onAddLead }: Props) {
                     <option value="failed">Failed ✗</option>
                   </select>
                 </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Business Type</label>
+                  <select
+                    value={jobTitleFilter}
+                    onChange={(e) => setJobTitleFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All business types</option>
+                    {jobTitles.map((title) => (
+                      <option key={title} value={title}>
+                        {title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
           </div>
@@ -869,7 +920,8 @@ export default function Leads({ onAddLead }: Props) {
       )}
 
       {/* Table */}
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto" }}>
         <table className="data-table min-w-[1100px]">
           <thead>
             <tr>
@@ -1170,6 +1222,18 @@ export default function Leads({ onAddLead }: Props) {
             ))}
           </tbody>
         </table>
+        </div>
+        {!isLoading && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            label={trashView ? "trashed leads" : "leads"}
+            disabled={deleting}
+          />
+        )}
       </div>
 
       {detailLead && (

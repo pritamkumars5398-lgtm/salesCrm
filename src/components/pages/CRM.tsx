@@ -68,7 +68,7 @@ export default function CRM() {
     setLoading(true);
     fetch(`/api/leads?agentId=${activeAgent._id}`)
       .then((r) => r.json())
-      .then(setLeads)
+      .then((data) => setLeads(data.leads ?? []))
       .finally(() => setLoading(false));
   }, [activeAgent?._id]);
 

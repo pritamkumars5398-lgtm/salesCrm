@@ -43,6 +43,7 @@ export async function GET(req: Request) {
   const location      = searchParams.get("location");
   const addedDate     = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
   const outreach      = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
+  const jobTitle      = searchParams.get("jobTitle");
 
   const trashed = searchParams.get("trashed") === "1";
   // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
@@ -73,6 +74,7 @@ export async function GET(req: Request) {
       ? { $in: ["none", null] }
       : outreach;
   }
+  if (jobTitle && jobTitle !== "all") baseFilter.jobTitle = jobTitle;
   if (search) baseFilter.$text = { $search: search };
   if (missingContact === "true") {
     baseFilter.$and = [
@@ -101,7 +103,7 @@ export async function GET(req: Request) {
     Lead.countDocuments(filter),
   ]);
 
-  const [statusGroups, dateGroups, remainingEligible] = await Promise.all([
+  const [statusGroups, dateGroups, remainingEligible, jobTitles] = await Promise.all([
     // Tab counts ignore the active status tab, so switching tabs doesn't zero the others.
     Lead.aggregate<{ _id: string; count: number }>([
       { $match: { ...baseFilter, ...dateFilter } },
@@ -116,6 +118,7 @@ export async function GET(req: Request) {
     ]),
     // Matches the predicate the outreach run itself uses, so "Run (n left)" is truthful.
     agentId && !trashed ? countEligibleLeads(agentId) : Promise.resolve(0),
+    agentId ? Lead.distinct("jobTitle", { agentId, deletedAt: trashed ? { $ne: null } : null }) : Promise.resolve([]),
   ]);
 
   const statusCounts: Record<string, number> = { all: 0 };
@@ -138,6 +141,7 @@ export async function GET(req: Request) {
     statusCounts,
     dateOptions,
     remainingEligible,
+    jobTitles: jobTitles.filter(Boolean),
   });
 }
 

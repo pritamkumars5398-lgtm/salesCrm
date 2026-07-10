@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Pagination from "@/components/ui/Pagination";
 import {
   IconUsers,
   IconCpu,
@@ -71,6 +72,8 @@ export default function Superadmin() {
   const [data, setData] = useState<SuperadminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(25);
   const [updating, setUpdating] = useState(false);
 
   // Cost Analyzer States
@@ -125,6 +128,9 @@ export default function Superadmin() {
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase())
   ) || [];
+
+  // Superadmin loads every account up front, so the table pages in memory.
+  const visibleUsers = filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize);
 
   function handleStartEdit(user: PlatformUser) {
     setEditingUser(user);
@@ -479,7 +485,7 @@ export default function Superadmin() {
               type="text"
               placeholder="Search user or email..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setUserPage(1); }}
               style={{
                 width: "100%",
                 padding: "8px 12px 8px 34px",
@@ -512,7 +518,7 @@ export default function Superadmin() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
+              {visibleUsers.map((user) => (
                 <tr key={user.id} style={{ borderBottom: "1px solid var(--color-bg4)", transition: "background 0.15s" }}>
                   <td style={{ padding: "14px 20px" }}>
                     <p style={{ fontWeight: 700, color: "var(--color-text)", margin: 0 }}>{user.name}</p>
@@ -600,6 +606,14 @@ export default function Superadmin() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={userPage}
+          pageSize={userPageSize}
+          total={filteredUsers.length}
+          onPageChange={setUserPage}
+          onPageSizeChange={setUserPageSize}
+          label="accounts"
+        />
       </div>
 
       {/* Plan / Limit Overrides Edit Dialog */}
