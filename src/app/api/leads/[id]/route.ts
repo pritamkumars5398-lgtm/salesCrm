@@ -21,6 +21,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const fieldsToTrack = ["status", "pipelineStage", "firstName", "lastName", "jobTitle", "company", "email", "phone", "agentEnabled"];
   const updatedBy = body.updatedBy || "User";
+  const changeNote = body.changeNote || "";
 
   for (const key of fieldsToTrack) {
     if (body[key] !== undefined && String(body[key]) !== String((lead as any)[key] ?? "")) {
@@ -30,6 +31,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         to: String(body[key]),
         by: updatedBy,
         at: new Date(),
+        note: changeNote || undefined,
       });
       (lead as any)[key] = body[key];
     }

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
@@ -12,6 +12,7 @@ import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import EmptyState from "@/components/ui/EmptyState";
+import Pagination from "@/components/ui/Pagination";
 import { SkeletonTableRow } from "@/components/ui/Skeleton";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
@@ -43,10 +44,21 @@ function SourceBadge({ source }: { source: string }) {
   );
 }
 
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+  page: number;
+  totalPages: number;
+  statusCounts?: Record<string, number>;
+  dateOptions?: { value: string; count: number }[];
+  remainingEligible?: number;
+  jobTitles?: string[];
+}
+
 interface Props { onAddLead: () => void; }
 
 export default function Leads({ onAddLead }: Props) {
-  const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen } = useAppStore();
+  const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen, syncing } = useAppStore();
   const [deleting, setDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -66,6 +78,36 @@ export default function Leads({ onAddLead }: Props) {
   const [starting, setStarting] = useState(false);
   const [sequence, setSequence] = useState<any>(null);
   const [trashView, setTrashView] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [remainingEligible, setRemainingEligible] = useState(0);
+  // Guards against a slow response from an earlier filter/page overwriting a newer one
+  // — the table also polls every 3s while a run is in flight.
+  const reqIdRef = useRef(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [jobTitleFilter, setJobTitleFilter] = useState("all");
+  const [jobTitles, setJobTitles] = useState<string[]>([]);
+
+
+  const dropdownItemStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text)",
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    transition: "background-color 0.15s",
+  };
 
   useEffect(() => {
     if (!activeAgent) {
@@ -87,8 +129,14 @@ export default function Leads({ onAddLead }: Props) {
   const fetchLeads = useCallback(async (background = false) => {
     if (!activeAgent) return;
     if (!background) setLoading(true);
+    const reqId = ++reqIdRef.current;
     try {
-      const params = new URLSearchParams({ agentId: activeAgent._id });
+      const params = new URLSearchParams({
+        agentId: activeAgent._id,
+        page: String(page),
+        limit: String(pageSize),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
       if (trashView) params.set("trashed", "1");
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
@@ -96,35 +144,47 @@ export default function Leads({ onAddLead }: Props) {
       if (locationFilter !== "all") params.set("location", locationFilter);
       if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
       if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
+      if (jobTitleFilter !== "all") params.set("jobTitle", jobTitleFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
-      const data: Lead[] = await fetch(`/api/leads?${params}`).then((r) => r.json());
-      setLeads(data);
+      const data: LeadsResponse = await fetch(`/api/leads?${params}`).then((r) => r.json());
+      if (reqId !== reqIdRef.current) return; // a newer request already landed
+
+      setLeads(data.leads ?? []);
+      setTotal(data.total ?? 0);
+      setStatusCounts(data.statusCounts ?? {});
+      setRemainingEligible(data.remainingEligible ?? 0);
+      if (data.jobTitles) setJobTitles(data.jobTitles);
 
       // Sync-batch options: distinct days leads were added, newest first.
-      if (addedDateFilter === "all" && Array.isArray(data)) {
-        const counts = new Map<string, number>();
-        data.forEach((l) => {
-          if (!l.createdAt) return;
-          const day = new Date(l.createdAt).toLocaleDateString("en-CA"); // YYYY-MM-DD local
-          counts.set(day, (counts.get(day) ?? 0) + 1);
-        });
-        setDateOptions(
-          [...counts.entries()]
-            .sort((a, b) => b[0].localeCompare(a[0]))
-            .map(([day, count]) => ({
-              value: day,
-              label: new Date(`${day}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-              count,
-            }))
-        );
-      }
+      setDateOptions(
+        (data.dateOptions ?? []).map(({ value, count }) => ({
+          value,
+          count,
+          label: new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+        }))
+      );
+
+      // Deleting the last rows of a page can strand us past the end.
+      if (data.total > 0 && page > data.totalPages) setPage(data.totalPages);
     } finally {
-      if (!background) setLoading(false);
+      if (reqId === reqIdRef.current && !background) setLoading(false);
     }
-  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, search, missingContact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Any filter change invalidates the current offset — go back to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, pageSize, activeAgent?._id]);
+
+  // An Apify sync just finished — pull in whatever it imported.
+  const prevSyncing = useRef(syncing);
+  useEffect(() => {
+    if (prevSyncing.current && !syncing) fetchLeads(true);
+    prevSyncing.current = syncing;
+  }, [syncing, fetchLeads]);
 
   // While a run is in flight for this agent, refresh lead statuses in the
   // background so the table shows live "sending…" highlights and results.
@@ -191,14 +251,6 @@ export default function Leads({ onAddLead }: Props) {
 
   // loading state — table with skeleton rows (no full-screen spinner)
   const isLoading = loading;
-
-  /** Leads that still qualify for a run: new, has contact info, not already sent/in-flight. */
-  const remainingEligible = leads.filter(
-    (l) =>
-      l.status === "new" &&
-      (l.email || l.phone) &&
-      !["sent", "sending", "pending"].includes(l.outreachStatus ?? "none")
-  ).length;
 
   async function handleRun() {
     if (!activeAgent || starting) return;
@@ -314,6 +366,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await deleteLeads(activeAgent._id, ids);
       showToast(`Moved ${deleted} lead${deleted !== 1 ? "s" : ""} to Trash`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads(); // reconcile if the server rejected the delete
@@ -331,6 +384,7 @@ export default function Leads({ onAddLead }: Props) {
       const { restored } = await restoreLeads(activeAgent._id, ids);
       updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + restored);
       showToast(`Restored ${restored} lead${restored !== 1 ? "s" : ""}`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to restore leads", "error");
       fetchLeads();
@@ -349,6 +403,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await permanentlyDeleteLeads(activeAgent._id, ids);
       showToast(`Permanently deleted ${deleted} lead${deleted !== 1 ? "s" : ""}`, "success");
+      fetchLeads(true); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads();
@@ -439,277 +494,361 @@ export default function Leads({ onAddLead }: Props) {
           {trashView ? "🗑 Trash" : "Leads"}
         </h1>
         <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "4px 0 0", fontWeight: 400 }}>
-          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${leads.length > 0 ? ` · ${leads.length} leads` : ""}`}
+          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${total > 0 ? ` · ${total.toLocaleString()} leads` : ""}`}
         </p>
       </div>
 
 
-      {/* Status pill tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          marginBottom: 16,
-          padding: 4,
-          background: "var(--color-bg2)",
-          border: "1px solid var(--color-bg4)",
-          borderRadius: "var(--radius-xl)",
-          width: "fit-content",
-          maxWidth: "100%",
-          overflowX: "auto",
-          flexWrap: "nowrap",
-        }}
-      >
-        {STATUS_TABS.map((tab) => {
-          const count = tab.value === "all"
-            ? leads.length
-            : leads.filter((l) => l.status === tab.value).length;
-          const isActive = statusFilter === tab.value;
-          return (
-            <button
-              key={tab.value}
-              onClick={() => setStatusFilter(tab.value)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: "var(--radius-lg)",
-                border: isActive ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
-                background: isActive ? "var(--color-primary-subtle)" : "transparent",
-                color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
-                fontSize: 12.5,
-                fontWeight: isActive ? 700 : 500,
-                cursor: "pointer",
-                transition: "all var(--transition-fast)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tab.label}
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: "var(--radius-full)",
-                  background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
-                  color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Toolbar */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        {/* Search */}
+      {/* Unified Compact Toolbar on a Single Line */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+        {/* Status pill tabs */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 12px",
-            borderRadius: "var(--radius-lg)",
+            gap: 4,
+            padding: 3,
             background: "var(--color-bg2)",
             border: "1px solid var(--color-bg4)",
-            width: "100%",
-            maxWidth: 280,
-            boxShadow: "var(--shadow-xs)",
-            transition: "border-color var(--transition-fast), box-shadow var(--transition-fast)",
-          }}
-          onFocusCapture={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-primary-light)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 3px var(--color-primary-glow)";
-          }}
-          onBlurCapture={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-bg4)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-xs)";
+            borderRadius: 12,
+            overflowX: "auto",
+            flexWrap: "nowrap",
           }}
         >
-          <IconSearch size={14} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, company, email..."
-            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--color-text)", width: "100%" }}
-          />
-        </div>
-        <select
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All sources</option>
-          <option value="Google Maps">Google Maps</option>
-          <option value="LinkedIn">LinkedIn</option>
-          <option value="JustDial">JustDial</option>
-          <option value="Manual">Manual</option>
-          <option value="Apify">Apify</option>
-          <option value="Referral">Referral</option>
-        </select>
-        <select
-          value={channelFilter}
-          onChange={(e) => setChannelFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All channels</option>
-          <option value="email">Email</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="sms">SMS</option>
-          <option value="call">Call</option>
-        </select>
-        <select
-          value={locationFilter}
-          onChange={(e) => setLocationFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All locations</option>
-          {locations.map((loc) => (
-            <option key={loc.name} value={loc.name}>
-              {loc.name} {!loc.active && "(Inactive)"}
-            </option>
-          ))}
-        </select>
-        <select
-          value={addedDateFilter}
-          onChange={(e) => setAddedDateFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-          title="Filter by the day leads were added/synced"
-        >
-          <option value="all">All sync dates</option>
-          {dateOptions.map((d) => (
-            <option key={d.value} value={d.value}>
-              Added {d.label} ({d.count})
-            </option>
-          ))}
-        </select>
-        <select
-          value={outreachFilter}
-          onChange={(e) => setOutreachFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-          title="Filter by outreach result"
-        >
-          <option value="all">All outreach</option>
-          <option value="none">Not started</option>
-          <option value="pending">Queued</option>
-          <option value="sending">Sending now</option>
-          <option value="sent">Outreached ✓</option>
-          <option value="failed">Failed ✗</option>
-        </select>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
-          {/* Run: start outreach for the next N eligible leads — works even in Draft */}
-          {!trashView && (
-          <div className="relative">
-            <button
-              onClick={() => setRunOpen((v) => !v)}
-              disabled={campaignRunning}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ease-out border-none text-white"
-              style={{
-                background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
-                cursor: campaignRunning ? "not-allowed" : "pointer",
-              }}
-              title={campaignRunning ? "A run is already in progress" : "Start outreach for the next batch of leads (works in Draft too)"}
-            >
-              <IconPlayerPlay size={14} />
-              {campaignRunning ? "Running…" : `Run (${remainingEligible} left)`}
-            </button>
-            {runOpen && !campaignRunning && (
-              <div
-                className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50"
-                style={{ borderColor: "#e2e8f0" }}
+          {STATUS_TABS.map((tab) => {
+            const count = statusCounts[tab.value] ?? 0;
+            const isActive = statusFilter === tab.value;
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  border: isActive ? "1px solid rgba(99,102,241,0.15)" : "1px solid transparent",
+                  background: isActive ? "var(--color-primary-subtle)" : "transparent",
+                  color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: "pointer",
+                  transition: "all var(--transition-fast)",
+                  whiteSpace: "nowrap",
+                }}
               >
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
-                <p className="text-[12px] text-slate-600 m-0 mb-2">
-                  {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} not started yet. How many to contact now?
-                </p>
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={Math.max(remainingEligible, 1)}
-                    value={runCount}
-                    onChange={(e) => setRunCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
-                    className="form-input w-20 text-[13px]"
-                  />
-                  {[10, 15].map((n) => (
+                {tab.label}
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    padding: "1px 5px",
+                    borderRadius: 99,
+                    background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
+                    color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Toolbar controls (Search + Run + Filters + Actions) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Search Input */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 10px",
+              borderRadius: 8,
+              background: "var(--color-bg2)",
+              border: "1px solid var(--color-bg4)",
+              width: 180,
+              boxShadow: "var(--shadow-xs)",
+            }}
+          >
+            <IconSearch size={13} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--color-text)", width: "100%" }}
+            />
+          </div>
+
+          {/* Run button */}
+          {!trashView && (
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setRunOpen((v) => !v)}
+                disabled={campaignRunning}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-none text-white cursor-pointer"
+                style={{
+                  background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
+                  height: 30,
+                }}
+              >
+                <IconPlayerPlay size={13} />
+                {campaignRunning ? "Running…" : `Run (${remainingEligible})`}
+              </button>
+              {runOpen && !campaignRunning && (
+                <div
+                  className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50 text-slate-800"
+                  style={{ borderColor: "#e2e8f0" }}
+                >
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
+                  <p className="text-[12px] text-slate-600 m-0 mb-2">
+                    {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} left. How many to contact?
+                  </p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.max(remainingEligible, 1)}
+                      value={runCount}
+                      onChange={(e) => setRunCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                      className="form-input w-20 text-[13px]"
+                      style={{ padding: "4px 8px" }}
+                    />
+                    {[10, 15].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setRunCount(n)}
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                      >
+                        {n}
+                      </button>
+                    ))}
                     <button
-                      key={n}
-                      onClick={() => setRunCount(n)}
+                      onClick={() => setRunCount(Math.max(remainingEligible, 1))}
                       className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
                     >
-                      {n}
+                      All
                     </button>
-                  ))}
+                  </div>
                   <button
-                    onClick={() => setRunCount(Math.max(remainingEligible, 1))}
-                    className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                    onClick={handleRun}
+                    disabled={starting || remainingEligible === 0}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
+                    style={{ background: "#10b981", opacity: starting || remainingEligible === 0 ? 0.6 : 1 }}
                   >
-                    All
+                    <IconPlayerPlay size={13} />
+                    {starting ? "Starting…" : `Start ${Math.min(runCount, Math.max(remainingEligible, 1))} now`}
                   </button>
                 </div>
-                <button
-                  onClick={handleRun}
-                  disabled={starting || remainingEligible === 0}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
-                  style={{ background: "#10b981", opacity: starting || remainingEligible === 0 ? 0.6 : 1 }}
-                >
-                  <IconPlayerPlay size={13} />
-                  {starting ? "Starting…" : `Start ${Math.min(runCount, Math.max(remainingEligible, 1))} now`}
-                </button>
-                <p className="text-[10.5px] text-slate-400 m-0 mt-2 leading-snug">
-                  Runs even while the agent is in Draft. Already-contacted leads are skipped automatically.
-                </p>
+              )}
+            </div>
+          )}
+
+          {/* Filters Toggle Popover */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setFiltersOpen(!filtersOpen); setActionsOpen(false); }}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+              style={{
+                background: filtersOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+                borderColor: filtersOpen ? "var(--color-primary-light)" : "var(--color-bg4)",
+                color: filtersOpen ? "var(--color-primary-light)" : "var(--color-text2)",
+                height: 30,
+              }}
+            >
+              Filters ⚙
+            </button>
+            {filtersOpen && (
+              <div
+                className="absolute right-0 mt-2 w-72 rounded-xl border bg-white p-4 shadow-xl z-50 flex flex-col gap-3"
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Source</label>
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All sources</option>
+                    <option value="Google Maps">Google Maps</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="JustDial">JustDial</option>
+                    <option value="Manual">Manual</option>
+                    <option value="Apify">Apify</option>
+                    <option value="Referral">Referral</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Channel</label>
+                  <select
+                    value={channelFilter}
+                    onChange={(e) => setChannelFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All channels</option>
+                    <option value="email">Email</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="sms">SMS</option>
+                    <option value="call">Call</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Location</label>
+                  <select
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All locations</option>
+                    {locations.map((loc) => (
+                      <option key={loc.name} value={loc.name}>
+                        {loc.name} {!loc.active && "(Inactive)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Sync Date</label>
+                  <select
+                    value={addedDateFilter}
+                    onChange={(e) => setAddedDateFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All sync dates</option>
+                    {dateOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        Added {d.label} ({d.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Outreach Status</label>
+                  <select
+                    value={outreachFilter}
+                    onChange={(e) => setOutreachFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All outreach</option>
+                    <option value="none">Not started</option>
+                    <option value="pending">Queued</option>
+                    <option value="sending">Sending now</option>
+                    <option value="sent">Outreached ✓</option>
+                    <option value="failed">Failed ✗</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Business Type</label>
+                    {jobTitleFilter !== "all" && (
+                      <button
+                        onClick={() => setJobTitleFilter("all")}
+                        style={{ background: "none", border: "none", color: "var(--color-primary-light)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    list="business-types"
+                    value={jobTitleFilter === "all" ? "" : jobTitleFilter}
+                    onChange={(e) => setJobTitleFilter(e.target.value || "all")}
+                    placeholder="Search or type business type..."
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)", padding: "7px 10px", borderRadius: 8, fontSize: 13 }}
+                  />
+                  <datalist id="business-types">
+                    {jobTitles.map((title) => (
+                      <option key={title} value={title} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
             )}
           </div>
-          )}
-          <button
-            onClick={() => setMissingContact((v) => !v)}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{
-              background: missingContact ? "var(--color-red-bg)" : "var(--color-bg2)",
-              borderColor: missingContact ? "var(--color-red)" : "var(--color-bg4)",
-              color: missingContact ? "var(--color-red)" : "var(--color-text2)",
-            }}
-            title="Show leads missing email & phone"
-          >
-            <IconAlertCircle size={14} /> No contact
-          </button>
-          <button
-            onClick={cleanupIncomplete}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
-            title="Delete all leads missing email or phone"
-          >
-            <IconTrash size={14} /> Clean up
-          </button>
-          <button
-            onClick={() => { setTrashView((v) => !v); setSelected(new Set()); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{
-              background: trashView ? "var(--color-primary-subtle)" : "var(--color-bg2)",
-              borderColor: trashView ? "var(--color-primary-light)" : "var(--color-bg4)",
-              color: trashView ? "var(--color-primary-light)" : "var(--color-text2)",
-            }}
-            title={trashView ? "Back to active leads" : "View trashed leads"}
-          >
-            <IconTrash size={14} /> {trashView ? "Viewing Trash" : "Trash"}
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={onAddLead}>
-            <IconPlus size={14} /> Add manually
-          </button>
-          <button className="btn btn-primary btn-sm">
-            <IconRefresh size={14} /> Sync Apify
-          </button>
+
+          {/* Actions Dropdown Toggle */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setActionsOpen(!actionsOpen); setFiltersOpen(false); }}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+              style={{
+                background: actionsOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+                borderColor: actionsOpen ? "var(--color-primary-light)" : "var(--color-bg4)",
+                color: actionsOpen ? "var(--color-primary-light)" : "var(--color-text2)",
+                height: 30,
+              }}
+            >
+              Actions ▾
+            </button>
+            {actionsOpen && (
+              <div
+                className="absolute right-0 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-xl z-50 flex flex-col gap-0.5"
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+              >
+                <button
+                  onClick={() => { setActionsOpen(false); onAddLead(); }}
+                  style={dropdownItemStyle}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconPlus size={13} /> Add manually
+                </button>
+                <button
+                  style={dropdownItemStyle}
+                  onClick={() => { setActionsOpen(false); }} // triggers topbar sync click
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconRefresh size={13} /> Sync Apify
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); setMissingContact((v) => !v); }}
+                  style={{
+                    ...dropdownItemStyle,
+                    color: missingContact ? "var(--color-red)" : undefined,
+                    background: missingContact ? "var(--color-red-bg)" : undefined,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = missingContact ? "rgba(239,68,68,0.15)" : "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = missingContact ? "var(--color-red-bg)" : "transparent"}
+                >
+                  <IconAlertCircle size={13} /> {missingContact ? "Show all contacts" : "Show no contact"}
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); cleanupIncomplete(); }}
+                  style={{ ...dropdownItemStyle, color: "#ff6b6b" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconTrash size={13} /> Clean up
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); setTrashView((v) => !v); setSelected(new Set()); }}
+                  style={{
+                    ...dropdownItemStyle,
+                    color: trashView ? "var(--color-primary-light)" : undefined,
+                    background: trashView ? "var(--color-primary-subtle)" : undefined,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = trashView ? "rgba(99,102,241,0.15)" : "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = trashView ? "var(--color-primary-subtle)" : "transparent"}
+                >
+                  <IconTrash size={13} /> {trashView ? "Viewing Active" : "Viewing Trash"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -791,17 +930,30 @@ export default function Leads({ onAddLead }: Props) {
       )}
 
       {/* Table */}
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ overflowX: "auto" }}>
         <table className="data-table min-w-[1100px]">
           <thead>
             <tr>
               <th className="px-4 py-3 text-left" style={{ width: 40 }}>
                 <input
                   type="checkbox"
-                  checked={selected.size === leads.length && leads.length > 0}
-                  onChange={(e) => setSelected(e.target.checked ? new Set(leads.map((l) => l._id)) : new Set())}
+                  // Selection survives page changes, so this reflects the visible page only.
+                  checked={leads.length > 0 && leads.every((l) => selected.has(l._id))}
+                  onChange={(e) => {
+                    const pageIds = leads.map((l) => l._id);
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      pageIds.forEach((id) => (e.target.checked ? next.add(id) : next.delete(id)));
+                      return next;
+                    });
+                  }}
                   className="accent-[#6c63ff] cursor-pointer"
+                  title="Select every lead on this page"
                 />
+              </th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap" style={{ color: "var(--color-text3)", width: 40 }}>
+                Sr
               </th>
               {["Name", "Company", "Location", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
                 <th
@@ -816,11 +968,11 @@ export default function Leads({ onAddLead }: Props) {
           </thead>
           <tbody>
             {isLoading && Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonTableRow key={i} cols={9} />
+              <SkeletonTableRow key={i} cols={10} />
             ))}
             {!isLoading && leads.length === 0 && (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <EmptyState
                     icon={<IconUsers size={24} />}
                     title={trashView ? "Trash is empty" : "No leads found"}
@@ -848,6 +1000,9 @@ export default function Leads({ onAddLead }: Props) {
                     onChange={() => toggleSelect(lead._id)}
                     className="accent-[#6c63ff] cursor-pointer"
                   />
+                </td>
+                <td className="px-4 py-3 text-[12px] font-semibold text-slate-400">
+                  {i + 1}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -1086,6 +1241,18 @@ export default function Leads({ onAddLead }: Props) {
             ))}
           </tbody>
         </table>
+        </div>
+        {!isLoading && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            label={trashView ? "trashed leads" : "leads"}
+            disabled={deleting}
+          />
+        )}
       </div>
 
       {detailLead && (

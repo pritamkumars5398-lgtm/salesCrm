@@ -26,6 +26,9 @@ export interface UiSlice {
 
   sidebarOpenMobile: boolean;
   setSidebarOpenMobile: (open: boolean) => void;
+
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
 export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get) => ({
@@ -52,4 +55,7 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
 
   sidebarOpenMobile: false,
   setSidebarOpenMobile: (open) => set({ sidebarOpenMobile: open }),
+
+  sidebarCollapsed: false,
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 });

@@ -35,6 +35,16 @@ export default function ConversationDrawer() {
 
   const { open, lead, channel } = drawer;
   const [agentOn, setAgentOn] = useState(true);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
   const [replyText, setReplyText] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
@@ -376,10 +386,15 @@ export default function ConversationDrawer() {
     <div
       className="flex flex-col flex-shrink-0 border-l overflow-hidden transition-all duration-300"
       style={{
-        width: open ? 480 : 0,
-        minWidth: open ? 480 : 0,
+        width: open ? (isMobile ? "100%" : 480) : 0,
+        minWidth: open ? (isMobile ? "100%" : 480) : 0,
         background: "var(--color-bg2)",
         borderColor: "rgba(0,0,0,0.1)",
+        position: isMobile && open ? "fixed" : "relative",
+        top: isMobile && open ? 0 : undefined,
+        right: isMobile && open ? 0 : undefined,
+        bottom: isMobile && open ? 0 : undefined,
+        zIndex: isMobile && open ? 100 : undefined,
       }}
     >
       {open && lead && (

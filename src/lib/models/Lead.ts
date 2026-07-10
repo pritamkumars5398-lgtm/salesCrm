@@ -18,6 +18,7 @@ export interface ILeadHistory {
   to: string;
   by: string;
   at: Date;
+  note?: string;
 }
 
 export interface ILead extends Document {
@@ -85,6 +86,7 @@ const LeadSchema = new Schema<ILead>(
       to:    { type: String },
       by:    { type: String, default: "User" },
       at:    { type: Date, default: Date.now },
+      note:  { type: String },
     }],
   },
   { timestamps: true }

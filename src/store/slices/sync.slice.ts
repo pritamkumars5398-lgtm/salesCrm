@@ -103,7 +103,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
         }
 
         // Refresh agent lead counts.
-        const { userEmail, setAgents, setActiveAgent, currentPage, setLeads } = get();
+        const { userEmail, setAgents, setActiveAgent } = get();
         fetch(`/api/agents?email=${encodeURIComponent(userEmail)}`)
           .then((r) => r.json())
           .then((agentsList) => {
@@ -113,13 +113,8 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
           })
           .catch(() => {});
 
-        // If viewing Leads, reload them so new leads appear.
-        if (currentPage === "leads") {
-          fetch(`/api/leads?agentId=${agentId}`)
-            .then((r) => r.json())
-            .then((data) => setLeads(data))
-            .catch(() => {});
-        }
+        // The Leads page reloads its own page of results once `syncing` flips back
+        // to false — refreshing `leads` from here would overwrite the active page.
       } catch (err) {
         showToast("Apify sync failed — check console", "error");
         console.error("[Apify sync]", err);

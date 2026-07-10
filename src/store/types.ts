@@ -22,6 +22,7 @@ export interface LeadHistory {
   to: string;
   by: string;
   at: string;
+  note?: string;
 }
 
 export interface Lead {

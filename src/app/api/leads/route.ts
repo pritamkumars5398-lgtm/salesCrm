@@ -4,50 +4,147 @@ import { Lead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
 import { Conversation } from "@/lib/models/Conversation";
 import { Activity } from "@/lib/models/Activity";
+import { countEligibleLeads } from "@/server/services/campaign.service";
 
+const MAX_PAGE_SIZE = 200;
+const DEFAULT_PAGE_SIZE = 25;
+
+/**
+ * The UTC instants bounding calendar day `YYYY-MM-DD` as it falls in `tz`.
+ * Keeps the `addedDate` filter aligned with the tz-grouped `dateOptions`,
+ * which a server-local `new Date(day)` would not be (servers run in UTC).
+ */
+function zonedDayRange(day: string, tz: string): { start: Date; end: Date } | null {
+  const utcMidnight = new Date(`${day}T00:00:00Z`);
+  if (isNaN(utcMidnight.getTime())) return null;
+  const shifted = new Date(utcMidnight.toLocaleString("en-US", { timeZone: tz }));
+  const offset = shifted.getTime() - utcMidnight.getTime();
+  const start = new Date(utcMidnight.getTime() - offset);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
+/**
+ * GET /api/leads — always returns `{ leads, total, page, limit, totalPages }`.
+ *
+ * Pass `?page=n` to fetch one page; the response then also carries the counters
+ * the Leads table needs but cannot derive from a single page (`statusCounts`,
+ * `dateOptions`, `remainingEligible`). Without `page`, every match is returned,
+ * which is what the CRM kanban and the post-sync refresh want.
+ */
 export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId       = searchParams.get("agentId");
-  const status        = searchParams.get("status");
-  const search        = searchParams.get("q");
-  const source        = searchParams.get("source");
-  const channel       = searchParams.get("channel");
+  const agentId = searchParams.get("agentId");
+  const status = searchParams.get("status");
+  const search = searchParams.get("q");
+  const source = searchParams.get("source");
+  const channel = searchParams.get("channel");
   const missingContact = searchParams.get("missingContact");
-  const location      = searchParams.get("location");
-  const addedDate     = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
-  const outreach      = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
+  const location = searchParams.get("location");
+  const addedDate = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
+  const outreach = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
+  const jobTitle = searchParams.get("jobTitle");
 
   const trashed = searchParams.get("trashed") === "1";
-
-  const filter: Record<string, unknown> = {};
-  if (agentId) filter.agentId = agentId;
-  // Trash view shows only soft-deleted leads; every other view hides them.
-  filter.deletedAt = trashed ? { $ne: null } : null;
-  if (status && status !== "all") filter.status = status;
-  if (source && source !== "all") filter.source = source;
-  if (channel && channel !== "all") filter.channels = channel;
-  if (location && location !== "all") filter.location = location;
-  if (addedDate && addedDate !== "all") {
-    const dayStart = new Date(`${addedDate}T00:00:00`);
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-    if (!isNaN(dayStart.getTime())) filter.createdAt = { $gte: dayStart, $lt: dayEnd };
+  // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
+  // A bad IANA name would make Mongo throw, so fall back to UTC.
+  let tz = searchParams.get("tz") || "UTC";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+  } catch {
+    tz = "UTC";
   }
+
+  const pageParam = searchParams.get("page");
+  const paginated = pageParam !== null;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE));
+
+  // Everything except `status` and the `addedDate` range, so the status tabs and
+  // the sync-date dropdown can each count across the axis they filter on.
+  const baseFilter: Record<string, unknown> = {};
+  if (agentId) baseFilter.agentId = agentId;
+  // Trash view shows only soft-deleted leads; every other view hides them.
+  baseFilter.deletedAt = trashed ? { $ne: null } : null;
+  if (source && source !== "all") baseFilter.source = source;
+  if (channel && channel !== "all") baseFilter.channels = channel;
+  if (location && location !== "all") baseFilter.location = location;
   if (outreach && outreach !== "all") {
-    filter.outreachStatus = outreach === "none"
+    baseFilter.outreachStatus = outreach === "none"
       ? { $in: ["none", null] }
       : outreach;
   }
-  if (search) filter.$text = { $search: search };
+  if (jobTitle && jobTitle !== "all") {
+    baseFilter.jobTitle = { $regex: jobTitle, $options: "i" };
+  }
+  if (search) baseFilter.$text = { $search: search };
   if (missingContact === "true") {
-    filter.$and = [
+    baseFilter.$and = [
       { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] },
       { $or: [{ phone: { $in: [null, ""] } }, { phone: { $exists: false } }] },
     ];
   }
 
-  const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
-  return NextResponse.json(leads);
+  const statusFilter = status && status !== "all" ? { status } : {};
+
+  let dateFilter: Record<string, unknown> = {};
+  if (addedDate && addedDate !== "all") {
+    const range = zonedDayRange(addedDate, tz);
+    if (range) dateFilter = { createdAt: { $gte: range.start, $lt: range.end } };
+  }
+
+  const filter = { ...baseFilter, ...statusFilter, ...dateFilter };
+
+  if (!paginated) {
+    const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
+    return NextResponse.json({ leads, total: leads.length, page: 1, limit: leads.length, totalPages: 1 });
+  }
+
+  const [leads, total] = await Promise.all([
+    Lead.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    Lead.countDocuments(filter),
+  ]);
+
+  const [statusGroups, dateGroups, remainingEligible, jobTitles] = await Promise.all([
+    // Tab counts ignore the active status tab, so switching tabs doesn't zero the others.
+    Lead.aggregate<{ _id: string; count: number }>([
+      { $match: { ...baseFilter, ...dateFilter } },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]),
+    // Sync-batch days ignore the active date filter, for the same reason.
+    Lead.aggregate<{ _id: string; count: number }>([
+      { $match: { ...baseFilter, ...statusFilter } },
+      { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: tz } }, count: { $sum: 1 } } },
+      { $sort: { _id: -1 } },
+      { $limit: 60 },
+    ]),
+    // Matches the predicate the outreach run itself uses, so "Run (n left)" is truthful.
+    agentId && !trashed ? countEligibleLeads(agentId) : Promise.resolve(0),
+    agentId ? Lead.distinct("jobTitle", { agentId, deletedAt: trashed ? { $ne: null } : null }) : Promise.resolve([]),
+  ]);
+
+  const statusCounts: Record<string, number> = { all: 0 };
+  for (const g of statusGroups) {
+    if (!g._id) continue;
+    statusCounts[g._id] = g.count;
+    statusCounts.all += g.count;
+  }
+
+  const dateOptions = dateGroups
+    .filter((g) => g._id)
+    .map((g) => ({ value: g._id, count: g.count }));
+
+  return NextResponse.json({
+    leads,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    statusCounts,
+    dateOptions,
+    remainingEligible,
+    jobTitles: jobTitles.filter(Boolean).sort((a, b) => a.localeCompare(b)),
+  });
 }
 
 export async function POST(req: Request) {
@@ -84,14 +181,7 @@ export async function POST(req: Request) {
   }
 }
 
-/**
- * DELETE /api/leads?agentId=xxx
- *   - with ?ids=a,b,c → move those leads to Trash (soft-delete, scoped to agent)
- *   - without ids     → soft-delete leads missing email OR phone (cleanup)
- *   - add ?permanent=1 → hard-delete instead (used from the Trash view); this
- *     also removes each lead's conversations and activities.
- * Soft-deleting decrements the agent's lead count; restore adds it back.
- */
+
 export async function DELETE(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);

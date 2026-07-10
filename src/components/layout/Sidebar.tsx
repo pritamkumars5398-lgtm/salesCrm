@@ -35,7 +35,10 @@ const OUTREACH_CHANNELS = [
   { key: "voice",    label: "Voice",    Icon: IconPhone,         color: "var(--color-voice)",    bg: "var(--color-voice-bg)",    enabledKey: "voiceEnabled",    valueKey: "voiceProvider" },
 ] as const;
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed?: boolean }) {
+  if (collapsed) {
+    return <div style={{ height: 1, background: "var(--color-bg4)", margin: "16px 8px 8px" }} />;
+  }
   return (
     <p
       style={{
@@ -62,6 +65,7 @@ function NavItem({
   badge,
   pulseBadge,
   onClick,
+  collapsed,
 }: {
   id: string;
   label: string;
@@ -70,12 +74,21 @@ function NavItem({
   badge?: React.ReactNode;
   pulseBadge?: boolean;
   onClick: () => void;
+  collapsed?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       className={`nav-item ${active ? "active" : ""}`}
-      style={{ marginBottom: 1 }}
+      style={{
+        marginBottom: 1,
+        padding: collapsed ? "6px 0" : undefined,
+        justifyContent: collapsed ? "center" : undefined,
+        display: "flex",
+        alignItems: "center",
+        width: "100%",
+      }}
+      title={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
     >
       <span
@@ -93,16 +106,20 @@ function NavItem({
       >
         <Icon size={15} />
       </span>
-      <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-      {badge}
-      {pulseBadge && (
-        <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}>
-          <span
-            className="animate-ping"
-            style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "var(--color-green)", opacity: 0.5 }}
-          />
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--color-green)", display: "block", position: "relative" }} />
-        </span>
+      {!collapsed && (
+        <>
+          <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
+          {badge}
+          {pulseBadge && (
+            <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}>
+              <span
+                className="animate-ping"
+                style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "var(--color-green)", opacity: 0.5 }}
+              />
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--color-green)", display: "block", position: "relative" }} />
+            </span>
+          )}
+        </>
       )}
     </button>
   );
@@ -132,8 +149,20 @@ export default function Sidebar() {
   const {
     agents, activeAgent, setActiveAgent, currentPage, setPage,
     leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast,
-    userEmail, setSidebarOpenMobile,
+    userEmail, sidebarOpenMobile, setSidebarOpenMobile, sidebarCollapsed,
   } = useAppStore();
+
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setWindowWidth(window.innerWidth);
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
 
   const [miniUsage, setMiniUsage]     = useState<MiniUsage | null>(null);
   const [outreach, setOutreach]       = useState<Record<string, string>>({});
@@ -192,31 +221,54 @@ export default function Sidebar() {
     : 0;
   const nearLimit = usagePct >= 80;
 
+  const collapsed = sidebarCollapsed && !isMobile;
+  const sidebarWidth = collapsed ? 64 : 240;
+
   return (
-    <aside
-      style={{
-        width: 240,
-        minWidth: 240,
-        height: "100vh",
-        background: "var(--color-bg2)",
-        backdropFilter: "blur(16px)",
-        borderRight: "1px solid var(--color-bg4)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        overflow: "hidden",
-        zIndex: 10,
-      }}
-    >
-      {/* ── Logo / Workspace Header ── */}
+    <>
+      {/* Mobile backdrop overlay */}
+      {isMobile && sidebarOpenMobile && (
+        <div
+          onClick={() => setSidebarOpenMobile(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(2px)",
+            zIndex: 90,
+          }}
+        />
+      )}
+
+      <aside
+        style={{
+          width: sidebarWidth,
+          minWidth: isMobile ? 0 : sidebarWidth,
+          height: "100vh",
+          background: "var(--color-bg2)",
+          backdropFilter: "blur(16px)",
+          borderRight: "1px solid var(--color-bg4)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          overflow: "hidden",
+          zIndex: 100,
+          position: isMobile ? "fixed" : "relative",
+          top: isMobile ? 0 : undefined,
+          left: isMobile ? 0 : undefined,
+          bottom: isMobile ? 0 : undefined,
+          transform: isMobile ? (sidebarOpenMobile ? "translateX(0)" : "translateX(-100%)") : "none",
+          transition: "width 0.2s ease, min-width 0.2s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
       <div
         style={{
-          padding: "0 16px",
+          padding: collapsed ? "0" : "0 16px",
           height: 54,
           borderBottom: "1px solid var(--color-bg4)",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: collapsed ? "center" : "space-between",
           flexShrink: 0,
         }}
       >
@@ -240,25 +292,27 @@ export default function Sidebar() {
               {currentPage === "superadmin" ? "SA" : "S"}
             </span>
           </div>
-          <div style={{ minWidth: 0 }}>
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "var(--color-text)",
-                margin: 0,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                lineHeight: 1.2,
-              }}
-            >
-              {currentPage === "superadmin" ? "Admin Portal" : (activeAgent?.name || "Workspace")}
-            </p>
-            <p style={{ fontSize: 10, color: "var(--color-text4)", margin: 0, fontWeight: 500 }}>
-              {currentPage === "superadmin" ? "Superadmin" : "AI Sales Agent"}
-            </p>
-          </div>
+          {!collapsed && (
+            <div style={{ minWidth: 0 }}>
+              <p
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "var(--color-text)",
+                  margin: 0,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  lineHeight: 1.2,
+                }}
+              >
+                {currentPage === "superadmin" ? "Admin Portal" : (activeAgent?.name || "Workspace")}
+              </p>
+              <p style={{ fontSize: 10, color: "var(--color-text4)", margin: 0, fontWeight: 500 }}>
+                {currentPage === "superadmin" ? "Superadmin" : "AI Sales Agent"}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Close (mobile) */}
@@ -288,7 +342,7 @@ export default function Sidebar() {
 
         {currentPage === "superadmin" ? (
           <>
-            <SectionLabel>Admin Portal</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Admin Portal</SectionLabel>
             <div style={{ padding: "0 4px" }}>
               <NavItem
                 id="superadmin"
@@ -296,9 +350,10 @@ export default function Sidebar() {
                 Icon={IconShield}
                 active={true}
                 onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
+                collapsed={collapsed}
               />
             </div>
-            <SectionLabel>Client Access</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Client Access</SectionLabel>
             <div style={{ padding: "0 4px" }}>
               <NavItem
                 id="dashboard"
@@ -306,13 +361,14 @@ export default function Sidebar() {
                 Icon={IconLayoutDashboard}
                 active={false}
                 onClick={() => router.push(`/dashboard/${activeAgent?._id || "default"}`)}
+                collapsed={collapsed}
               />
             </div>
           </>
         ) : (
           <>
             {/* ── Agent Status Card ── */}
-            {activeAgent && (() => {
+            {activeAgent && !collapsed && (() => {
               const hasOutreach = inOutreachCount > 0;
               return (
                 <div
@@ -423,7 +479,7 @@ export default function Sidebar() {
             })()}
 
             {/* ── Navigation ── */}
-            <SectionLabel>Navigation</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Navigation</SectionLabel>
             <nav style={{ padding: "0 4px", display: "flex", flexDirection: "column" }}>
               {NAV_ITEMS.map(({ id, label, Icon }) => (
                 <NavItem
@@ -444,12 +500,13 @@ export default function Sidebar() {
                     ) : undefined
                   }
                   pulseBadge={id === "crons" && enabledCronsCount > 0}
+                  collapsed={collapsed}
                 />
               ))}
             </nav>
 
             {/* ── Outreach Channels ── */}
-            <SectionLabel>Channels</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Channels</SectionLabel>
             <div style={{ padding: "0 4px", display: "flex", flexDirection: "column", gap: 2, marginBottom: 4 }}>
               {OUTREACH_CHANNELS.map(({ key, label, Icon, color, bg, enabledKey, valueKey }) => {
                 const enabled = outreach[enabledKey] !== "false";
@@ -460,13 +517,15 @@ export default function Sidebar() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      padding: "7px 10px",
+                      justifyContent: collapsed ? "center" : undefined,
+                      gap: collapsed ? 0 : 8,
+                      padding: collapsed ? "7px 0" : "7px 10px",
                       borderRadius: "var(--radius-lg)",
                       background: enabled ? bg : "transparent",
                       opacity: enabled ? 1 : 0.45,
                       transition: "opacity var(--transition-fast)",
                     }}
+                    title={collapsed ? `${label}: ${enabled && value ? value : enabled ? "Not configured" : "Disabled"}` : undefined}
                   >
                     <span
                       style={{
@@ -482,33 +541,37 @@ export default function Sidebar() {
                     >
                       <Icon size={13} style={{ color: enabled ? color : "var(--color-text4)" }} />
                     </span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)", margin: 0, lineHeight: 1.2 }}>
-                        {label}
-                      </p>
-                      <p
-                        style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                        title={value}
-                      >
-                        {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
-                      </p>
-                    </div>
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: enabled ? "var(--color-green)" : "var(--color-bg5)",
-                        flexShrink: 0,
-                      }}
-                    />
+                    {!collapsed && (
+                      <>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)", margin: 0, lineHeight: 1.2 }}>
+                            {label}
+                          </p>
+                          <p
+                            style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                            title={value}
+                          >
+                            {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
+                          </p>
+                        </div>
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: enabled ? "var(--color-green)" : "var(--color-bg5)",
+                            flexShrink: 0,
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             {/* ── Config ── */}
-            <SectionLabel>Config</SectionLabel>
+            <SectionLabel collapsed={collapsed}>Config</SectionLabel>
             <div style={{ padding: "0 4px", display: "flex", flexDirection: "column" }}>
               <NavItem
                 id="settings"
@@ -516,6 +579,7 @@ export default function Sidebar() {
                 Icon={IconSettings}
                 active={currentPage === "settings"}
                 onClick={() => router.push(`/settings/${activeAgent?._id || "default"}`)}
+                collapsed={collapsed}
               />
               <NavItem
                 id="plans"
@@ -539,13 +603,14 @@ export default function Sidebar() {
                     </span>
                   ) : undefined
                 }
+                collapsed={collapsed}
               />
             </div>
 
             {/* ── Admin (conditional) ── */}
             {userEmail?.toLowerCase() === "admin@salesagent.ai" && (
               <>
-                <SectionLabel>Admin</SectionLabel>
+                <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
                 <div style={{ padding: "0 4px" }}>
                   <NavItem
                     id="superadmin"
@@ -553,6 +618,7 @@ export default function Sidebar() {
                     Icon={IconShield}
                     active={(currentPage as string) === "superadmin"}
                     onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
+                    collapsed={collapsed}
                   />
                 </div>
               </>
@@ -562,7 +628,7 @@ export default function Sidebar() {
       </div>
 
       {/* ── Usage Mini-bar (Footer) ── */}
-      {miniUsage && (
+      {miniUsage && !collapsed && (
         <div
           style={{
             padding: "12px",
@@ -630,5 +696,6 @@ export default function Sidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }
