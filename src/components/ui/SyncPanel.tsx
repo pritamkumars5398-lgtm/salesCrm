@@ -10,7 +10,7 @@ export interface SyncRun {
   imported: number;
   error?: string;
 }
-
+// df
 interface Props {
   runs: SyncRun[];
   open: boolean;
@@ -18,24 +18,24 @@ interface Props {
 }
 
 const STATUS_CFG: Record<SyncRun["status"], { label: string; color: string; bg: string; spin?: boolean }> = {
-  starting:  { label: "Starting…",  color: "#6366f1", bg: "rgba(99,102,241,0.1)", spin: true },
-  polling:   { label: "Scraping…",  color: "#f5a623", bg: "rgba(245,166,35,0.1)", spin: true },
+  starting: { label: "Starting…", color: "#6366f1", bg: "rgba(99,102,241,0.1)", spin: true },
+  polling: { label: "Scraping…", color: "#f5a623", bg: "rgba(245,166,35,0.1)", spin: true },
   importing: { label: "Importing…", color: "#4dabf7", bg: "rgba(77,171,247,0.1)", spin: true },
-  done:      { label: "Done",       color: "#22c97a", bg: "rgba(34,201,122,0.1)" },
-  failed:    { label: "Failed",     color: "#ff6b6b", bg: "rgba(255,107,107,0.1)" },
+  done: { label: "Done", color: "#22c97a", bg: "rgba(34,201,122,0.1)" },
+  failed: { label: "Failed", color: "#ff6b6b", bg: "rgba(255,107,107,0.1)" },
 };
 
 const SCRAPER_COLOR: Record<string, string> = {
   "google-maps": "#10b981",
-  linkedin:      "#0a66c2",
-  justdial:      "#f58220",
-  custom:        "#6366f1",
+  linkedin: "#0a66c2",
+  justdial: "#f58220",
+  custom: "#6366f1",
 };
 
 export default function SyncPanel({ runs, open, onClose }: Props) {
   if (!open) return null;
 
-  const allDone  = runs.length > 0 && runs.every((r) => r.status === "done" || r.status === "failed");
+  const allDone = runs.length > 0 && runs.every((r) => r.status === "done" || r.status === "failed");
   const totalNew = runs.reduce((s, r) => s + r.imported, 0);
 
   return (
@@ -97,8 +97,8 @@ export default function SyncPanel({ runs, open, onClose }: Props) {
           </div>
         )}
         {runs.map((run) => {
-          const cfg  = STATUS_CFG[run.status];
-          const dot  = SCRAPER_COLOR[run.scraperType] ?? "#6366f1";
+          const cfg = STATUS_CFG[run.status];
+          const dot = SCRAPER_COLOR[run.scraperType] ?? "#6366f1";
           return (
             <div
               key={run.runId}
@@ -144,7 +144,7 @@ export default function SyncPanel({ runs, open, onClose }: Props) {
                         animation: "spin 0.8s linear infinite",
                       }} />
                     )}
-                    {run.status === "done"   && <IconCheck size={10} />}
+                    {run.status === "done" && <IconCheck size={10} />}
                     {run.status === "failed" && <IconAlertCircle size={10} />}
                     {cfg.label}
                   </span>
