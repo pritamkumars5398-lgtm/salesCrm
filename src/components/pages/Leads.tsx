@@ -66,6 +66,25 @@ export default function Leads({ onAddLead }: Props) {
   const [starting, setStarting] = useState(false);
   const [sequence, setSequence] = useState<any>(null);
   const [trashView, setTrashView] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+
+  const dropdownItemStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text)",
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: "pointer",
+    textAlign: "left" as const,
+    transition: "background-color 0.15s",
+  };
 
   useEffect(() => {
     if (!activeAgent) {
@@ -444,272 +463,331 @@ export default function Leads({ onAddLead }: Props) {
       </div>
 
 
-      {/* Status pill tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          marginBottom: 16,
-          padding: 4,
-          background: "var(--color-bg2)",
-          border: "1px solid var(--color-bg4)",
-          borderRadius: "var(--radius-xl)",
-          width: "fit-content",
-          maxWidth: "100%",
-          overflowX: "auto",
-          flexWrap: "nowrap",
-        }}
-      >
-        {STATUS_TABS.map((tab) => {
-          const count = tab.value === "all"
-            ? leads.length
-            : leads.filter((l) => l.status === tab.value).length;
-          const isActive = statusFilter === tab.value;
-          return (
-            <button
-              key={tab.value}
-              onClick={() => setStatusFilter(tab.value)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: "var(--radius-lg)",
-                border: isActive ? "1px solid rgba(99,102,241,0.2)" : "1px solid transparent",
-                background: isActive ? "var(--color-primary-subtle)" : "transparent",
-                color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
-                fontSize: 12.5,
-                fontWeight: isActive ? 700 : 500,
-                cursor: "pointer",
-                transition: "all var(--transition-fast)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tab.label}
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: "var(--radius-full)",
-                  background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
-                  color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Toolbar */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        {/* Search */}
+      {/* Unified Compact Toolbar on a Single Line */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+        {/* Status pill tabs */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 12px",
-            borderRadius: "var(--radius-lg)",
+            gap: 4,
+            padding: 3,
             background: "var(--color-bg2)",
             border: "1px solid var(--color-bg4)",
-            width: "100%",
-            maxWidth: 280,
-            boxShadow: "var(--shadow-xs)",
-            transition: "border-color var(--transition-fast), box-shadow var(--transition-fast)",
-          }}
-          onFocusCapture={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-primary-light)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 3px var(--color-primary-glow)";
-          }}
-          onBlurCapture={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-bg4)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-xs)";
+            borderRadius: 12,
+            overflowX: "auto",
+            flexWrap: "nowrap",
           }}
         >
-          <IconSearch size={14} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, company, email..."
-            style={{ background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--color-text)", width: "100%" }}
-          />
-        </div>
-        <select
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All sources</option>
-          <option value="Google Maps">Google Maps</option>
-          <option value="LinkedIn">LinkedIn</option>
-          <option value="JustDial">JustDial</option>
-          <option value="Manual">Manual</option>
-          <option value="Apify">Apify</option>
-          <option value="Referral">Referral</option>
-        </select>
-        <select
-          value={channelFilter}
-          onChange={(e) => setChannelFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All channels</option>
-          <option value="email">Email</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="sms">SMS</option>
-          <option value="call">Call</option>
-        </select>
-        <select
-          value={locationFilter}
-          onChange={(e) => setLocationFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-        >
-          <option value="all">All locations</option>
-          {locations.map((loc) => (
-            <option key={loc.name} value={loc.name}>
-              {loc.name} {!loc.active && "(Inactive)"}
-            </option>
-          ))}
-        </select>
-        <select
-          value={addedDateFilter}
-          onChange={(e) => setAddedDateFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-          title="Filter by the day leads were added/synced"
-        >
-          <option value="all">All sync dates</option>
-          {dateOptions.map((d) => (
-            <option key={d.value} value={d.value}>
-              Added {d.label} ({d.count})
-            </option>
-          ))}
-        </select>
-        <select
-          value={outreachFilter}
-          onChange={(e) => setOutreachFilter(e.target.value)}
-          className="form-input w-full sm:w-auto"
-          style={{ width: "auto" }}
-          title="Filter by outreach result"
-        >
-          <option value="all">All outreach</option>
-          <option value="none">Not started</option>
-          <option value="pending">Queued</option>
-          <option value="sending">Sending now</option>
-          <option value="sent">Outreached ✓</option>
-          <option value="failed">Failed ✗</option>
-        </select>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
-          {/* Run: start outreach for the next N eligible leads — works even in Draft */}
-          {!trashView && (
-          <div className="relative">
-            <button
-              onClick={() => setRunOpen((v) => !v)}
-              disabled={campaignRunning}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ease-out border-none text-white"
-              style={{
-                background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
-                cursor: campaignRunning ? "not-allowed" : "pointer",
-              }}
-              title={campaignRunning ? "A run is already in progress" : "Start outreach for the next batch of leads (works in Draft too)"}
-            >
-              <IconPlayerPlay size={14} />
-              {campaignRunning ? "Running…" : `Run (${remainingEligible} left)`}
-            </button>
-            {runOpen && !campaignRunning && (
-              <div
-                className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50"
-                style={{ borderColor: "#e2e8f0" }}
+          {STATUS_TABS.map((tab) => {
+            const count = tab.value === "all"
+              ? leads.length
+              : leads.filter((l) => l.status === tab.value).length;
+            const isActive = statusFilter === tab.value;
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  border: isActive ? "1px solid rgba(99,102,241,0.15)" : "1px solid transparent",
+                  background: isActive ? "var(--color-primary-subtle)" : "transparent",
+                  color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: "pointer",
+                  transition: "all var(--transition-fast)",
+                  whiteSpace: "nowrap",
+                }}
               >
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
-                <p className="text-[12px] text-slate-600 m-0 mb-2">
-                  {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} not started yet. How many to contact now?
-                </p>
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={Math.max(remainingEligible, 1)}
-                    value={runCount}
-                    onChange={(e) => setRunCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
-                    className="form-input w-20 text-[13px]"
-                  />
-                  {[10, 15].map((n) => (
+                {tab.label}
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    padding: "1px 5px",
+                    borderRadius: 99,
+                    background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
+                    color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Toolbar controls (Search + Run + Filters + Actions) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Search Input */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 10px",
+              borderRadius: 8,
+              background: "var(--color-bg2)",
+              border: "1px solid var(--color-bg4)",
+              width: 180,
+              boxShadow: "var(--shadow-xs)",
+            }}
+          >
+            <IconSearch size={13} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--color-text)", width: "100%" }}
+            />
+          </div>
+
+          {/* Run button */}
+          {!trashView && (
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setRunOpen((v) => !v)}
+                disabled={campaignRunning}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-none text-white cursor-pointer"
+                style={{
+                  background: campaignRunning ? "#94a3b8" : "linear-gradient(135deg,#22c97a,#10b981)",
+                  height: 30,
+                }}
+              >
+                <IconPlayerPlay size={13} />
+                {campaignRunning ? "Running…" : `Run (${remainingEligible})`}
+              </button>
+              {runOpen && !campaignRunning && (
+                <div
+                  className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50 text-slate-800"
+                  style={{ borderColor: "#e2e8f0" }}
+                >
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
+                  <p className="text-[12px] text-slate-600 m-0 mb-2">
+                    {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} left. How many to contact?
+                  </p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.max(remainingEligible, 1)}
+                      value={runCount}
+                      onChange={(e) => setRunCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                      className="form-input w-20 text-[13px]"
+                      style={{ padding: "4px 8px" }}
+                    />
+                    {[10, 15].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setRunCount(n)}
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                      >
+                        {n}
+                      </button>
+                    ))}
                     <button
-                      key={n}
-                      onClick={() => setRunCount(n)}
+                      onClick={() => setRunCount(Math.max(remainingEligible, 1))}
                       className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
                     >
-                      {n}
+                      All
                     </button>
-                  ))}
+                  </div>
                   <button
-                    onClick={() => setRunCount(Math.max(remainingEligible, 1))}
-                    className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                    onClick={handleRun}
+                    disabled={starting || remainingEligible === 0}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
+                    style={{ background: "#10b981", opacity: starting || remainingEligible === 0 ? 0.6 : 1 }}
                   >
-                    All
+                    <IconPlayerPlay size={13} />
+                    {starting ? "Starting…" : `Start ${Math.min(runCount, Math.max(remainingEligible, 1))} now`}
                   </button>
                 </div>
-                <button
-                  onClick={handleRun}
-                  disabled={starting || remainingEligible === 0}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
-                  style={{ background: "#10b981", opacity: starting || remainingEligible === 0 ? 0.6 : 1 }}
-                >
-                  <IconPlayerPlay size={13} />
-                  {starting ? "Starting…" : `Start ${Math.min(runCount, Math.max(remainingEligible, 1))} now`}
-                </button>
-                <p className="text-[10.5px] text-slate-400 m-0 mt-2 leading-snug">
-                  Runs even while the agent is in Draft. Already-contacted leads are skipped automatically.
-                </p>
+              )}
+            </div>
+          )}
+
+          {/* Filters Toggle Popover */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setFiltersOpen(!filtersOpen); setActionsOpen(false); }}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+              style={{
+                background: filtersOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+                borderColor: filtersOpen ? "var(--color-primary-light)" : "var(--color-bg4)",
+                color: filtersOpen ? "var(--color-primary-light)" : "var(--color-text2)",
+                height: 30,
+              }}
+            >
+              Filters ⚙
+            </button>
+            {filtersOpen && (
+              <div
+                className="absolute right-0 mt-2 w-72 rounded-xl border bg-white p-4 shadow-xl z-50 flex flex-col gap-3"
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Source</label>
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All sources</option>
+                    <option value="Google Maps">Google Maps</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="JustDial">JustDial</option>
+                    <option value="Manual">Manual</option>
+                    <option value="Apify">Apify</option>
+                    <option value="Referral">Referral</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Channel</label>
+                  <select
+                    value={channelFilter}
+                    onChange={(e) => setChannelFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All channels</option>
+                    <option value="email">Email</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="sms">SMS</option>
+                    <option value="call">Call</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Location</label>
+                  <select
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All locations</option>
+                    {locations.map((loc) => (
+                      <option key={loc.name} value={loc.name}>
+                        {loc.name} {!loc.active && "(Inactive)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Sync Date</label>
+                  <select
+                    value={addedDateFilter}
+                    onChange={(e) => setAddedDateFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All sync dates</option>
+                    {dateOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        Added {d.label} ({d.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Outreach Status</label>
+                  <select
+                    value={outreachFilter}
+                    onChange={(e) => setOutreachFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">All outreach</option>
+                    <option value="none">Not started</option>
+                    <option value="pending">Queued</option>
+                    <option value="sending">Sending now</option>
+                    <option value="sent">Outreached ✓</option>
+                    <option value="failed">Failed ✗</option>
+                  </select>
+                </div>
               </div>
             )}
           </div>
-          )}
-          <button
-            onClick={() => setMissingContact((v) => !v)}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{
-              background: missingContact ? "var(--color-red-bg)" : "var(--color-bg2)",
-              borderColor: missingContact ? "var(--color-red)" : "var(--color-bg4)",
-              color: missingContact ? "var(--color-red)" : "var(--color-text2)",
-            }}
-            title="Show leads missing email & phone"
-          >
-            <IconAlertCircle size={14} /> No contact
-          </button>
-          <button
-            onClick={cleanupIncomplete}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{ background: "rgba(255,107,107,0.08)", borderColor: "rgba(255,107,107,0.3)", color: "#ff6b6b" }}
-            title="Delete all leads missing email or phone"
-          >
-            <IconTrash size={14} /> Clean up
-          </button>
-          <button
-            onClick={() => { setTrashView((v) => !v); setSelected(new Set()); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150"
-            style={{
-              background: trashView ? "var(--color-primary-subtle)" : "var(--color-bg2)",
-              borderColor: trashView ? "var(--color-primary-light)" : "var(--color-bg4)",
-              color: trashView ? "var(--color-primary-light)" : "var(--color-text2)",
-            }}
-            title={trashView ? "Back to active leads" : "View trashed leads"}
-          >
-            <IconTrash size={14} /> {trashView ? "Viewing Trash" : "Trash"}
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={onAddLead}>
-            <IconPlus size={14} /> Add manually
-          </button>
-          <button className="btn btn-primary btn-sm">
-            <IconRefresh size={14} /> Sync Apify
-          </button>
+
+          {/* Actions Dropdown Toggle */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setActionsOpen(!actionsOpen); setFiltersOpen(false); }}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+              style={{
+                background: actionsOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+                borderColor: actionsOpen ? "var(--color-primary-light)" : "var(--color-bg4)",
+                color: actionsOpen ? "var(--color-primary-light)" : "var(--color-text2)",
+                height: 30,
+              }}
+            >
+              Actions ▾
+            </button>
+            {actionsOpen && (
+              <div
+                className="absolute right-0 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-xl z-50 flex flex-col gap-0.5"
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+              >
+                <button
+                  onClick={() => { setActionsOpen(false); onAddLead(); }}
+                  style={dropdownItemStyle}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconPlus size={13} /> Add manually
+                </button>
+                <button
+                  style={dropdownItemStyle}
+                  onClick={() => { setActionsOpen(false); }} // triggers topbar sync click
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconRefresh size={13} /> Sync Apify
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); setMissingContact((v) => !v); }}
+                  style={{
+                    ...dropdownItemStyle,
+                    color: missingContact ? "var(--color-red)" : undefined,
+                    background: missingContact ? "var(--color-red-bg)" : undefined,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = missingContact ? "rgba(239,68,68,0.15)" : "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = missingContact ? "var(--color-red-bg)" : "transparent"}
+                >
+                  <IconAlertCircle size={13} /> {missingContact ? "Show all contacts" : "Show no contact"}
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); cleanupIncomplete(); }}
+                  style={{ ...dropdownItemStyle, color: "#ff6b6b" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <IconTrash size={13} /> Clean up
+                </button>
+                <button
+                  onClick={() => { setActionsOpen(false); setTrashView((v) => !v); setSelected(new Set()); }}
+                  style={{
+                    ...dropdownItemStyle,
+                    color: trashView ? "var(--color-primary-light)" : undefined,
+                    background: trashView ? "var(--color-primary-subtle)" : undefined,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = trashView ? "rgba(99,102,241,0.15)" : "var(--color-bg3)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = trashView ? "var(--color-primary-subtle)" : "transparent"}
+                >
+                  <IconTrash size={13} /> {trashView ? "Viewing Active" : "Viewing Trash"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
