@@ -68,6 +68,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
   const [activeTab, setActiveTab] = useState<"details" | "notes" | "history">("details");
   const [newNote, setNewNote] = useState("");
   const [postingNote, setPostingNote] = useState(false);
+  const [changeNote, setChangeNote] = useState("");
   const [sequence, setSequence] = useState<any>(null);
 
   useEffect(() => {
@@ -187,7 +188,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       const res = await fetch(`/api/leads/${lead._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, fullName }),
+        body: JSON.stringify({ ...form, fullName, changeNote }),
       });
       if (!res.ok) {
         throw new Error(await res.text());
@@ -195,6 +196,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       const updatedLead = await res.json();
       updateLead(lead._id, updatedLead);
       showToast("Lead details updated successfully", "success");
+      setChangeNote("");
       setIsEditing(false);
     } catch (err: any) {
       showToast(err.message || "Failed to update lead", "error");
@@ -516,6 +518,17 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 })}
               </div>
             </div>
+
+            <div>
+              <label style={labelStyle}>Change Log Note (optional)</label>
+              <input
+                type="text"
+                value={changeNote}
+                onChange={(e) => setChangeNote(e.target.value)}
+                style={inputStyle}
+                placeholder="Describe your changes..."
+              />
+            </div>
           </div>
         ) : (
           /* View Details */
@@ -831,6 +844,11 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                               </span>
                             )}
                           </p>
+                          {h.note && (
+                            <p style={{ margin: "4px 0 0 0", fontStyle: "italic", color: "var(--color-text3)", background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", padding: "4px 8px", borderRadius: 4, display: "inline-block", fontSize: 11 }}>
+                              "{h.note}"
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -862,6 +880,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
               <button
                 onClick={() => {
                   setIsEditing(false);
+                  setChangeNote("");
                   setForm({
                     firstName: lead.firstName || "",
                     lastName: lead.lastName || "",
