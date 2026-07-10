@@ -131,8 +131,19 @@ export default function Sidebar() {
   const {
     agents, activeAgent, setActiveAgent, currentPage, setPage,
     leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast,
-    userEmail, setSidebarOpenMobile,
+    userEmail, sidebarOpenMobile, setSidebarOpenMobile,
   } = useAppStore();
+
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
 
   const [miniUsage, setMiniUsage]     = useState<MiniUsage | null>(null);
   const [outreach, setOutreach]       = useState<Record<string, string>>({});
@@ -192,21 +203,42 @@ export default function Sidebar() {
   const nearLimit = usagePct >= 80;
 
   return (
-    <aside
-      style={{
-        width: 240,
-        minWidth: 240,
-        height: "100vh",
-        background: "var(--color-bg2)",
-        backdropFilter: "blur(16px)",
-        borderRight: "1px solid var(--color-bg4)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        overflow: "hidden",
-        zIndex: 10,
-      }}
-    >
+    <>
+      {/* Mobile backdrop overlay */}
+      {isMobile && sidebarOpenMobile && (
+        <div
+          onClick={() => setSidebarOpenMobile(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(2px)",
+            zIndex: 90,
+          }}
+        />
+      )}
+
+      <aside
+        style={{
+          width: 240,
+          minWidth: isMobile ? 0 : 240,
+          height: "100vh",
+          background: "var(--color-bg2)",
+          backdropFilter: "blur(16px)",
+          borderRight: "1px solid var(--color-bg4)",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          overflow: "hidden",
+          zIndex: 100,
+          position: isMobile ? "fixed" : "relative",
+          top: isMobile ? 0 : undefined,
+          left: isMobile ? 0 : undefined,
+          bottom: isMobile ? 0 : undefined,
+          transform: isMobile ? (sidebarOpenMobile ? "translateX(0)" : "translateX(-100%)") : "none",
+          transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
       {/* ── Logo / Workspace Header ── */}
       <div
         style={{
@@ -629,5 +661,6 @@ export default function Sidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }
