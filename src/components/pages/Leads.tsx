@@ -938,9 +938,18 @@ export default function Leads({ onAddLead }: Props) {
               <th className="px-4 py-3 text-left" style={{ width: 40 }}>
                 <input
                   type="checkbox"
-                  checked={selected.size === leads.length && leads.length > 0}
-                  onChange={(e) => setSelected(e.target.checked ? new Set(leads.map((l) => l._id)) : new Set())}
+                  // Selection survives page changes, so this reflects the visible page only.
+                  checked={leads.length > 0 && leads.every((l) => selected.has(l._id))}
+                  onChange={(e) => {
+                    const pageIds = leads.map((l) => l._id);
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      pageIds.forEach((id) => (e.target.checked ? next.add(id) : next.delete(id)));
+                      return next;
+                    });
+                  }}
                   className="accent-[#6c63ff] cursor-pointer"
+                  title="Select every lead on this page"
                 />
               </th>
               <th className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap" style={{ color: "var(--color-text3)", width: 40 }}>

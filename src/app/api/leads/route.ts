@@ -34,16 +34,16 @@ function zonedDayRange(day: string, tz: string): { start: Date; end: Date } | nu
 export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId       = searchParams.get("agentId");
-  const status        = searchParams.get("status");
-  const search        = searchParams.get("q");
-  const source        = searchParams.get("source");
-  const channel       = searchParams.get("channel");
+  const agentId = searchParams.get("agentId");
+  const status = searchParams.get("status");
+  const search = searchParams.get("q");
+  const source = searchParams.get("source");
+  const channel = searchParams.get("channel");
   const missingContact = searchParams.get("missingContact");
-  const location      = searchParams.get("location");
-  const addedDate     = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
-  const outreach      = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
-  const jobTitle      = searchParams.get("jobTitle");
+  const location = searchParams.get("location");
+  const addedDate = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
+  const outreach = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
+  const jobTitle = searchParams.get("jobTitle");
 
   const trashed = searchParams.get("trashed") === "1";
   // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
@@ -181,14 +181,7 @@ export async function POST(req: Request) {
   }
 }
 
-/**
- * DELETE /api/leads?agentId=xxx
- *   - with ?ids=a,b,c → move those leads to Trash (soft-delete, scoped to agent)
- *   - without ids     → soft-delete leads missing email OR phone (cleanup)
- *   - add ?permanent=1 → hard-delete instead (used from the Trash view); this
- *     also removes each lead's conversations and activities.
- * Soft-deleting decrements the agent's lead count; restore adds it back.
- */
+
 export async function DELETE(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
