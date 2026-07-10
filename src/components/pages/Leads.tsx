@@ -881,6 +881,9 @@ export default function Leads({ onAddLead }: Props) {
                   className="accent-[#6c63ff] cursor-pointer"
                 />
               </th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap" style={{ color: "var(--color-text3)", width: 40 }}>
+                Sr
+              </th>
               {["Name", "Company", "Location", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
                 <th
                   key={h}
@@ -894,11 +897,11 @@ export default function Leads({ onAddLead }: Props) {
           </thead>
           <tbody>
             {isLoading && Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonTableRow key={i} cols={9} />
+              <SkeletonTableRow key={i} cols={10} />
             ))}
             {!isLoading && leads.length === 0 && (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <EmptyState
                     icon={<IconUsers size={24} />}
                     title={trashView ? "Trash is empty" : "No leads found"}
@@ -926,6 +929,9 @@ export default function Leads({ onAddLead }: Props) {
                     onChange={() => toggleSelect(lead._id)}
                     className="accent-[#6c63ff] cursor-pointer"
                   />
+                </td>
+                <td className="px-4 py-3 text-[12px] font-semibold text-slate-400">
+                  {i + 1}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2.5 min-w-0">
