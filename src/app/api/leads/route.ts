@@ -74,7 +74,9 @@ export async function GET(req: Request) {
       ? { $in: ["none", null] }
       : outreach;
   }
-  if (jobTitle && jobTitle !== "all") baseFilter.jobTitle = jobTitle;
+  if (jobTitle && jobTitle !== "all") {
+    baseFilter.jobTitle = { $regex: jobTitle, $options: "i" };
+  }
   if (search) baseFilter.$text = { $search: search };
   if (missingContact === "true") {
     baseFilter.$and = [
