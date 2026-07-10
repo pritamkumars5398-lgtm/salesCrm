@@ -91,9 +91,6 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
   async function handleCall() {
     if (!lead.phone || calling) return;
     setCalling(true);
-    
-    // Open native dialer
-    window.location.href = `tel:${lead.phone}`;
 
     try {
       const res = await fetch(`/api/leads/${lead._id}/call`, {
@@ -104,9 +101,12 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       }
       const data = await res.json();
       updateLead(lead._id, data.lead);
-      showToast("Call initiated successfully!", "success");
+      showToast("Call logged successfully!", "success");
+
+      // Open native dialer now that the call is successfully tracked
+      window.location.href = `tel:${lead.phone}`;
     } catch (err: any) {
-      showToast(err.message || "Failed to trigger call", "error");
+      showToast(err.message || "Failed to log call", "error");
     } finally {
       setCalling(false);
     }

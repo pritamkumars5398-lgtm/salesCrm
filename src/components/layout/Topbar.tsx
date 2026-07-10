@@ -22,8 +22,22 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const router = useRouter();
   const {
     currentPage, activeAgent, userName,
-    setSidebarOpenMobile, updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
+    sidebarOpenMobile, setSidebarOpenMobile,
+    sidebarCollapsed, setSidebarCollapsed,
+    updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
   } = useAppStore();
+
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setWindowWidth(window.innerWidth);
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
@@ -124,11 +138,10 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     >
       {/* ── Left: Hamburger + Title ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {/* Mobile hamburger */}
+        {/* Hamburger menu button */}
         <button
-          onClick={() => setSidebarOpenMobile(true)}
-          className="md:hidden"
-          aria-label="Open sidebar"
+          onClick={() => isMobile ? setSidebarOpenMobile(true) : setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label="Toggle sidebar"
           style={{
             background: "none",
             border: "none",
