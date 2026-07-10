@@ -69,10 +69,10 @@ export function SkeletonCard() {
 
 export function SkeletonTableRow({ cols = 7 }: { cols?: number }) {
   return (
-    <tr>
+    <tr style={{ height: "72px" }}>
       {Array.from({ length: cols }).map((_, i) => (
-        <td key={i} style={{ padding: "14px 16px" }}>
-          <Skeleton height={13} width={i === 0 ? 140 : 80} />
+        <td key={i} style={{ padding: "16px" }}>
+          <Skeleton height={20} width={i === 0 ? 30 : i === 2 ? 180 : 90} borderRadius="var(--radius-sm)" />
         </td>
       ))}
     </tr>

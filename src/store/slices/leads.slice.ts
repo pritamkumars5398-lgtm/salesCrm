@@ -4,7 +4,7 @@ import type { AppState } from "../useAppStore";
 
 export interface LeadsSlice {
   leads: Lead[];
-  setLeads: (leads: Lead[]) => void;
+  setLeads: (leads: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   updateLead: (id: string, patch: Partial<Lead>) => void;
   addLead: (lead: Lead) => void;
   addLeads: (leads: Lead[]) => void;
@@ -13,7 +13,7 @@ export interface LeadsSlice {
 
 export const createLeadsSlice: StateCreator<AppState, [], [], LeadsSlice> = (set) => ({
   leads: [],
-  setLeads: (leads) => set({ leads }),
+  setLeads: (leads) => set((s) => ({ leads: typeof leads === 'function' ? leads(s.leads) : leads })),
   updateLead: (id, patch) =>
     set((s) => ({ leads: s.leads.map((l) => (l._id === id ? { ...l, ...patch } : l)) })),
   addLead: (lead) => set((s) => {

@@ -1,5 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { IconSearch, IconFilter, IconChevronDown, IconCheck, IconX } from "@tabler/icons-react";
+import { SOURCE_META } from "@/lib/constants/leads";
+import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
 import StatusPill from "@/components/ui/Pill";
@@ -63,14 +66,87 @@ export default function CRM() {
     }
   }
 
+  const [loadingCols, setLoadingCols] = useState<Record<string, boolean>>({});
+  const [pages, setPages] = useState<Record<string, number>>({});
+  const [hasMoreCols, setHasMoreCols] = useState<Record<string, boolean>>({});
+  const [totalCols, setTotalCols] = useState<Record<string, number>>({});
+
+  const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [addedDateFilter, setAddedDateFilter] = useState("all");
+  const [outreachFilter, setOutreachFilter] = useState("all");
+  const [jobTitleFilter, setJobTitleFilter] = useState("all");
+  const [missingContact, setMissingContact] = useState(false);
+
+  const fetchColumn = useCallback(async (stageKey: string, pageNum: number, isInitial = false) => {
+    if (!activeAgent) return;
+    setLoadingCols(p => ({ ...p, [stageKey]: true }));
+    try {
+      const params = new URLSearchParams({
+        agentId: activeAgent._id,
+        page: String(pageNum),
+        limit: "50",
+        pipelineStage: stageKey,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
+      if (channelFilter !== "all") params.set("channel", channelFilter);
+      if (locationFilter !== "all") params.set("location", locationFilter);
+      if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
+      if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
+      if (jobTitleFilter !== "all") params.set("jobTitle", jobTitleFilter);
+      if (search) params.set("q", search);
+      if (missingContact) params.set("missingContact", "true");
+
+      const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
+      
+      setLeads((prev: Lead[]) => {
+        if (isInitial) {
+           const others = prev.filter(l => l.pipelineStage !== stageKey);
+           return [...others, ...(data.leads ?? [])];
+        } else {
+           const existingIds = new Set(prev.map(l => l._id));
+           const newLeads = (data.leads ?? []).filter((l: Lead) => !existingIds.has(l._id));
+           return [...prev, ...newLeads];
+        }
+      });
+      
+      setHasMoreCols(p => ({ ...p, [stageKey]: data.page < data.totalPages }));
+      setTotalCols(p => ({ ...p, [stageKey]: data.total }));
+    } finally {
+      setLoadingCols(p => ({ ...p, [stageKey]: false }));
+    }
+  }, [activeAgent?._id, search, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, missingContact, setLeads]);
+
   useEffect(() => {
     if (!activeAgent) return;
     setLoading(true);
-    fetch(`/api/leads?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then((data) => setLeads(data.leads ?? []))
-      .finally(() => setLoading(false));
-  }, [activeAgent?._id]);
+    Promise.all(STAGES.map(({ key }) => {
+      setPages(p => ({ ...p, [key]: 1 }));
+      return fetchColumn(key, 1, true);
+    })).finally(() => setLoading(false));
+  }, [fetchColumn, activeAgent?._id]);
+
+  const observersRef = useRef<Record<string, IntersectionObserver | null>>({});
+  const lastLeadElementRefs = useCallback((node: HTMLDivElement | null, stageKey: string) => {
+    if (loadingCols[stageKey]) return;
+    if (observersRef.current[stageKey]) observersRef.current[stageKey]!.disconnect();
+
+    observersRef.current[stageKey] = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMoreCols[stageKey]) {
+         setPages(p => {
+           const next = (p[stageKey] || 1) + 1;
+           fetchColumn(stageKey, next, false);
+           return { ...p, [stageKey]: next };
+         });
+      }
+    });
+
+    if (node) observersRef.current[stageKey]!.observe(node);
+  }, [loadingCols, hasMoreCols, fetchColumn]);
 
   if (loading) {
     return (
@@ -152,13 +228,41 @@ export default function CRM() {
 
   return (
     <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-[20px] font-semibold tracking-tight">
-          CRM Pipeline{" "}
-          <span className="text-[13px] font-normal" style={{ color: "var(--color-text3)" }}>
-            Track leads through sales stages
-          </span>
-        </h1>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-[20px] font-semibold tracking-tight">
+            CRM Pipeline{" "}
+            <span className="text-[13px] font-normal" style={{ color: "var(--color-text3)" }}>
+              Track leads through sales stages
+            </span>
+          </h1>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: "var(--color-bg2)", border: "1px solid var(--color-bg4)", width: 180, boxShadow: "var(--shadow-xs)" }}>
+            <IconSearch size={13} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search CRM..." style={{ background: "transparent", border: "none", outline: "none", fontSize: 12, color: "var(--color-text)", width: "100%" }} />
+          </div>
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setFiltersOpen(!filtersOpen)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--color-bg4)", background: "var(--color-bg2)", color: "var(--color-text2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", transition: "all var(--transition-fast)", boxShadow: "var(--shadow-xs)" }}>
+              <IconFilter size={14} /> Filters <IconChevronDown size={14} style={{ marginLeft: 2, opacity: 0.7 }} />
+            </button>
+            {filtersOpen && (
+              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, width: 280, background: "var(--color-bg2)", border: "1px solid var(--color-bg4)", borderRadius: 12, boxShadow: "var(--shadow-lg)", zIndex: 100, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-text3)" }}>Filters</span>
+                  <button onClick={() => setFiltersOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text3)" }}><IconX size={14} /></button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)" }}>Missing Contact Info</label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--color-text)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={missingContact} onChange={(e) => setMissingContact(e.target.checked)} className="accent-[#6366f1] cursor-pointer" />
+                    Show leads with no email AND no phone
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto pb-4">
@@ -186,16 +290,18 @@ export default function CRM() {
                     {label}
                   </span>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold tracking-wide uppercase border border-black/10 ${pillClass} text-[10px] flex-shrink-0`}>
-                    {stageLeads.length}
+                    {totalCols[key] !== undefined ? totalCols[key] : stageLeads.length}
                   </span>
                 </div>
 
                 <div className="flex flex-col gap-2" style={{ minHeight: "100%" }}>
-                  {stageLeads.map((lead) => {
+                  {stageLeads.map((lead, index) => {
                     const isDragging = draggingId === lead._id;
+                    const isLast = index === stageLeads.length - 1;
                     return (
                       <div
                         key={lead._id}
+                        ref={isLast ? (node) => lastLeadElementRefs(node, key) : null}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead)}
                         onDragEnd={handleDragEnd}
@@ -273,7 +379,12 @@ export default function CRM() {
                       </div>
                     );
                   })}
-                  {stageLeads.length === 0 && (
+                  {loadingCols[key] && pages[key] > 1 && (
+                    <div className="flex justify-center py-2">
+                      <div className="w-4 h-4 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                    </div>
+                  )}
+                  {stageLeads.length === 0 && !loadingCols[key] && (
                     <div style={{
                       height: 80,
                       border: "2px dashed var(--color-bg4)",

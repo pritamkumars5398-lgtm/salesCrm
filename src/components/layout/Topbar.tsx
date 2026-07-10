@@ -112,10 +112,10 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     }
   }
 
-  const initials   = getInitials(userName || "U");
-  const bgColor    = avatarColor(userName || "U");
+  const initials = getInitials(userName || "U");
+  const bgColor = avatarColor(userName || "U");
   const isPublished = activeAgent?.status === "active";
-  const pageTitle   = PAGE_TITLES[currentPage] ?? currentPage;
+  const pageTitle = PAGE_TITLES[currentPage] ?? currentPage;
 
   return (
     <header
@@ -165,7 +165,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", letterSpacing: "-0.01em" }}>
             {pageTitle}
           </span>
-          {activeAgent && (
+          {/* {activeAgent && (
             <>
               <span style={{ fontSize: 14, color: "var(--color-bg5)", fontWeight: 300 }}>/</span>
               <span
@@ -183,7 +183,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                 {activeAgent.name}
               </span>
             </>
-          )}
+          )} */}
         </div>
       </div>
 

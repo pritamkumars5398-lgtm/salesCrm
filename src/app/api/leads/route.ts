@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
@@ -44,6 +45,8 @@ export async function GET(req: Request) {
   const addedDate = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
   const outreach = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
   const jobTitle = searchParams.get("jobTitle");
+  const pipelineStage = searchParams.get("pipelineStage");
+  const website = searchParams.get("website");
 
   const trashed = searchParams.get("trashed") === "1";
   // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
@@ -63,7 +66,7 @@ export async function GET(req: Request) {
   // Everything except `status` and the `addedDate` range, so the status tabs and
   // the sync-date dropdown can each count across the axis they filter on.
   const baseFilter: Record<string, unknown> = {};
-  if (agentId) baseFilter.agentId = agentId;
+  if (agentId) baseFilter.agentId = new mongoose.Types.ObjectId(agentId);
   // Trash view shows only soft-deleted leads; every other view hides them.
   baseFilter.deletedAt = trashed ? { $ne: null } : null;
   if (source && source !== "all") baseFilter.source = source;
@@ -84,6 +87,21 @@ export async function GET(req: Request) {
       { $or: [{ phone: { $in: [null, ""] } }, { phone: { $exists: false } }] },
     ];
   }
+  if (pipelineStage && pipelineStage !== "all") {
+    baseFilter.pipelineStage = pipelineStage;
+  }
+  if (website && website !== "all") {
+    const nonWebsiteRegex = /facebook\.com|instagram\.com|linkedin\.com|twitter\.com|x\.com|google\.com/i;
+    if (website === "yes") {
+      baseFilter.website = { $nin: [null, ""], $not: nonWebsiteRegex };
+    } else if (website === "no") {
+      baseFilter.$or = [
+        { website: { $in: [null, ""] } }, 
+        { website: { $exists: false } },
+        { website: nonWebsiteRegex }
+      ];
+    }
+  }
 
   const statusFilter = status && status !== "all" ? { status } : {};
 
@@ -96,12 +114,12 @@ export async function GET(req: Request) {
   const filter = { ...baseFilter, ...statusFilter, ...dateFilter };
 
   if (!paginated) {
-    const leads = await Lead.find(filter).sort({ createdAt: -1 }).lean();
+    const leads = await Lead.find(filter).sort({ createdAt: -1, _id: -1 }).lean();
     return NextResponse.json({ leads, total: leads.length, page: 1, limit: leads.length, totalPages: 1 });
   }
 
   const [leads, total] = await Promise.all([
-    Lead.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    Lead.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Lead.countDocuments(filter),
   ]);
 

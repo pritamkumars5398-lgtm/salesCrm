@@ -12,7 +12,6 @@ import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import EmptyState from "@/components/ui/EmptyState";
-import Pagination from "@/components/ui/Pagination";
 import { SkeletonTableRow } from "@/components/ui/Skeleton";
 import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
@@ -68,6 +67,7 @@ export default function Leads({ onAddLead }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
+  const isLoading = loading;
   const [locationFilter, setLocationFilter] = useState("all");
   const [locations, setLocations] = useState<{ name: string; active: boolean }[]>([]);
   const [addedDateFilter, setAddedDateFilter] = useState("all");
@@ -90,6 +90,7 @@ export default function Leads({ onAddLead }: Props) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [jobTitleFilter, setJobTitleFilter] = useState("all");
   const [jobTitles, setJobTitles] = useState<string[]>([]);
+  const [websiteFilter, setWebsiteFilter] = useState("all");
 
 
   const dropdownItemStyle = {
@@ -145,12 +146,18 @@ export default function Leads({ onAddLead }: Props) {
       if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
       if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
       if (jobTitleFilter !== "all") params.set("jobTitle", jobTitleFilter);
+      if (websiteFilter !== "all") params.set("website", websiteFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
       const data: LeadsResponse = await fetch(`/api/leads?${params}`).then((r) => r.json());
       if (reqId !== reqIdRef.current) return; // a newer request already landed
 
-      setLeads(data.leads ?? []);
+      setLeads((prev: Lead[]) => {
+        if (page === 1) return data.leads ?? [];
+        const existingIds = new Set(prev.map(l => l._id));
+        const newLeads = (data.leads ?? []).filter((l: Lead) => !existingIds.has(l._id));
+        return [...prev, ...newLeads];
+      });
       setTotal(data.total ?? 0);
       setStatusCounts(data.statusCounts ?? {});
       setRemainingEligible(data.remainingEligible ?? 0);
@@ -170,14 +177,32 @@ export default function Leads({ onAddLead }: Props) {
     } finally {
       if (reqId === reqIdRef.current && !background) setLoading(false);
     }
-  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter, search, missingContact, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Infinite Scroll Observer
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastLeadElementRef = useCallback(
+    (node: HTMLTableRowElement | null) => {
+      if (isLoading) return;
+      if (observerRef.current) observerRef.current.disconnect();
+
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && leads.length < total) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      });
+
+      if (node) observerRef.current.observe(node);
+    },
+    [isLoading, leads.length, total]
+  );
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
   // Any filter change invalidates the current offset — go back to the first page.
   useEffect(() => {
     setPage(1);
-  }, [trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, search, missingContact, pageSize, activeAgent?._id]);
+  }, [trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter, search, missingContact, pageSize, activeAgent?._id]);
 
   // An Apify sync just finished — pull in whatever it imported.
   const prevSyncing = useRef(syncing);
@@ -250,7 +275,7 @@ export default function Leads({ onAddLead }: Props) {
   }
 
   // loading state — table with skeleton rows (no full-screen spinner)
-  const isLoading = loading;
+
 
   async function handleRun() {
     if (!activeAgent || starting) return;
@@ -662,7 +687,7 @@ export default function Leads({ onAddLead }: Props) {
             {filtersOpen && (
               <div
                 className="absolute right-0 mt-2 w-72 rounded-xl border bg-white p-4 shadow-xl z-50 flex flex-col gap-3"
-                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)", maxHeight: "80vh", overflowY: "auto" }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Source</label>
@@ -774,6 +799,20 @@ export default function Leads({ onAddLead }: Props) {
                       <option key={title} value={title} />
                     ))}
                   </datalist>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Website</label>
+                  <select
+                    value={websiteFilter}
+                    onChange={(e) => setWebsiteFilter(e.target.value)}
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  >
+                    <option value="all">Both (All)</option>
+                    <option value="yes">Has Website (Yes)</option>
+                    <option value="no">No Website (No)</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -967,7 +1006,7 @@ export default function Leads({ onAddLead }: Props) {
             </tr>
           </thead>
           <tbody>
-            {isLoading && Array.from({ length: 8 }).map((_, i) => (
+            {isLoading && page === 1 && Array.from({ length: 8 }).map((_, i) => (
               <SkeletonTableRow key={i} cols={10} />
             ))}
             {!isLoading && leads.length === 0 && (
@@ -982,9 +1021,12 @@ export default function Leads({ onAddLead }: Props) {
                 </td>
               </tr>
             )}
-            {leads.map((lead, i) => (
+            {leads.map((lead, i) => {
+              const isLast = i === leads.length - 1;
+              return (
               <tr
                 key={lead._id}
+                ref={isLast ? lastLeadElementRef : null}
                 onClick={() => openDrawer(lead, primaryChannel(lead))}
                 className={`cursor-pointer transition-colors ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
                 style={{
@@ -1238,21 +1280,31 @@ export default function Leads({ onAddLead }: Props) {
                   </div>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
         </div>
-        {!isLoading && (
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-            label={trashView ? "trashed leads" : "leads"}
-            disabled={deleting}
-          />
-        )}
+        <div className="relative flex items-center justify-between py-4 px-6 border-t border-[var(--color-bg4)]">
+          <div className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
+            Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{leads.length}</span> of <span className="font-semibold text-slate-700 dark:text-slate-300">{total}</span> {trashView ? "trashed leads" : "leads"}
+          </div>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center">
+            {isLoading && page > 1 ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-all">
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500/30 border-t-indigo-600 animate-spin" />
+                <span className="text-[11.5px] font-bold tracking-wide uppercase">Loading more...</span>
+              </div>
+            ) : leads.length > 0 && leads.length < total ? (
+              <div className="text-[11.5px] font-semibold text-slate-400 tracking-wide uppercase">
+                Scroll for more ↓
+              </div>
+            ) : leads.length > 0 && leads.length >= total ? (
+              <div className="text-[11.5px] font-semibold text-slate-400 tracking-wide uppercase flex items-center gap-1">
+                <IconCheck size={14} /> All leads loaded
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {detailLead && (

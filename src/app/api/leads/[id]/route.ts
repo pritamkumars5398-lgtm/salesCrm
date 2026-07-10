@@ -23,6 +23,29 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const updatedBy = body.updatedBy || "User";
   const changeNote = body.changeNote || "";
 
+  // Auto-sync pipelineStage and status if one is provided but not the other
+  const pipelineToStatus = {
+    new: "new",
+    contacted: "in_outreach",
+    replied: "replied",
+    qualified: "meeting_booked",
+    closed: "closed",
+  } as const;
+
+  const statusToPipeline = {
+    new: "new",
+    in_outreach: "contacted",
+    replied: "replied",
+    meeting_booked: "qualified",
+    closed: "closed",
+  } as const;
+
+  if (body.pipelineStage && !body.status) {
+    body.status = pipelineToStatus[body.pipelineStage as keyof typeof pipelineToStatus];
+  } else if (body.status && !body.pipelineStage) {
+    body.pipelineStage = statusToPipeline[body.status as keyof typeof statusToPipeline];
+  }
+
   for (const key of fieldsToTrack) {
     if (body[key] !== undefined && String(body[key]) !== String((lead as any)[key] ?? "")) {
       lead.history.push({
