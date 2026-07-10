@@ -13,6 +13,7 @@ export interface SyncSlice {
    * tabs or navigates — the page can unmount without interrupting the sync.
    */
   runApifySync: (agentId: string, opts?: { onLimitReached?: () => void }) => Promise<void>;
+  cancelSyncRun: (agentId: string, runId: string) => Promise<void>;
 }
 
 export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, get) => {
@@ -68,6 +69,11 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
             let finalStatus = "";
             while (Date.now() < deadline) {
               await new Promise((res) => setTimeout(res, 6000));
+              const currentRun = get().syncRuns.find((r) => r.runId === runId);
+              if (currentRun?.status === "failed" && currentRun?.error === "Cancelled by user") {
+                finalStatus = "ABORTED";
+                break;
+              }
               const poll = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).then((r) => r.json());
               finalStatus = poll.status as string;
               patchRun(runId, { itemCount: poll.itemCount ?? 0 });
@@ -78,6 +84,10 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
         );
 
         for (const { runId, datasetId, scraperType, finalStatus } of completed) {
+          const currentRun = get().syncRuns.find((r) => r.runId === runId);
+          if (currentRun?.error === "Cancelled by user") {
+            continue;
+          }
           if (finalStatus !== "SUCCEEDED") {
             patchRun(runId, { status: "failed", error: `Run ended: ${finalStatus}` });
             continue;
@@ -118,6 +128,27 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
         }));
       } finally {
         set({ syncing: false });
+      }
+    },
+
+    cancelSyncRun: async (agentId, runId) => {
+      const { showToast } = get();
+      patchRun(runId, { error: "Cancelling..." });
+      try {
+        const res = await fetch("/api/apify", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId, runId }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Abort failed");
+        }
+        patchRun(runId, { status: "failed", error: "Cancelled by user" });
+        showToast("Scraper run cancelled", "success");
+      } catch (err: any) {
+        showToast(err.message || "Failed to cancel run", "error");
+        patchRun(runId, { error: undefined });
       }
     },
   };

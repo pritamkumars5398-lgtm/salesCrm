@@ -95,7 +95,7 @@ export default function Home({ params }: PageProps) {
 
   const router = useRouter();
   const { currentPage, setPage, agents, activeAgent, setAgents, setActiveAgent, showToast, isAuthed, login, userEmail, setLeads,
-    syncing, syncRuns, syncPanelOpen, setSyncPanelOpen, runApifySync } = useAppStore();
+    syncing, syncRuns, syncPanelOpen, setSyncPanelOpen, runApifySync, cancelSyncRun } = useAppStore();
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -304,7 +304,16 @@ export default function Home({ params }: PageProps) {
       </div>
 
       <AddLeadModal open={addLeadOpen} onClose={() => setAddLeadOpen(false)} />
-      <SyncPanel runs={syncRuns} open={syncPanelOpen} onClose={() => setSyncPanelOpen(false)} />
+      <SyncPanel
+        runs={syncRuns}
+        open={syncPanelOpen}
+        onClose={() => setSyncPanelOpen(false)}
+        onCancel={(runId) => {
+          if (activeAgent) {
+            cancelSyncRun(activeAgent._id, runId);
+          }
+        }}
+      />
       <ToastContainer />
     </div>
   );

@@ -4,6 +4,7 @@ import {
   startApifyRuns,
   getRunStatus,
   importDataset,
+  abortApifyRun,
   type ScraperType,
 } from "@/server/services/apify.service";
 
@@ -63,5 +64,20 @@ export async function PATCH(req: Request) {
     const msg = err instanceof Error ? err.message : String(err);
     const status = msg.includes("token not set") ? 400 : 502;
     return NextResponse.json({ error: msg }, { status });
+  }
+}
+
+// ─── DELETE — abort/cancel a run ───────────────────────────────────────────
+export async function DELETE(req: Request) {
+  await connectDB();
+  const { runId, agentId } = (await req.json()) as { runId: string; agentId: string };
+  if (!runId || !agentId) return NextResponse.json({ error: "runId and agentId required" }, { status: 400 });
+
+  try {
+    await abortApifyRun(agentId, runId);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 }

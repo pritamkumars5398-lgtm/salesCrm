@@ -196,6 +196,21 @@ export async function getRunStatus(agentId: string, runId: string, waitSeconds =
   return { status: run.status, datasetId: run.defaultDatasetId, itemCount: run.stats?.itemCount ?? 0 };
 }
 
+/** Abort a running actor run. */
+export async function abortApifyRun(agentId: string, runId: string): Promise<void> {
+  const token = await getToken(agentId);
+  if (!token) throw new Error("Apify token not set");
+
+  const res = await fetch(`${BASE_URL}/actor-runs/${runId}/abort`, {
+    method: "POST",
+    headers: apifyHeaders(token),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Apify abort failed: ${body}`);
+  }
+}
+
 // ─── dataset import ───────────────────────────────────────────────────────────
 
 export interface ImportResult {
