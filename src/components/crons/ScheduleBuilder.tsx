@@ -94,7 +94,7 @@ export interface ScheduleState {
 }
 
 const selectCls =
-  "w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600";
+  "w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600";
 
 export default function ScheduleBuilder({
   state,
@@ -159,7 +159,7 @@ export default function ScheduleBuilder({
 
       {state.frequency === "monthly" && (
         <div className="flex items-center gap-2">
-          <span className="text-[12.5px] text-slate-500">On day</span>
+          <span className="text-[12.5px] text-text3">On day</span>
           <input
             type="number"
             min={1}
@@ -169,13 +169,13 @@ export default function ScheduleBuilder({
             value={state.dayOfMonth}
             onChange={(e) => set({ dayOfMonth: Math.min(31, Math.max(1, parseInt(e.target.value || "1", 10))) })}
           />
-          <span className="text-[12.5px] text-slate-500">of each month</span>
+          <span className="text-[12.5px] text-text3">of each month</span>
         </div>
       )}
 
       {state.frequency === "custom" && (
         <input
-          className={`${selectCls} font-mono placeholder:text-slate-400`}
+          className={`${selectCls} font-mono placeholder:text-text3`}
           placeholder="* * * * *"
           value={state.customCron}
           onChange={(e) => set({ customCron: e.target.value })}
@@ -186,7 +186,7 @@ export default function ScheduleBuilder({
       <p className="text-[11.5px]" style={{ color: "var(--color-text3)" }}>
         {state.frequency === "weekly" && state.weekdays.length === 0
           ? "Pick at least one day."
-          : <>Runs: <span className="font-medium text-slate-600">{describeCron(cron)}</span> <span className="font-mono text-slate-400">({cron})</span></>}
+          : <>Runs: <span className="font-medium text-text2">{describeCron(cron)}</span> <span className="font-mono text-text3">({cron})</span></>}
       </p>
     </div>
   );

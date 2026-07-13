@@ -78,7 +78,7 @@ export default function CampaignProgress() {
     <div ref={panelRef} className="relative">
       <button
         onClick={() => setPanelOpen(!panelOpen)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] sm:text-[11px] font-semibold cursor-pointer transition-all duration-150 bg-white hover:bg-slate-50"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] sm:text-[11px] font-semibold cursor-pointer transition-all duration-150 bg-bg2 hover:bg-bg3"
         style={{
           borderColor: isActive ? "rgba(99,102,241,0.3)" : hasFailures ? "rgba(239,68,68,0.3)" : "rgba(34,201,122,0.3)",
           color: isActive ? "#6366f1" : hasFailures ? "#ef4444" : "#22c97a",
@@ -111,13 +111,13 @@ export default function CampaignProgress() {
 
       {panelOpen && (
         <div
-          className="absolute right-0 mt-2 w-80 rounded-xl border bg-white shadow-lg z-50 overflow-hidden"
+          className="absolute right-0 mt-2 w-80 rounded-xl border bg-bg2 shadow-lg z-50 overflow-hidden"
           style={{ borderColor: "#e2e8f0" }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#f1f5f9" }}>
             <div>
-              <p className="text-[12px] font-bold text-slate-800 m-0">Outreach campaign</p>
-              <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+              <p className="text-[12px] font-bold text-text m-0">Outreach campaign</p>
+              <p className="text-[11px] text-text3 m-0 mt-0.5">
                 {isActive ? "In progress…" : "Finished"} · {activeCampaign.sent} sent
                 {activeCampaign.failed > 0 && <span className="text-red-500"> · {activeCampaign.failed} failed</span>}
                 {activeCampaign.skipped > 0 && ` · ${activeCampaign.skipped} skipped`}
@@ -126,7 +126,7 @@ export default function CampaignProgress() {
             </div>
             <button
               onClick={() => { setActiveCampaign(null); setPanelOpen(false); }}
-              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-none bg-transparent cursor-pointer"
+              className="p-1 rounded text-text3 hover:text-text2 hover:bg-bg3 border-none bg-transparent cursor-pointer"
               title="Dismiss"
             >
               <IconX size={14} />
@@ -135,7 +135,7 @@ export default function CampaignProgress() {
 
           {/* progress bar */}
           <div className="px-4 pt-3">
-            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-bg3 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
@@ -148,10 +148,10 @@ export default function CampaignProgress() {
 
           {activeCampaign.failures.length > 0 && (
             <div className="px-4 py-3 max-h-52 overflow-y-auto">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Failed leads</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text3 mb-2">Failed leads</p>
               {activeCampaign.failures.map((e, i) => (
                 <div key={`${e.leadId}-${i}`} className="mb-2">
-                  <p className="text-[12px] font-semibold text-slate-700 m-0">{e.leadName || "Unknown lead"}</p>
+                  <p className="text-[12px] font-semibold text-text2 m-0">{e.leadName || "Unknown lead"}</p>
                   <p className="text-[11px] text-red-500 m-0 mt-0.5 break-words">{e.reason}</p>
                 </div>
               ))}
@@ -172,7 +172,7 @@ export default function CampaignProgress() {
             )}
             <button
               onClick={() => setPanelOpen(false)}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-bg4 bg-bg2 text-text2 cursor-pointer"
             >
               Close
             </button>

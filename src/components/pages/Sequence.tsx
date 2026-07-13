@@ -1,43 +1,38 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { IconPlus, IconDeviceFloppy, IconSparkles, IconLayoutList } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_SEQUENCE_STEPS, type SequenceStep } from "@/lib/constants/sequence";
 import SequenceStepCard from "@/components/sequence/SequenceStepCard";
 import SequenceTemplatePanel from "@/components/sequence/SequenceTemplatePanel";
 
 export default function Sequence() {
   const { activeAgent, showToast } = useAppStore();
+  const queryClient = useQueryClient();
   const [steps, setSteps] = useState<SequenceStep[]>(DEFAULT_SEQUENCE_STEPS);
   const [afterNoReply, setAfterNoReply] = useState("stop");
   const [sequenceName, setSequenceName] = useState("Cold outreach");
 
+  const { data: sequences } = useQuery<any[]>({
+    queryKey: ["sequences", activeAgent?._id],
+    queryFn: async () => {
+      const res = await fetch(`/api/sequences?agentId=${activeAgent!._id}`);
+      if (!res.ok) throw new Error("Failed to load sequence");
+      return res.json();
+    },
+    enabled: !!activeAgent,
+  });
+
+  // This page edits in local state, so rehydrate it whenever the cached/fetched
+  // sequence arrives (including on a cache hit after remount).
   useEffect(() => {
-    if (!activeAgent) return;
-    const agentId = activeAgent._id;
-    async function loadSequence() {
-      try {
-        const res = await fetch(`/api/sequences?agentId=${agentId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.length > 0) {
-            const seq = data[0];
-            setSteps(seq.steps || DEFAULT_SEQUENCE_STEPS);
-            setSequenceName(seq.name || "Cold outreach");
-            setAfterNoReply(seq.afterNoReply || "stop");
-          } else {
-            // Reset to defaults if no sequence saved
-            setSteps(DEFAULT_SEQUENCE_STEPS);
-            setSequenceName("Cold outreach");
-            setAfterNoReply("stop");
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load sequence", err);
-      }
-    }
-    loadSequence();
-  }, [activeAgent?._id]);
+    if (!sequences) return;
+    const seq = sequences[0];
+    setSteps(seq?.steps || DEFAULT_SEQUENCE_STEPS);
+    setSequenceName(seq?.name || "Cold outreach");
+    setAfterNoReply(seq?.afterNoReply || "stop");
+  }, [sequences]);
 
   function addStep() {
     const next = steps.length + 1;
@@ -59,6 +54,7 @@ export default function Sequence() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentId: activeAgent._id, name: sequenceName, steps, afterNoReply }),
     });
+    queryClient.invalidateQueries({ queryKey: ["sequences", activeAgent._id] });
     showToast("Sequence saved");
   }
 

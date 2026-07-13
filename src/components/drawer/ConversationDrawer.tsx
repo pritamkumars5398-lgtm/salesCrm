@@ -467,7 +467,7 @@ export default function ConversationDrawer() {
                   checked={agentOn}
                   onChange={(e) => toggleAgent(e.target.checked)}
                 />
-                <div className="absolute inset-0 bg-slate-300 rounded-full cursor-pointer transition-colors duration-300 ease-in-out border border-black/5 shadow-inner peer-checked:bg-emerald-500 peer-checked:border-transparent before:content-[''] before:absolute before:w-[14px] before:h-[14px] before:left-[2px] before:top-[3px] before:bg-white before:rounded-full before:transition-transform before:duration-300 before:ease-in-out before:shadow-sm peer-checked:before:translate-x-[16px]" />
+                <div className="absolute inset-0 bg-slate-300 rounded-full cursor-pointer transition-colors duration-300 ease-in-out border border-black/5 shadow-inner peer-checked:bg-emerald-500 peer-checked:border-transparent before:content-[''] before:absolute before:w-[14px] before:h-[14px] before:left-[2px] before:top-[3px] before:bg-bg2 before:rounded-full before:transition-transform before:duration-300 before:ease-in-out before:shadow-sm peer-checked:before:translate-x-[16px]" />
               </label>
             </div>
           </div>

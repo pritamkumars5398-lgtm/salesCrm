@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { IconMail, IconBrandWhatsapp, IconMessage, IconPhone, IconActivity, IconCalendar } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import type { Activity as ActivityRecord } from "@/store/types";
 import Pagination from "@/components/ui/Pagination";
 import { formatDistanceToNow } from "date-fns";
 
@@ -17,29 +19,31 @@ export default function Activity() {
   const { activeAgent, activities, setActivities } = useAppStore();
   const [channel, setChannel] = useState("all");
   const [range, setRange] = useState("today");
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [total, setTotal] = useState(0);
 
+  // Every filter/page combination is cached separately, so paging back and forth
+  // (and returning to this page) is instant.
+  const query = activeAgent
+    ? new URLSearchParams({
+        agentId: activeAgent._id,
+        channel,
+        range,
+        page: String(page),
+        limit: String(pageSize),
+      }).toString()
+    : null;
+
+  const { data, isPending: loading } = useQuery<{ activities: ActivityRecord[]; total: number }>({
+    queryKey: ["activities", activeAgent?._id, channel, range, page, pageSize],
+    queryFn: () => fetch(`/api/activities?${query}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+    placeholderData: keepPreviousData, // paging keeps the current rows on screen
+  });
   useEffect(() => {
-    if (!activeAgent) return;
-    setLoading(true);
-    const params = new URLSearchParams({
-      agentId: activeAgent._id,
-      channel,
-      range,
-      page: String(page),
-      limit: String(pageSize),
-    });
-    fetch(`/api/activities?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setActivities(data.activities ?? []);
-        setTotal(data.total ?? 0);
-      })
-      .finally(() => setLoading(false));
-  }, [activeAgent?._id, channel, range, page, pageSize]);
+    if (data) setActivities(data.activities ?? []);
+  }, [data, setActivities]);
+  const total = data?.total ?? 0;
 
   // Changing a filter invalidates the current offset.
   useEffect(() => { setPage(1); }, [channel, range, pageSize, activeAgent?._id]);
@@ -50,7 +54,7 @@ export default function Activity() {
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading activities...</div>
+          <div className="text-[13px] font-semibold tracking-wide text-text3">Loading activities...</div>
         </div>
       </div>
     );
@@ -67,20 +71,20 @@ export default function Activity() {
         </h1>
       </div>
 
-      <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-          <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight">
+      <div className="bg-bg2 backdrop-blur-md border border-bg4 rounded-[20px] mb-4 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-bg4 bg-bg2">
+          <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-text tracking-tight">
             <IconActivity size={16} style={{ color: "var(--color-accent2)" }} /> Events
           </div>
           <div className="flex gap-2">
-            <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" style={{ width: "auto", padding: "5px 10px" }} value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <select className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3" style={{ width: "auto", padding: "5px 10px" }} value={channel} onChange={(e) => setChannel(e.target.value)}>
               <option value="all">All channels</option>
               <option value="email">Email</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
               <option value="call">Voice call</option>
             </select>
-            <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400" style={{ width: "auto", padding: "5px 10px" }} value={range} onChange={(e) => setRange(e.target.value)}>
+            <select className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3" style={{ width: "auto", padding: "5px 10px" }} value={range} onChange={(e) => setRange(e.target.value)}>
               <option value="today">Today</option>
               <option value="week">This week</option>
               <option value="all">All time</option>
@@ -96,7 +100,7 @@ export default function Activity() {
             return (
               <div
                 key={act._id}
-                className="flex items-start gap-3 px-4 py-3 mx-2 rounded-[10px] transition-colors hover:bg-white/[0.02]"
+                className="flex items-start gap-3 px-4 py-3 mx-2 rounded-[10px] transition-colors hover:bg-bg3"
               >
                 <div
                   className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0"

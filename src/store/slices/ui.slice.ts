@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { Page, Lead, Channel, DrawerState } from "../types";
+import { applyTheme, readStoredTheme, THEME_STORAGE_KEY, type Theme } from "@/lib/theme";
 import type { AppState } from "../useAppStore";
 
 export interface Toast {
@@ -29,6 +30,16 @@ export interface UiSlice {
 
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
+
+  /** Shared: the modal is rendered by the shell layout but opened from Topbar and Leads. */
+  addLeadOpen: boolean;
+  setAddLeadOpen: (open: boolean) => void;
+
+  /** "system" follows the OS; light/dark are an explicit, persisted override. */
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  /** Adopt whatever the pre-paint script already put on <html>. */
+  initTheme: () => void;
 }
 
 export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get) => ({
@@ -58,4 +69,20 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
 
   sidebarCollapsed: false,
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+
+  addLeadOpen: false,
+  setAddLeadOpen: (addLeadOpen) => set({ addLeadOpen }),
+
+  theme: "system",
+  setTheme: (theme) => {
+    applyTheme(theme);
+    try {
+      if (theme === "system") localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // private mode / storage disabled — the theme still applies for this session
+    }
+    set({ theme });
+  },
+  initTheme: () => set({ theme: readStoredTheme() }),
 });

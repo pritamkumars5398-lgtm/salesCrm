@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconUsers, IconActivity, IconTrendingUp, IconCalendarCheck,
   IconMailForward, IconSparkles, IconArrowRight,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Avatar from "@/components/ui/Avatar";
 import { StatusBadge } from "@/components/ui/Badge";
 import { SkeletonStat, SkeletonCard } from "@/components/ui/Skeleton";
@@ -57,16 +58,15 @@ export default function Dashboard() {
     dashboardRecentActivity, setDashboard, openDrawer,
   } = useAppStore();
 
-  // ── Data fetch (preserved exactly) ───────────────────────────
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!activeAgent) return;
-    setLoading(true);
-    fetch(`/api/dashboard?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then(setDashboard)
-      .finally(() => setLoading(false));
-  }, [activeAgent?._id]);
+  // Cached by agent: revisiting the page renders the previous data immediately and
+  // only refetches once it goes stale, instead of blanking out to skeletons.
+  const { data, isPending } = useQuery({
+    queryKey: ["dashboard", activeAgent?._id],
+    queryFn: () => fetch(`/api/dashboard?agentId=${activeAgent!._id}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+  });
+  useEffect(() => { if (data) setDashboard(data); }, [data, setDashboard]);
+  const loading = isPending;
 
   const stats = dashboardStats;
 

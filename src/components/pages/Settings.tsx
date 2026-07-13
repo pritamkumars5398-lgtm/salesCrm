@@ -523,7 +523,7 @@ export default function Settings() {
                   <button
                     onClick={() => handleCopySettings("current")}
                     disabled={!copySourceAgentId}
-                    className="flex items-center justify-center text-[12px] font-medium rounded-lg border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    className="flex items-center justify-center text-[12px] font-medium rounded-lg border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-bg2 text-text2 hover:bg-bg3 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                     style={{ height: "34px", padding: "0 12px", borderColor: "var(--color-bg4)", borderWidth: 1 }}
                   >
                     This Section
@@ -703,10 +703,10 @@ export default function Settings() {
                       
                       <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
                         {locs.length === 0 ? (
-                          <div className="text-[11.5px] text-slate-400 italic py-1">No locations added. Add one below.</div>
+                          <div className="text-[11.5px] text-text3 italic py-1">No locations added. Add one below.</div>
                         ) : (
                           locs.map((loc, index) => (
-                            <div key={index} className="flex items-center justify-between bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border text-[12.5px]" style={{ borderColor: "var(--color-bg4)" }}>
+                            <div key={index} className="flex items-center justify-between bg-bg2 dark:bg-slate-900 px-3 py-1.5 rounded-lg border text-[12.5px]" style={{ borderColor: "var(--color-bg4)" }}>
                               <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
@@ -720,7 +720,7 @@ export default function Settings() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
-                                  loc.active ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10 dark:bg-emerald-950/20" : "bg-slate-100 text-slate-400 border border-slate-500/10 dark:bg-slate-800"
+                                  loc.active ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10 dark:bg-emerald-950/20" : "bg-bg3 text-text3 border border-slate-500/10 dark:bg-slate-800"
                                 }`}>
                                   {loc.active ? "Active" : "Inactive"}
                                 </span>
@@ -760,7 +760,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onClick={() => setShowPasswords((p) => ({ ...p, [f.key]: !p[f.key] }))}
-                          className="absolute right-2 p-1 rounded-md transition-colors text-slate-400 hover:text-slate-600 flex items-center justify-center border-none bg-transparent cursor-pointer"
+                          className="absolute right-2 p-1 rounded-md transition-colors text-text3 hover:text-text2 flex items-center justify-center border-none bg-transparent cursor-pointer"
                         >
                           {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
                         </button>
@@ -802,7 +802,7 @@ export default function Settings() {
                     ) : f.type === "webhook-url" ? (
                       <div className="w-full flex items-start gap-2">
                         <div
-                          className="form-input bg-slate-50 dark:bg-slate-900/50 cursor-default flex-1"
+                          className="form-input bg-bg3 dark:bg-slate-900/50 cursor-default flex-1"
                           style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
                         >
                           {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`}
@@ -814,7 +814,7 @@ export default function Settings() {
                             navigator.clipboard.writeText(url);
                             showToast("Webhook URL copied to clipboard!");
                           }}
-                          className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-slate-500 hover:text-slate-700"
+                          className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-text3 hover:text-text2"
                           style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
                           title="Copy to clipboard"
                         >
@@ -1064,10 +1064,10 @@ export default function Settings() {
 
                 {/* ElevenLabs Sound & Voice Tester */}
                 <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
-                  <div className="text-[12.5px] font-bold text-slate-700 dark:text-slate-300">
+                  <div className="text-[12.5px] font-bold text-text2 dark:text-text4">
                     ElevenLabs Sound & Voice Tester
                   </div>
-                  <p className="text-[11.5px] text-slate-500" style={{ margin: 0 }}>
+                  <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
                     Type a custom sentence below, select a voice, and hear it play via ElevenLabs. (Requires Voice API Key configured).
                   </p>
                   
@@ -1109,11 +1109,11 @@ export default function Settings() {
 
                 {/* Real Outbound Call Tester */}
                 <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
-                  <div className="text-[12.5px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <div className="text-[12.5px] font-bold text-text2 dark:text-text4 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Real Outbound Call Tester (2 min test)
                   </div>
-                  <p className="text-[11.5px] text-slate-500" style={{ margin: 0 }}>
+                  <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
                     Enter your phone number to test a real phone call from the AI agent (requires Vapi settings saved above).
                   </p>
                   

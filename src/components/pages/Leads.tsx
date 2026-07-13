@@ -7,6 +7,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import type { Lead, Channel } from "@/store/types";
 import StatusPill from "@/components/ui/Pill";
 import Avatar from "@/components/ui/Avatar";
@@ -58,6 +59,7 @@ interface Props { onAddLead: () => void; }
 
 export default function Leads({ onAddLead }: Props) {
   const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen, syncing } = useAppStore();
+  const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -66,8 +68,6 @@ export default function Leads({ onAddLead }: Props) {
   const [missingContact, setMissingContact] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
-  const [loading, setLoading] = useState(true);
-  const isLoading = loading;
   const [locationFilter, setLocationFilter] = useState("all");
   const [locations, setLocations] = useState<{ name: string; active: boolean }[]>([]);
   const [addedDateFilter, setAddedDateFilter] = useState("all");
@@ -83,9 +83,6 @@ export default function Leads({ onAddLead }: Props) {
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [remainingEligible, setRemainingEligible] = useState(0);
-  // Guards against a slow response from an earlier filter/page overwriting a newer one
-  // — the table also polls every 3s while a run is in flight.
-  const reqIdRef = useRef(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [jobTitleFilter, setJobTitleFilter] = useState("all");
@@ -110,30 +107,30 @@ export default function Leads({ onAddLead }: Props) {
     transition: "background-color 0.15s",
   };
 
+  const { data: sequences } = useQuery<any[]>({
+    queryKey: ["sequences", activeAgent?._id],
+    queryFn: () => fetch(`/api/sequences?agentId=${activeAgent!._id}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+  });
   useEffect(() => {
-    if (!activeAgent) {
-      setSequence(null);
-      return;
-    }
-    fetch(`/api/sequences?agentId=${activeAgent._id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.length > 0) {
-          setSequence(data[0]);
-        } else {
-          setSequence(null);
-        }
-      })
-      .catch((err) => console.error("Error loading sequence in Leads page", err));
-  }, [activeAgent?._id]);
+    setSequence(sequences?.[0] ?? null);
+  }, [sequences]);
 
-  const fetchLeads = useCallback(async (background = false) => {
-    if (!activeAgent) return;
-    if (!background) setLoading(true);
-    const reqId = ++reqIdRef.current;
-    try {
+  // While a run is in flight for this agent, refresh lead statuses in the
+  // background so the table shows live "sending…" highlights and results.
+  const campaignRunning = !!activeCampaign
+    && activeCampaign.agentId === activeAgent?._id
+    && (activeCampaign.status === "pending" || activeCampaign.status === "running");
+
+  const leadsQuery = useQuery<LeadsResponse>({
+    queryKey: [
+      "leads", activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter,
+      locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter,
+      search, missingContact, page, pageSize,
+    ],
+    queryFn: () => {
       const params = new URLSearchParams({
-        agentId: activeAgent._id,
+        agentId: activeAgent!._id,
         page: String(page),
         limit: String(pageSize),
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -149,35 +146,51 @@ export default function Leads({ onAddLead }: Props) {
       if (websiteFilter !== "all") params.set("website", websiteFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
-      const data: LeadsResponse = await fetch(`/api/leads?${params}`).then((r) => r.json());
-      if (reqId !== reqIdRef.current) return; // a newer request already landed
+      return fetch(`/api/leads?${params}`).then((r) => r.json());
+    },
+    enabled: !!activeAgent,
+    // Keeps the current rows on screen while the next page / filter loads, and
+    // makes the query the single in-flight source — no stale response can land
+    // out of order over a newer one.
+    placeholderData: keepPreviousData,
+    refetchInterval: campaignRunning ? 3000 : false,
+  });
 
-      setLeads((prev: Lead[]) => {
-        if (page === 1) return data.leads ?? [];
-        const existingIds = new Set(prev.map(l => l._id));
-        const newLeads = (data.leads ?? []).filter((l: Lead) => !existingIds.has(l._id));
-        return [...prev, ...newLeads];
-      });
-      setTotal(data.total ?? 0);
-      setStatusCounts(data.statusCounts ?? {});
-      setRemainingEligible(data.remainingEligible ?? 0);
-      if (data.jobTitles) setJobTitles(data.jobTitles);
+  const isLoading = leadsQuery.isPending;
+  const data = leadsQuery.data;
 
-      // Sync-batch options: distinct days leads were added, newest first.
-      setDateOptions(
-        (data.dateOptions ?? []).map(({ value, count }) => ({
-          value,
-          count,
-          label: new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-        }))
-      );
+  // Project the response into the store + local view state.
+  useEffect(() => {
+    if (!data) return;
 
-      // Deleting the last rows of a page can strand us past the end.
-      if (data.total > 0 && page > data.totalPages) setPage(data.totalPages);
-    } finally {
-      if (reqId === reqIdRef.current && !background) setLoading(false);
-    }
-  }, [activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter, search, missingContact, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLeads((prev: Lead[]) => {
+      if (page === 1) return data.leads ?? [];
+      // Infinite scroll: append the new page, skipping anything already held.
+      const existingIds = new Set(prev.map((l) => l._id));
+      return [...prev, ...(data.leads ?? []).filter((l: Lead) => !existingIds.has(l._id))];
+    });
+    setTotal(data.total ?? 0);
+    setStatusCounts(data.statusCounts ?? {});
+    setRemainingEligible(data.remainingEligible ?? 0);
+    if (data.jobTitles) setJobTitles(data.jobTitles);
+
+    // Sync-batch options: distinct days leads were added, newest first.
+    setDateOptions(
+      (data.dateOptions ?? []).map(({ value, count }) => ({
+        value,
+        count,
+        label: new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+      }))
+    );
+
+    // Deleting the last rows of a page can strand us past the end.
+    if (data.total > 0 && page > data.totalPages) setPage(data.totalPages);
+  }, [data, page, setLeads]);
+
+  // Callers that need fresh rows after a mutation (delete, start run, sync).
+  const fetchLeads = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["leads", activeAgent?._id] });
+  }, [queryClient, activeAgent?._id]);
 
   // Infinite Scroll Observer
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -197,8 +210,6 @@ export default function Leads({ onAddLead }: Props) {
     [isLoading, leads.length, total]
   );
 
-  useEffect(() => { fetchLeads(); }, [fetchLeads]);
-
   // Any filter change invalidates the current offset — go back to the first page.
   useEffect(() => {
     setPage(1);
@@ -207,41 +218,36 @@ export default function Leads({ onAddLead }: Props) {
   // An Apify sync just finished — pull in whatever it imported.
   const prevSyncing = useRef(syncing);
   useEffect(() => {
-    if (prevSyncing.current && !syncing) fetchLeads(true);
+    if (prevSyncing.current && !syncing) fetchLeads();
     prevSyncing.current = syncing;
   }, [syncing, fetchLeads]);
 
-  // While a run is in flight for this agent, refresh lead statuses in the
-  // background so the table shows live "sending…" highlights and results.
-  const campaignRunning = !!activeCampaign
-    && activeCampaign.agentId === activeAgent?._id
-    && (activeCampaign.status === "pending" || activeCampaign.status === "running");
-
+  // A finished run leaves the table showing mid-run statuses — pull the final ones.
+  const prevCampaignRunning = useRef(campaignRunning);
   useEffect(() => {
-    if (!campaignRunning) return;
-    const t = setInterval(() => fetchLeads(true), 3000);
-    return () => { clearInterval(t); fetchLeads(true); };
+    if (prevCampaignRunning.current && !campaignRunning) fetchLeads();
+    prevCampaignRunning.current = campaignRunning;
   }, [campaignRunning, fetchLeads]);
 
+  const { data: agentSettings } = useQuery<any>({
+    queryKey: ["settings", activeAgent?._id],
+    queryFn: () => fetch(`/api/settings?agentId=${activeAgent!._id}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+  });
   useEffect(() => {
-    if (!activeAgent) return;
-    fetch(`/api/settings?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const rawLocs = data.leadLocations || "";
-        let locsList: { name: string; active: boolean }[] = [];
-        try {
-          if (rawLocs) {
-            locsList = JSON.parse(rawLocs);
-          } else if (data.leadLocation) {
-            locsList = [{ name: data.leadLocation, active: true }];
-          }
-        } catch (e) {
-          locsList = [];
-        }
-        setLocations(locsList);
-      });
-  }, [activeAgent?._id]);
+    if (!agentSettings) return;
+    let locsList: { name: string; active: boolean }[] = [];
+    try {
+      if (agentSettings.leadLocations) {
+        locsList = JSON.parse(agentSettings.leadLocations);
+      } else if (agentSettings.leadLocation) {
+        locsList = [{ name: agentSettings.leadLocation, active: true }];
+      }
+    } catch {
+      locsList = [];
+    }
+    setLocations(locsList);
+  }, [agentSettings]);
 
   async function handleAddLocation(name: string) {
     if (!activeAgent) return;
@@ -290,7 +296,7 @@ export default function Leads({ onAddLead }: Props) {
       } else {
         showToast(`Outreach started for ${res.campaign.total} lead${res.campaign.total !== 1 ? "s" : ""} — ${res.remainingEligible} more remaining.`, "success");
       }
-      fetchLeads(true);
+      fetchLeads();
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Could not start the run.", "error");
     } finally {
@@ -391,7 +397,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await deleteLeads(activeAgent._id, ids);
       showToast(`Moved ${deleted} lead${deleted !== 1 ? "s" : ""} to Trash`, "success");
-      fetchLeads(true); // refill the page from the server
+      fetchLeads(); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads(); // reconcile if the server rejected the delete
@@ -409,7 +415,7 @@ export default function Leads({ onAddLead }: Props) {
       const { restored } = await restoreLeads(activeAgent._id, ids);
       updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + restored);
       showToast(`Restored ${restored} lead${restored !== 1 ? "s" : ""}`, "success");
-      fetchLeads(true); // refill the page from the server
+      fetchLeads(); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to restore leads", "error");
       fetchLeads();
@@ -428,7 +434,7 @@ export default function Leads({ onAddLead }: Props) {
     try {
       const { deleted } = await permanentlyDeleteLeads(activeAgent._id, ids);
       showToast(`Permanently deleted ${deleted} lead${deleted !== 1 ? "s" : ""}`, "success");
-      fetchLeads(true); // refill the page from the server
+      fetchLeads(); // refill the page from the server
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Failed to delete leads", "error");
       fetchLeads();
@@ -623,11 +629,11 @@ export default function Leads({ onAddLead }: Props) {
               </button>
               {runOpen && !campaignRunning && (
                 <div
-                  className="absolute right-0 mt-2 w-64 rounded-xl border bg-white p-3 shadow-lg z-50 text-slate-800"
+                  className="absolute right-0 mt-2 w-64 rounded-xl border bg-bg2 p-3 shadow-lg z-50 text-text"
                   style={{ borderColor: "#e2e8f0" }}
                 >
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 m-0 mb-2">Start outreach run</p>
-                  <p className="text-[12px] text-slate-600 m-0 mb-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-text3 m-0 mb-2">Start outreach run</p>
+                  <p className="text-[12px] text-text2 m-0 mb-2">
                     {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} left. How many to contact?
                   </p>
                   <div className="flex items-center gap-2 mb-2">
@@ -644,14 +650,14 @@ export default function Leads({ onAddLead }: Props) {
                       <button
                         key={n}
                         onClick={() => setRunCount(n)}
-                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-bg4 bg-bg2 text-text2 cursor-pointer hover:bg-bg3"
                       >
                         {n}
                       </button>
                     ))}
                     <button
                       onClick={() => setRunCount(Math.max(remainingEligible, 1))}
-                      className="px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50"
+                      className="px-2 py-1 rounded-md text-[11px] font-semibold border border-bg4 bg-bg2 text-text2 cursor-pointer hover:bg-bg3"
                     >
                       All
                     </button>
@@ -686,7 +692,7 @@ export default function Leads({ onAddLead }: Props) {
             </button>
             {filtersOpen && (
               <div
-                className="absolute right-0 mt-2 w-72 rounded-xl border bg-white p-4 shadow-xl z-50 flex flex-col gap-3"
+                className="absolute right-0 mt-2 w-72 rounded-xl border bg-bg2 p-4 shadow-xl z-50 flex flex-col gap-3"
                 style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)", maxHeight: "80vh", overflowY: "auto" }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -834,7 +840,7 @@ export default function Leads({ onAddLead }: Props) {
             </button>
             {actionsOpen && (
               <div
-                className="absolute right-0 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-xl z-50 flex flex-col gap-0.5"
+                className="absolute right-0 mt-2 w-48 rounded-xl border bg-bg2 p-1.5 shadow-xl z-50 flex flex-col gap-0.5"
                 style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
               >
                 <button
@@ -961,7 +967,7 @@ export default function Leads({ onAddLead }: Props) {
                 </button>
               </>
             )}
-            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={() => setSelected(new Set())}>
+            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-bg4 bg-bg2 text-text2 transition-all duration-200 ease-out hover:bg-bg3 !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={() => setSelected(new Set())}>
               <IconX size={13} /> Deselect
             </button>
           </div>
@@ -1043,7 +1049,7 @@ export default function Leads({ onAddLead }: Props) {
                     className="accent-[#6c63ff] cursor-pointer"
                   />
                 </td>
-                <td className="px-4 py-3 text-[12px] font-semibold text-slate-400">
+                <td className="px-4 py-3 text-[12px] font-semibold text-text3">
                   {i + 1}
                 </td>
                 <td className="px-4 py-3">
@@ -1097,13 +1103,13 @@ export default function Leads({ onAddLead }: Props) {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="text-[12px] font-medium text-slate-500">
+                  <div className="text-[12px] font-medium text-text3">
                     {lead.location ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-bg3 dark:bg-slate-800 text-text2 dark:text-text3 border border-bg4 dark:border-slate-700">
                         {lead.location}
                       </span>
                     ) : (
-                      <span className="text-slate-400 font-normal">—</span>
+                      <span className="text-text3 font-normal">—</span>
                     )}
                   </div>
                 </td>
@@ -1123,7 +1129,7 @@ export default function Leads({ onAddLead }: Props) {
                     </div>
                     {sequence && sequence.steps && sequence.steps.length > 0 && (
                       <div className="flex items-center gap-1 mt-0.5" title="Outreach Sequence channels">
-                        <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-bg3 dark:bg-slate-800 text-text3 border border-bg4 dark:border-slate-700">
                           Seq:
                         </span>
                         <div className="flex gap-0.5 items-center">
@@ -1139,7 +1145,7 @@ export default function Leads({ onAddLead }: Props) {
                                 style={{ color: isWhatsApp ? "#22c97a" : "var(--color-text3)" }}
                               >
                                 <cfg.Icon size={10} />
-                                {idx < sequence.steps.length - 1 && <span className="mx-0.5 text-[9px] text-slate-400">→</span>}
+                                {idx < sequence.steps.length - 1 && <span className="mx-0.5 text-[9px] text-text3">→</span>}
                               </span>
                             );
                           })}
@@ -1285,8 +1291,8 @@ export default function Leads({ onAddLead }: Props) {
         </table>
         </div>
         <div className="relative flex items-center justify-between py-4 px-6 border-t border-[var(--color-bg4)]">
-          <div className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
-            Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{leads.length}</span> of <span className="font-semibold text-slate-700 dark:text-slate-300">{total}</span> {trashView ? "trashed leads" : "leads"}
+          <div className="text-[13px] font-medium text-text3 dark:text-text3">
+            Showing <span className="font-semibold text-text2 dark:text-text4">{leads.length}</span> of <span className="font-semibold text-text2 dark:text-text4">{total}</span> {trashView ? "trashed leads" : "leads"}
           </div>
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center">
             {isLoading && page > 1 ? (
@@ -1295,11 +1301,11 @@ export default function Leads({ onAddLead }: Props) {
                 <span className="text-[11.5px] font-bold tracking-wide uppercase">Loading more...</span>
               </div>
             ) : leads.length > 0 && leads.length < total ? (
-              <div className="text-[11.5px] font-semibold text-slate-400 tracking-wide uppercase">
+              <div className="text-[11.5px] font-semibold text-text3 tracking-wide uppercase">
                 Scroll for more ↓
               </div>
             ) : leads.length > 0 && leads.length >= total ? (
-              <div className="text-[11.5px] font-semibold text-slate-400 tracking-wide uppercase flex items-center gap-1">
+              <div className="text-[11.5px] font-semibold text-text3 tracking-wide uppercase flex items-center gap-1">
                 <IconCheck size={14} /> All leads loaded
               </div>
             ) : null}

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconClock, IconPlus, IconPlug } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, getDaysInMonth, getDay, isToday } from "date-fns";
 
 export default function Calendar() {
@@ -9,23 +10,20 @@ export default function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [provider, setProvider] = useState("cal.com");
   const [apiKey, setApiKey] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!activeAgent) return;
-    setLoading(true);
-    fetch(`/api/meetings?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then(setMeetings)
-      .finally(() => setLoading(false));
-  }, [activeAgent?._id]);
+  const { data, isPending: loading } = useQuery({
+    queryKey: ["meetings", activeAgent?._id],
+    queryFn: () => fetch(`/api/meetings?agentId=${activeAgent!._id}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+  });
+  useEffect(() => { if (data) setMeetings(data); }, [data, setMeetings]);
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading calendar...</div>
+          <div className="text-[13px] font-semibold tracking-wide text-text3">Loading calendar...</div>
         </div>
       </div>
     );
@@ -60,17 +58,17 @@ export default function Calendar() {
 
       <div className="grid gap-5" style={{ gridTemplateColumns: "320px 1fr" }}>
         {/* Mini calendar + provider */}
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight">
+        <div className="bg-bg2 backdrop-blur-md border border-bg4 rounded-[20px] mb-4 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-bg4 bg-bg2">
+            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-text tracking-tight">
               <IconCalendar size={16} style={{ color: "var(--color-accent2)" }} />
               {format(currentMonth, "MMMM yyyy")}
             </div>
             <div className="flex gap-1.5">
-              <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-white text-slate-700 shadow-sm transition-all duration-200 ease-out hover:bg-slate-50 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-slate-500 !shadow-none hover:!bg-slate-100 hover:!text-slate-900" onClick={() => setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1))}>
+              <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-bg2 text-text2 shadow-sm transition-all duration-200 ease-out hover:bg-bg3 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-text3 !shadow-none hover:!bg-bg3 hover:!text-text" onClick={() => setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1))}>
                 <IconChevronLeft size={14} />
               </button>
-              <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-white text-slate-700 shadow-sm transition-all duration-200 ease-out hover:bg-slate-50 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-slate-500 !shadow-none hover:!bg-slate-100 hover:!text-slate-900" onClick={() => setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1))}>
+              <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-black/5 bg-bg2 text-text2 shadow-sm transition-all duration-200 ease-out hover:bg-bg3 hover:-translate-y-[1px] hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] active:translate-y-[1px] active:shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !text-text3 !shadow-none hover:!bg-bg3 hover:!text-text" onClick={() => setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1))}>
                 <IconChevronRight size={14} />
               </button>
             </div>
@@ -106,12 +104,12 @@ export default function Calendar() {
             {/* Provider connect */}
             <div className="mt-4 pt-3.5 border-t" style={{ borderColor: "rgba(0,0,0,0.1)" }}>
               <div className="text-[11px] font-semibold tracking-widest uppercase mb-2.5" style={{ color: "var(--color-text3)" }}>Provider</div>
-              <select className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400 mb-2" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              <select className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mb-2" value={provider} onChange={(e) => setProvider(e.target.value)}>
                 <option value="cal.com">Cal.com</option>
                 <option value="calendly">Calendly</option>
                 <option value="google">Google Calendar</option>
               </select>
-              <input className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400 mb-2" type="text" placeholder="API key or link" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <input className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mb-2" type="text" placeholder="API key or link" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
               <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg w-full justify-center" onClick={connectCalendar}>
                 <IconPlug size={14} /> Connect
               </button>
@@ -120,9 +118,9 @@ export default function Calendar() {
         </div>
 
         {/* Upcoming meetings */}
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight">
+        <div className="bg-bg2 backdrop-blur-md border border-bg4 rounded-[20px] mb-4 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-bg4 bg-bg2">
+            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-text tracking-tight">
               <IconClock size={16} style={{ color: "var(--color-accent2)" }} /> Upcoming meetings
             </div>
             <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg"><IconPlus size={14} /> Book</button>

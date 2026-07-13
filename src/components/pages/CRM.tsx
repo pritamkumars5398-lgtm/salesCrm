@@ -153,7 +153,7 @@ export default function CRM() {
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading pipeline...</div>
+          <div className="text-[13px] font-semibold tracking-wide text-text3">Loading pipeline...</div>
         </div>
       </div>
     );
@@ -365,7 +365,7 @@ export default function CRM() {
                           </div>
                         )}
                         <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400 mt-2 cursor-pointer"
+                          className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mt-2 cursor-pointer"
                           style={{ fontSize: 11, padding: "3px 6px" }}
                           value={lead.pipelineStage ?? "new"}
                           onChange={(e) => {

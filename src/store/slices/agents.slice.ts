@@ -5,6 +5,9 @@ import type { AppState } from "../useAppStore";
 export interface AgentsSlice {
   agents: Agent[];
   activeAgent: Agent | null;
+  /** Set once the agent list has been loaded, so the shell bootstraps a single time. */
+  agentsLoaded: boolean;
+  setAgentsLoaded: (loaded: boolean) => void;
   setAgents: (agents: Agent[]) => void;
   setActiveAgent: (agent: Agent) => void;
   addAgent: (agent: Agent) => void;
@@ -15,6 +18,8 @@ export interface AgentsSlice {
 export const createAgentsSlice: StateCreator<AppState, [], [], AgentsSlice> = (set) => ({
   agents: [],
   activeAgent: null,
+  agentsLoaded: false,
+  setAgentsLoaded: (agentsLoaded) => set({ agentsLoaded }),
   setAgents: (agents) => set({ agents, activeAgent: agents[0] ?? null }),
   setActiveAgent: (agent) => set({ activeAgent: agent }),
   addAgent: (agent) => set((s) => ({ agents: [...s.agents, agent] })),

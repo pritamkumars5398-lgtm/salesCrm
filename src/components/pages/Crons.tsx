@@ -5,6 +5,7 @@ import {
   IconPlayerPlay, IconRefresh, IconMail, IconRobot, IconChartBar, IconBolt, IconPencil, IconCheck, IconAlertTriangle, IconX,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CronJob } from "@/store/types";
 import { formatDistanceToNow } from "date-fns";
 import ScheduleBuilder, { buildCron, parseCron, describeCron, type ScheduleState } from "@/components/crons/ScheduleBuilder";
@@ -38,23 +39,29 @@ export default function Crons() {
   const [editForm, setEditForm] = useState({ name: "", action: "start_outreach" });
   const [editSchedule, setEditSchedule] = useState<ScheduleState>(DEFAULT_SCHEDULE);
   const [deleteTarget, setDeleteTarget] = useState<CronJob | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!activeAgent) return;
-    setLoading(true);
-    fetch(`/api/crons?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then(setCronJobs)
-      .finally(() => setLoading(false));
-  }, [activeAgent?._id]);
+  const queryClient = useQueryClient();
+  const cronsKey = ["crons", activeAgent?._id];
+
+  const { data, isPending: loading } = useQuery({
+    queryKey: cronsKey,
+    queryFn: () => fetch(`/api/crons?agentId=${activeAgent!._id}`).then((r) => r.json()),
+    enabled: !!activeAgent,
+  });
+  useEffect(() => { if (data) setCronJobs(data); }, [data, setCronJobs]);
+
+  // Mutations below update the store optimistically; this keeps the query cache
+  // from serving a stale list back on the next visit.
+  function invalidateCrons() {
+    queryClient.invalidateQueries({ queryKey: ["crons", activeAgent?._id] });
+  }
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: "var(--color-bg)" }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <div className="text-[13px] font-semibold tracking-wide text-slate-400">Loading schedules...</div>
+          <div className="text-[13px] font-semibold tracking-wide text-text3">Loading schedules...</div>
         </div>
       </div>
     );
@@ -91,6 +98,7 @@ export default function Crons() {
       return;
     }
     addCronJob(job);
+    invalidateCrons();
     setShowForm(false);
     setForm({ name: "", action: "start_outreach" });
     setSchedule(DEFAULT_SCHEDULE);
@@ -112,6 +120,7 @@ export default function Crons() {
       body: JSON.stringify({ enabled: !job.enabled }),
     });
     updateCronJob(job._id, { enabled: !job.enabled });
+    invalidateCrons();
     showToast(job.enabled ? "Schedule paused" : "Schedule enabled");
   }
 
@@ -121,6 +130,7 @@ export default function Crons() {
     const res = await fetch(url, { method: "DELETE" });
     const data = await res.json();
     removeCronJob(deleteTarget._id);
+    invalidateCrons();
     setDeleteTarget(null);
     if (resetLeads && data.resetCount > 0) {
       showToast(`Schedule deleted · ${data.resetCount} lead(s) reset to New`, "success");
@@ -179,6 +189,7 @@ export default function Crons() {
     });
     const updated = await res.json();
     updateCronJob(job._id, { name: updated.name, cronExpression: updated.cronExpression, action: updated.action, nextRunAt: updated.nextRunAt });
+    invalidateCrons();
     setEditingId(null);
     showToast("Schedule updated");
   }
@@ -204,17 +215,17 @@ export default function Crons() {
       {/* Create form */}
       {showForm && (
         <div
-          className="bg-white/80 backdrop-blur-md border border-slate-200 rounded-[20px] mb-4 overflow-hidden mb-4"
+          className="bg-bg2 backdrop-blur-md border border-bg4 rounded-[20px] mb-4 overflow-hidden mb-4"
           style={{ borderColor: "rgba(108,99,255,0.25)", background: "rgba(108,99,255,0.04)" }}
         >
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100/80 bg-white/50">
-            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-slate-800 tracking-tight"><IconClock size={16} style={{ color: "var(--color-accent2)" }} /> New schedule</div>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-bg4 bg-bg2">
+            <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-text tracking-tight"><IconClock size={16} style={{ color: "var(--color-accent2)" }} /> New schedule</div>
           </div>
           <div className="px-5 py-5 grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Name</label>
               <input
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
+                className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3"
                 placeholder="e.g. Daily morning outreach"
                 value={form.name}
                 onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -223,7 +234,7 @@ export default function Crons() {
             <div className="flex flex-col gap-1.5">
               <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Action</label>
               <select
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
+                className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3"
                 value={form.action}
                 onChange={(e) => setForm((p) => ({ ...p, action: e.target.value }))}
               >
@@ -238,7 +249,7 @@ export default function Crons() {
             </div>
           </div>
           <div className="flex justify-end gap-2 px-[18px] pb-4">
-            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 transition-all duration-200 ease-out hover:bg-slate-50 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-bg4 bg-bg2 text-text2 transition-all duration-200 ease-out hover:bg-bg3 !px-3 !py-[7px] !text-xs !rounded-lg" onClick={() => setShowForm(false)}>Cancel</button>
             <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg" onClick={createJob}>
               <IconClock size={14} /> Create schedule
             </button>
@@ -289,7 +300,7 @@ export default function Crons() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[13.5px] font-semibold">{job.name}</span>
                     {!job.enabled && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold tracking-wide uppercase border border-slate-200 bg-slate-50 text-slate-600 text-[10px]">Paused</span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold tracking-wide uppercase border border-bg4 bg-bg3 text-text2 text-[10px]">Paused</span>
                     )}
                     {job.enabled && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold tracking-wide uppercase border border-emerald-500/20 bg-emerald-50 text-emerald-600 text-[10px]">Active</span>
@@ -330,7 +341,7 @@ export default function Crons() {
                   <button
                     onClick={() => runNow(job)}
                     title="Run now"
-                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-slate-100 hover:!text-slate-900 transition-all duration-150"
+                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-bg3 hover:!text-text transition-all duration-150"
                     style={{ color: "#f5a623" }}
                   >
                     <IconBolt size={14} /> Run
@@ -338,14 +349,14 @@ export default function Crons() {
                   <button
                     onClick={() => isEditing ? setEditingId(null) : startEdit(job)}
                     title="Edit"
-                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-slate-100 hover:!text-slate-900 transition-all duration-150"
+                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-bg3 hover:!text-text transition-all duration-150"
                     style={{ color: isEditing ? "#6366f1" : "var(--color-text3)" }}
                   >
                     <IconPencil size={13} /> {isEditing ? "Cancel" : "Edit"}
                   </button>
                   <button
                     onClick={() => toggleJob(job)}
-                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-slate-100 hover:!text-slate-900 transition-all duration-150"
+                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-bg3 hover:!text-text transition-all duration-150"
                     style={{ color: job.enabled ? "#22c97a" : "var(--color-text3)" }}
                   >
                     {job.enabled ? <IconToggleRight size={16} /> : <IconToggleLeft size={16} />}
@@ -353,7 +364,7 @@ export default function Crons() {
                   </button>
                   <button
                     onClick={() => setDeleteTarget(job)}
-                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-slate-100 hover:!text-slate-900 transition-all duration-150"
+                    className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-bg3 hover:!text-text transition-all duration-150"
                     style={{ color: "#ff6b6b" }}
                   >
                     <IconTrash size={14} />
@@ -367,7 +378,7 @@ export default function Crons() {
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Name</label>
                     <input
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-slate-400"
+                      className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3"
                       value={editForm.name}
                       onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
                     />
@@ -375,7 +386,7 @@ export default function Crons() {
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Action</label>
                     <select
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600"
+                      className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600"
                       value={editForm.action}
                       onChange={(e) => setEditForm((p) => ({ ...p, action: e.target.value }))}
                     >
@@ -390,7 +401,7 @@ export default function Crons() {
                   </div>
                   <div className="col-span-2 flex justify-end gap-2">
                     <button
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold border border-bg4 bg-bg2 text-text2 hover:bg-bg3 transition-all"
                       onClick={() => setEditingId(null)}
                     >
                       Cancel
@@ -435,7 +446,7 @@ export default function Crons() {
                 </div>
               </div>
               <button onClick={() => setDeleteTarget(null)}
-                className="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                className="p-1 rounded-lg hover:bg-bg3 transition-colors"
                 style={{ color: "var(--color-text3)", border: "none", background: "transparent", cursor: "pointer" }}>
                 <IconX size={16} />
               </button>
@@ -469,7 +480,7 @@ export default function Crons() {
               </button>
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-all hover:bg-slate-100"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-all hover:bg-bg3"
                 style={{ background: "transparent", color: "var(--color-text3)", border: "1px solid var(--color-bg4)", cursor: "pointer" }}
               >
                 Cancel

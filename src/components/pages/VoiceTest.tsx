@@ -292,7 +292,7 @@ export default function VoiceTest() {
           <div className="p-4 rounded-xl border bg-black text-green-400 font-mono text-[13px] flex flex-col h-full min-h-[300px] max-h-[500px]">
             <h3 className="font-semibold mb-2 text-white border-b border-gray-800 pb-2 shrink-0">Debug Logs</h3>
             <div className="flex flex-col gap-2 overflow-y-auto flex-1 pr-2">
-              {logs.length === 0 && <span className="text-gray-500">Waiting for events...</span>}
+              {logs.length === 0 && <span className="text-text3">Waiting for events...</span>}
               {logs.map((log, i) => (
                 <div key={i} className="break-words">&gt; {log}</div>
               ))}

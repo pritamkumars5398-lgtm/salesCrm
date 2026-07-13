@@ -5,6 +5,8 @@ import {
   IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useIsMobile } from "@/hooks/useMediaQuery";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { avatarColor, getInitials } from "@/lib/utils/avatar";
 import { PAGE_TITLES } from "@/lib/constants/pages";
 import { publishAgent, updateAgentStatus } from "@/lib/api/agents.api";
@@ -27,17 +29,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
   } = useAppStore();
 
-  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setWindowWidth(window.innerWidth);
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const isMobile = windowWidth < 768;
+  const isMobile = useIsMobile();
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
@@ -119,25 +111,10 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
 
   return (
     <header
-      style={{
-        height: 54,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 20px",
-        background: "var(--color-bg2)",
-        opacity: 0.95,
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderBottom: "1px solid var(--color-bg4)",
-        flexShrink: 0,
-        zIndex: 20,
-        position: "sticky",
-        top: 0,
-      }}
+      className="sticky top-0 z-20 flex h-[54px] shrink-0 items-center justify-between gap-2 border-b border-bg4 bg-bg2/95 px-3 backdrop-blur-md sm:px-5"
     >
       {/* ── Left: Hamburger + Title ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
         {/* Hamburger menu button */}
         <button
           onClick={() => isMobile ? setSidebarOpenMobile(true) : setSidebarCollapsed(!sidebarCollapsed)}
@@ -161,8 +138,11 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
         </button>
 
         {/* Page breadcrumb */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", letterSpacing: "-0.01em" }}>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className="truncate text-[14px] font-semibold text-text"
+            style={{ letterSpacing: "-0.01em" }}
+          >
             {pageTitle}
           </span>
           {/* {activeAgent && (
@@ -188,9 +168,11 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
       </div>
 
       {/* ── Right: Actions ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {/* Campaign progress widget */}
-        <CampaignProgress />
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {/* Campaign progress widget — too wide for phones */}
+        <div className="hidden md:flex">
+          <CampaignProgress />
+        </div>
 
         {/* Agent status pill + dropdown */}
         {activeAgent && (
@@ -256,9 +238,9 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   position: "absolute",
                   right: 0,
                   top: "calc(100% + 8px)",
-                  width: 272,
+                  width: "min(272px, calc(100vw - 24px))",
                   borderRadius: "var(--radius-xl)",
-                  background: "#fff",
+                  background: "var(--color-bg2)",
                   border: "1px solid var(--color-bg4)",
                   boxShadow: "var(--shadow-xl)",
                   padding: 8,
@@ -426,6 +408,8 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
           <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync Apify"}</span>
           <span className="sm:hidden">{syncing ? "…" : "Sync"}</span>
         </button>
+
+        <ThemeToggle />
 
         {/* Profile avatar */}
         <button

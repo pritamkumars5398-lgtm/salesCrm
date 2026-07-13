@@ -398,7 +398,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "rgba(0,0,0,0.1)" }}>
           <span className="text-[14px] font-semibold">Add Leads</span>
           <button
-            className="inline-flex items-center justify-center p-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-none bg-transparent"
+            className="inline-flex items-center justify-center p-1 rounded-lg text-text3 hover:bg-bg3 hover:text-text border-none bg-transparent"
             onClick={onClose}
           >
             <IconX size={16} />
@@ -592,9 +592,9 @@ export default function AddLeadModal({ open, onClose }: Props) {
                 accept=".csv, .xlsx, .xls"
                 className="hidden"
               />
-              <IconCloudUpload size={40} className="text-slate-400 mb-2" />
-              <p className="text-[13px] font-semibold text-slate-700">Click to upload spreadsheet</p>
-              <p className="text-[11.5px] text-slate-400 mt-0.5">Supports CSV and Excel (.xlsx, .xls) files</p>
+              <IconCloudUpload size={40} className="text-text3 mb-2" />
+              <p className="text-[13px] font-semibold text-text2">Click to upload spreadsheet</p>
+              <p className="text-[11.5px] text-text3 mt-0.5">Supports CSV and Excel (.xlsx, .xls) files</p>
             </div>
           )}
 
@@ -602,7 +602,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
           {showPreview && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
-                <span className="text-[12.5px] font-semibold text-slate-700">
+                <span className="text-[12.5px] font-semibold text-text2">
                   Preview parsed leads ({parsedLeads.length} found, {selectedLeads.size} selected)
                 </span>
                 <button
@@ -619,7 +619,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
               <div className="overflow-x-auto border rounded-xl" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
                 <table className="w-full text-left border-collapse text-[12px]">
                   <thead>
-                    <tr className="bg-slate-50 border-b" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                    <tr className="bg-bg3 border-b" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
                       <th className="py-2.5 px-3 w-8">
                         <input
                           type="checkbox"
@@ -633,16 +633,16 @@ export default function AddLeadModal({ open, onClose }: Props) {
                           }}
                         />
                       </th>
-                      <th className="py-2.5 px-3 font-semibold text-slate-500">Name</th>
-                      <th className="py-2.5 px-3 font-semibold text-slate-500">Contact details</th>
-                      <th className="py-2.5 px-3 font-semibold text-slate-500">Company & Job title</th>
-                      <th className="py-2.5 px-3 font-semibold text-slate-500">Source</th>
+                      <th className="py-2.5 px-3 font-semibold text-text3">Name</th>
+                      <th className="py-2.5 px-3 font-semibold text-text3">Contact details</th>
+                      <th className="py-2.5 px-3 font-semibold text-text3">Company & Job title</th>
+                      <th className="py-2.5 px-3 font-semibold text-text3">Source</th>
                       <th className="py-2.5 px-3 w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {parsedLeads.map((lead, idx) => (
-                      <tr key={idx} className="border-b last:border-0 hover:bg-slate-50/50" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
+                      <tr key={idx} className="border-b last:border-0 hover:bg-bg3/50" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
                         <td className="py-2.5 px-3 align-top">
                           <input
                             type="checkbox"
@@ -653,14 +653,14 @@ export default function AddLeadModal({ open, onClose }: Props) {
                         <td className="py-2.5 px-3 align-top">
                           <div className="flex flex-col gap-1 w-[150px]">
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.firstName}
                               onChange={(e) => updateParsedLead(idx, "firstName", e.target.value)}
                               placeholder="First Name"
                             />
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.lastName}
                               onChange={(e) => updateParsedLead(idx, "lastName", e.target.value)}
@@ -671,14 +671,14 @@ export default function AddLeadModal({ open, onClose }: Props) {
                         <td className="py-2.5 px-3 align-top">
                           <div className="flex flex-col gap-1 w-[200px]">
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.email}
                               onChange={(e) => updateParsedLead(idx, "email", e.target.value)}
                               placeholder="Email"
                             />
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.phone}
                               onChange={(e) => updateParsedLead(idx, "phone", e.target.value)}
@@ -689,14 +689,14 @@ export default function AddLeadModal({ open, onClose }: Props) {
                         <td className="py-2.5 px-3 align-top">
                           <div className="flex flex-col gap-1 w-[180px]">
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.company}
                               onChange={(e) => updateParsedLead(idx, "company", e.target.value)}
                               placeholder="Company Name"
                             />
                             <input
-                              className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                              className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                               style={{ borderColor: "rgba(0,0,0,0.12)" }}
                               value={lead.jobTitle}
                               onChange={(e) => updateParsedLead(idx, "jobTitle", e.target.value)}
@@ -706,7 +706,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                         </td>
                         <td className="py-2.5 px-3 align-top">
                           <select
-                            className="px-2 py-1 rounded border text-[11.5px] bg-white w-full outline-none focus:border-indigo-400"
+                            className="px-2 py-1 rounded border text-[11.5px] bg-bg2 w-full outline-none focus:border-indigo-400"
                             style={{ borderColor: "rgba(0,0,0,0.12)", height: 26 }}
                             value={lead.source}
                             onChange={(e) => updateParsedLead(idx, "source", e.target.value)}
@@ -746,7 +746,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                 </span>
               )}
               <button
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-bg4 bg-bg2 text-text2 hover:bg-bg3 cursor-pointer"
                 disabled={saving}
                 onClick={onClose}
               >
@@ -775,7 +775,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
           {isBulkMode && (
             <>
               <button
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border border-bg4 bg-bg2 text-text2 hover:bg-bg3 cursor-pointer"
                 disabled={saving}
                 onClick={() => {
                   if (showPreview) {

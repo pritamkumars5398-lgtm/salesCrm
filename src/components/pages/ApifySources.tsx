@@ -257,7 +257,7 @@ function ScraperCard({
             position: "absolute",
             top: 3, left: isEnabled ? 19 : 3,
             width: 16, height: 16, borderRadius: "50%",
-            background: "#fff",
+            background: "var(--color-bg2)",
             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
             transition: "left 0.2s ease",
             display: "block",

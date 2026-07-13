@@ -8,6 +8,7 @@ import {
   IconShield, IconX, IconChevronRight, IconMicrophone,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 import type { Page } from "@/store/types";
 import { PLANS, type PlanId } from "@/lib/plans";
 
@@ -152,17 +153,13 @@ export default function Sidebar() {
     userEmail, sidebarOpenMobile, setSidebarOpenMobile, sidebarCollapsed,
   } = useAppStore();
 
-  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  const isMobile = useIsMobile();
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setWindowWidth(window.innerWidth);
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const isMobile = windowWidth < 768;
+  // On phones the sidebar is an overlay drawer — dismiss it once a destination is picked.
+  function navigate(path: string) {
+    router.push(path);
+    if (isMobile) setSidebarOpenMobile(false);
+  }
 
   const [miniUsage, setMiniUsage]     = useState<MiniUsage | null>(null);
   const [outreach, setOutreach]       = useState<Record<string, string>>({});
@@ -349,7 +346,7 @@ export default function Sidebar() {
                 label="Superadmin Portal"
                 Icon={IconShield}
                 active={true}
-                onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate(`/superadmin/${activeAgent?._id || "default"}`)}
                 collapsed={collapsed}
               />
             </div>
@@ -360,7 +357,7 @@ export default function Sidebar() {
                 label="Switch to Agent CRM"
                 Icon={IconLayoutDashboard}
                 active={false}
-                onClick={() => router.push(`/dashboard/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate(`/dashboard/${activeAgent?._id || "default"}`)}
                 collapsed={collapsed}
               />
             </div>
@@ -488,7 +485,7 @@ export default function Sidebar() {
                   label={label}
                   Icon={Icon}
                   active={currentPage === id}
-                  onClick={() => router.push(`/${id}/${activeAgent?._id || "default"}`)}
+                  onClick={() => navigate(`/${id}/${activeAgent?._id || "default"}`)}
                   badge={
                     id === "leads" && leadCount > 0 ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -578,7 +575,7 @@ export default function Sidebar() {
                 label="Settings"
                 Icon={IconSettings}
                 active={currentPage === "settings"}
-                onClick={() => router.push(`/settings/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate(`/settings/${activeAgent?._id || "default"}`)}
                 collapsed={collapsed}
               />
               <NavItem
@@ -586,7 +583,7 @@ export default function Sidebar() {
                 label="Plans"
                 Icon={IconCreditCard}
                 active={currentPage === "plans"}
-                onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate(`/plans/${activeAgent?._id || "default"}`)}
                 badge={
                   miniUsage ? (
                     <span
@@ -617,7 +614,7 @@ export default function Sidebar() {
                     label="Superadmin"
                     Icon={IconShield}
                     active={(currentPage as string) === "superadmin"}
-                    onClick={() => router.push(`/superadmin/${activeAgent?._id || "default"}`)}
+                    onClick={() => navigate(`/superadmin/${activeAgent?._id || "default"}`)}
                     collapsed={collapsed}
                   />
                 </div>
@@ -672,7 +669,7 @@ export default function Sidebar() {
             </div>
             {nearLimit && (
               <button
-                onClick={() => router.push(`/plans/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate(`/plans/${activeAgent?._id || "default"}`)}
                 style={{
                   width: "100%",
                   marginTop: 8,

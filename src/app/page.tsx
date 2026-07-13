@@ -27,8 +27,25 @@ export default function Root() {
     setReady(true); // not logged in — show landing
   }, []);
 
-  if (!ready && !authed) {
-    return null; // wait for localStorage check before rendering anything
+  // Show a loader while the localStorage check runs, and keep it up while the
+  // redirect to the dashboard is in flight — otherwise Landing flashes first.
+  if (!ready || authed) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-white">
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          className="animate-spin text-indigo-600"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+          <path d="M12 2 a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <p className="text-sm text-slate-500">Loading your dashboard…</p>
+      </div>
+    );
   }
 
   return (
