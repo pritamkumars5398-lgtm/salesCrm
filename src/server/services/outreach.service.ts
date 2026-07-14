@@ -73,6 +73,7 @@ function leadInfo(lead: ILead, senderName?: string) {
     source: lead.source,
     location: lead.location,
     website: lead.website,
+    notes: lead.notes?.map(n => n.text) || [],
     senderName,
   };
 }

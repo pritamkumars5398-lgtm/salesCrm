@@ -94,6 +94,14 @@ export async function handleAgentReply(
       businessContext += `Important Custom Guidelines/Instructions you must follow:\n${customPrompt}\n`;
     }
 
+    let previousContext = "";
+    const existingConvo = await Conversation.findOne({ leadId: lead._id, channel }).lean();
+    if (existingConvo && existingConvo.messages && existingConvo.messages.length > 0) {
+      // Get the last 6 messages to provide good context without overflowing tokens
+      const recentMessages = existingConvo.messages.slice(-6);
+      previousContext = "Previous Conversation Context:\n" + recentMessages.map((m: any) => `${m.role === 'agent' ? 'Us' : 'Lead'}: ${m.content}`).join("\n") + "\n\n";
+    }
+
     // 3. Build prompt with relevance classification instructions
     const prompt = `You are an expert sales representative. A lead has just replied to your outreach via ${channel}.
 ${businessContext ? `Business context and instructions:\n${businessContext}\n` : ""}
@@ -101,13 +109,14 @@ Lead Details:
 - Name: ${lead.fullName}
 - Company: ${lead.company || "N/A"}
 
-Lead's incoming message:
+${previousContext}Lead's new incoming message:
 "${clientMessageContent}"
 
 Instructions:
-1. Analyze the intent of the incoming message:
+1. Analyze the entire conversation context and the intent of the incoming message:
+   - What did we offer in our previous message, and what is the lead replying with?
    - If the message is positive, interested, open to chat, or asking a question:
-     Set "status" to "replied". Acknowledge their interest or answer their question warmly and concisely (2-3 sentences) using our business context, and politely invite them to book a time on our calendar: ${calendlyLink}. If they ask for information, details, or docs, include our Resource Document Link: ${docLink}.
+     Set "status" to "replied". Acknowledge their interest or answer their question warmly and concisely (2-3 sentences) using our business context, and seamlessly suggest booking a time on our calendar: ${calendlyLink}. If they ask for information, details, or docs, include our Resource Document Link: ${docLink}.
    - If the message is explicitly negative, not interested, requesting to unsubscribe, or rejecting:
      Set "status" to "closed". Write a polite, brief 1-sentence confirmation that we will stop contacting them.
    - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):

@@ -9,7 +9,30 @@ export interface OutreachLeadInfo {
   source?: string;
   location?: string;
   website?: string;
+  notes?: string[];
   senderName?: string;
+}
+
+async function fetchWebsiteText(url: string): Promise<string | null> {
+  if (!url) return null;
+  const targetUrl = url.startsWith('http') ? url : `https://${url}`;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(targetUrl, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    let content = bodyMatch ? bodyMatch[1] : html;
+    content = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    content = content.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    content = content.replace(/<[^>]+>/g, ' ');
+    content = content.replace(/\s+/g, ' ').trim();
+    return content.slice(0, 1500);
+  } catch (err) {
+    return null;
+  }
 }
 
 /** Compact bullet list of the specific facts we actually know about this lead. */
@@ -18,8 +41,16 @@ function leadFactsBlock(lead: OutreachLeadInfo, sourcePhrase: string): string {
   if (lead.company) facts.push(`- Business name: ${lead.company}`);
   if (lead.jobTitle) facts.push(`- Business type / role: ${lead.jobTitle}`);
   if (lead.location) facts.push(`- City / area: ${lead.location}`);
-  if (lead.website) facts.push(`- Website: ${lead.website}`);
+  if (lead.website) {
+    facts.push(`- Website: ${lead.website}`);
+  } else {
+    facts.push(`- Website: NONE (They do not have a website currently)`);
+  }
   facts.push(`- How we found them: ${lead.source || "online"} (${sourcePhrase})`);
+  if (lead.notes && lead.notes.length > 0) {
+    facts.push(`- Additional CRM Notes:`);
+    lead.notes.forEach(note => facts.push(`  * ${note}`));
+  }
   return facts.join("\n");
 }
 
@@ -149,7 +180,15 @@ export async function generateWhatsAppMessage(
   const sourcePhrase = sourcePhraseFor(lead.source);
   const facts = leadFactsBlock(lead, sourcePhrase);
 
-  const prompt = `Write a short, friendly WhatsApp outreach message (under 55 words) that reads like a real person typed it just for THIS business — not a template sent to everyone.
+  let websiteAnalysisContext = "";
+  if (lead.website) {
+    const websiteText = await fetchWebsiteText(lead.website);
+    if (websiteText) {
+      websiteAnalysisContext = `\nWEBSITE CONTENT (First 1500 chars of their live site):\n"${websiteText}"\n`;
+    }
+  }
+
+  const prompt = `Write a short, friendly WhatsApp outreach message (under 65 words) that reads like a real person typed it quickly on their phone just for THIS business.
 
 WHO WE ARE (use to say what we help with; don't dump verbatim):
 ${businessContext || "(No business details provided — keep it human and generic.)"}
@@ -157,17 +196,22 @@ Sender name: ${lead.senderName || "our team"}
 
 WHO WE'RE MESSAGING (personalize with these exact facts):
 ${facts}
-
-RULES:
-- Open by naming THEIR specific business (${lead.company || "their business"})${lead.location ? ` in ${lead.location}` : ""} and what they do (${lead.jobTitle || "their work"}). The opening line must be unique to this business.
-- Address them by first name (${lead.firstName}); if that looks like a business name, skip the name and greet warmly.
-- State CONCRETELY what we do for a business like theirs, using OUR services above. Do NOT write vague filler like "various needs", "we can help with your needs", or "assist you" — name the actual service.
-- Then one soft CTA asking if they're open to a quick chat.
-- Only use the facts above — never invent details. Do NOT praise them ("amazing", "great work", "impressive") — just be plain and direct.
-- NEVER use: "hope you're doing well", "we came across your business", "hope this message finds you", generic praise.
-- Conversational and warm, not salesy. No links unless truly relevant. No markdown. Emojis only if natural (at most one).
+${websiteAnalysisContext}
+RULES FOR HUMAN-LIKE WRITING:
+- NO AI BUZZWORDS. BANNED WORDS: "elevate", "leverage", "seamlessly", "tailored", "unlock", "synergy", "testament", "delve", "comprehensive", "innovative".
+- NEVER start with a generic "I noticed your business". Vary your openings. Example openings: "Hey [Name], came across [Company]...", "Was just looking at [Company]'s profile...", "Quick question about [Company]...".
+- Keep it extremely casual and punchy. Write like you are texting a peer. 
+- Do NOT sound like a marketer or a bot. Don't use perfect, rigid grammar. 
+- ANALYSIS STEP: Deeply analyze everything provided. Compare this to OUR services.
+- IF THEY LACK A WEBSITE ('Website: NONE'): explicitly mention we noticed they don't have a website and casually offer to build one, highlighting the benefits for their specific industry.
+- IF THEY HAVE A WEBSITE AND CONTENT IS PROVIDED: Analyze their website content for a real, specific marketing/design issue (e.g. lack of a clear CTA, confusing messaging). Mention this specific issue briefly and how our services fix it.
+- State CONCRETELY what we do using OUR services above, but do it conversationally. Name the actual service and the real issue you identified.
+- Then one soft CTA asking if they're open to a quick chat or if they'd like to see a quick demo.
+- NEVER use: "hope you're doing well", "hope this message finds you".
+- Emojis only if natural (at most one).
 - End with: "– ${lead.senderName || "our team"}"
 - Return ONLY the message text — no JSON, no quotes, no preamble.`;
 
-  return callGroq(agentId, prompt, { temperature: 0.8, maxTokens: 220 });
+  // Increased temperature slightly to 0.85 to encourage more varied and creative text structures
+  return callGroq(agentId, prompt, { temperature: 0.85, maxTokens: 220 });
 }
