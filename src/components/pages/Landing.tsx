@@ -7,6 +7,7 @@ import {
   IconSparkles, IconUsers, IconListCheck, IconLayoutKanban, IconCheck,
 } from "@tabler/icons-react";
 import AuthModal from "@/components/ui/AuthModal";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 const FEATURES = [
   { Icon: IconBrain,        color: "#6366f1", bg: "rgba(99,102,241,0.1)",  title: "AI-Powered Brain",      desc: "Plug in Claude, GPT-4o, or Gemini. The agent understands context, crafts personalized messages, and adapts tone per lead." },
@@ -51,13 +52,7 @@ export default function Landing({ onAuth }: { onAuth: (name: string, email: stri
 
       {/* ── NAVBAR ── */}
       <nav
-        style={{
-          position: "sticky", top: 0, zIndex: 40,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 48px", height: 60,
-          background: "rgba(248,250,252,0.85)", backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--color-bg4)",
-        }}
+        className="sticky top-0 z-40 flex items-center justify-between px-6 sm:px-12 h-[60px] bg-bg2/85 backdrop-blur-md border-b border-bg4 transition-colors duration-200"
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1" }} />
@@ -79,6 +74,7 @@ export default function Landing({ onAuth }: { onAuth: (name: string, email: stri
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ThemeToggle />
           <button
             onClick={openLogin}
             style={{ fontSize: 13, fontWeight: 600, background: "none", border: "none", cursor: "pointer", color: "var(--color-text2)", padding: "8px 16px" }}
