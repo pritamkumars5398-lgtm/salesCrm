@@ -377,7 +377,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
           <span className="hidden sm:inline">Add lead</span>
         </button>
 
-        {/* Sync Apify */}
+        {/* Sync Sources */}
         <button
           onClick={onSyncApify}
           disabled={syncing}
@@ -405,7 +405,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
           }}
         >
           <IconRefresh size={14} className={syncing ? "animate-spin" : ""} />
-          <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync Apify"}</span>
+          <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync Sources"}</span>
           <span className="sm:hidden">{syncing ? "…" : "Sync"}</span>
         </button>
 

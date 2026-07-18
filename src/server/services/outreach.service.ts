@@ -7,6 +7,7 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
+import { eventEmitter } from "@/lib/events";
 
 export type OutreachChannel = "email" | "whatsapp" | "sms";
 
@@ -122,6 +123,7 @@ async function logOutreach(
       if (!convo) convo = await Conversation.create({ leadId: lead._id, agentId, channel, messages: [] });
       convo.messages.push({ role: "agent", content, timestamp: new Date() });
       await convo.save();
+      eventEmitter.emit("message", { leadId: String(lead._id) });
     }
   } catch { /* logging must never break the send flow */ }
 }

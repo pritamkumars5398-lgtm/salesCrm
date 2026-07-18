@@ -5,6 +5,7 @@ import {
   IconChevronDown, IconChevronUp, IconKey, IconPlayerPlay, IconCircleFilled, IconCopy,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import SettingsToggle from "@/components/settings/SettingsToggle";
 
 // ─── Scraper Definitions ────────────────────────────────────────────────────
 
@@ -337,11 +338,12 @@ export default function ApifySources() {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [tokenSaved, setTokenSaved] = useState(false);
   const [copySourceAgentId, setCopySourceAgentId] = useState("");
+  const [apifyScraperEnabled, setApifyScraperEnabled] = useState(true);
 
   const enabledKey = (type: ScraperType) => `${type}Enabled`;
 
   const allSettingKeys = [
-    "apifyToken", "activeScraperType",
+    "apifyToken", "activeScraperType", "apifyScraperEnabled",
     ...SCRAPERS.map((s) => enabledKey(s.type)),
     ...SCRAPERS.flatMap((s) => s.fields.map((f) => f.key)),
   ];
@@ -365,6 +367,7 @@ export default function ApifySources() {
           if (filtered[enabledKey(s.type)] === undefined) filtered[enabledKey(s.type)] = "true";
         });
         setValues(filtered);
+        setApifyScraperEnabled(filtered.apifyScraperEnabled !== "false");
       });
   }, [activeAgent?._id]);
 
@@ -486,20 +489,43 @@ export default function ApifySources() {
   }
 
   const activeType = (values.activeScraperType ?? "google-maps") as ScraperType;
+  const isMasterEnabled = values.apifyScraperEnabled !== "false";
+
+  async function handleMasterToggle(enabled: boolean) {
+    patchValues({ apifyScraperEnabled: String(enabled) });
+    await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentId: activeAgent?._id,
+        settings: { apifyScraperEnabled: String(enabled) },
+      }),
+    });
+    showToast(`Apify scraper ${enabled ? "enabled" : "disabled"}`);
+  }
 
   return (
     <div style={{ maxWidth: 740, padding: "28px 28px 48px" }}>
       {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--color-text)", margin: "0 0 6px" }}>
-          Apify Lead Sources
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.6 }}>
-          Configure scrapers to automatically pull leads from Google Maps, LinkedIn, JustDial, or any custom Apify actor.
-          The <strong style={{ color: "var(--color-text2)" }}>active</strong> scraper runs when you click <em>Sync Apify</em> in the top bar.
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--color-text)", margin: "0 0 6px" }}>
+            Apify Lead Sources
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.6 }}>
+            Configure scrapers to automatically pull leads from Google Maps, LinkedIn, JustDial, or any custom Apify actor.
+            The <strong style={{ color: "var(--color-text2)" }}>active</strong> scraper runs when you click <em>Sync Sources</em> in the top bar.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--color-bg2)", padding: "8px 12px", borderRadius: 12, border: "1px solid var(--color-bg4)" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: isMasterEnabled ? "var(--color-text)" : "var(--color-text3)" }}>
+            {isMasterEnabled ? "Enabled" : "Disabled"}
+          </span>
+          <SettingsToggle checked={isMasterEnabled} onChange={handleMasterToggle} />
+        </div>
       </div>
 
+      <div style={{ opacity: isMasterEnabled ? 1 : 0.4, pointerEvents: isMasterEnabled ? "auto" : "none", transition: "opacity 0.2s" }}>
       {/* Token card */}
       <div
         style={{
@@ -641,7 +667,7 @@ export default function ApifySources() {
             def={def}
             values={values}
             setValues={patchValues}
-            isActive={activeType === def.type}
+            isActive={values.activeScraperType === def.type}
             isEnabled={values[enabledKey(def.type)] !== "false"}
             onSetActive={() => handleSetActive(def.type)}
             onToggleEnabled={(v) => handleToggleEnabled(def.type, v)}
@@ -650,6 +676,7 @@ export default function ApifySources() {
             onSyncField={handleSyncField}
           />
         ))}
+      </div>
       </div>
     </div>
   );

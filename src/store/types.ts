@@ -1,4 +1,4 @@
-export type Page = "dashboard" | "leads" | "sequence" | "crm" | "calendar" | "activity" | "settings" | "crons" | "profile" | "plans" | "superadmin" | "voice";
+export type Page = "dashboard" | "leads" | "sequence" | "crm" | "calendar" | "activity" | "settings" | "crons" | "profile" | "plans" | "superadmin" | "voice" | "inbox" | "voice-inbox";
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | "closed";
 
@@ -36,6 +36,7 @@ export interface Lead {
   email: string;
   phone: string;
   source: string;
+  llmProvider?: string;
   channels: Channel[];
   status: LeadStatus;
   pipelineStage: string;

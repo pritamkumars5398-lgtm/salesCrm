@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
@@ -27,8 +27,15 @@ const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = 
   call: { Icon: CHANNEL_CONFIG.call.Icon, cls: "text-[#f5a623] bg-[rgba(245,166,35,0.1)]" },
 };
 
-function SourceBadge({ source }: { source: string }) {
+function SourceBadge({ source, llmProvider }: { source: string, llmProvider?: string }) {
   const meta = SOURCE_META[source] ?? { label: source, color: "var(--color-text3)", bg: "var(--color-bg3)", dot: "var(--color-text3)" };
+  
+  let label = meta.label;
+  if (source === "LLM" && llmProvider) {
+    const providerName = llmProvider === "openai" ? "ChatGPT" : llmProvider === "anthropic" ? "Claude" : llmProvider === "gemini" ? "Gemini" : llmProvider;
+    label = `LLM (${providerName})`;
+  }
+
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5,
@@ -39,7 +46,7 @@ function SourceBadge({ source }: { source: string }) {
       whiteSpace: "nowrap",
     }}>
       <span style={{ width: 5, height: 5, borderRadius: "50%", background: meta.dot, flexShrink: 0 }} />
-      {meta.label}
+      {label}
     </span>
   );
 }
@@ -164,10 +171,7 @@ export default function Leads({ onAddLead }: Props) {
     if (!data) return;
 
     setLeads((prev: Lead[]) => {
-      if (page === 1) return data.leads ?? [];
-      // Infinite scroll: append the new page, skipping anything already held.
-      const existingIds = new Set(prev.map((l) => l._id));
-      return [...prev, ...(data.leads ?? []).filter((l: Lead) => !existingIds.has(l._id))];
+      return data.leads ?? [];
     });
     setTotal(data.total ?? 0);
     setStatusCounts(data.statusCounts ?? {});
@@ -192,23 +196,7 @@ export default function Leads({ onAddLead }: Props) {
     queryClient.invalidateQueries({ queryKey: ["leads", activeAgent?._id] });
   }, [queryClient, activeAgent?._id]);
 
-  // Infinite Scroll Observer
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const lastLeadElementRef = useCallback(
-    (node: HTMLTableRowElement | null) => {
-      if (isLoading) return;
-      if (observerRef.current) observerRef.current.disconnect();
-
-      observerRef.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && leads.length < total) {
-          setPage((prevPage) => prevPage + 1);
-        }
-      });
-
-      if (node) observerRef.current.observe(node);
-    },
-    [isLoading, leads.length, total]
-  );
+  // Infinite Scroll Observer removed for pagination
 
   // Any filter change invalidates the current offset — go back to the first page.
   useEffect(() => {
@@ -710,6 +698,7 @@ export default function Leads({ onAddLead }: Props) {
                     <option value="Manual">Manual</option>
                     <option value="Apify">Apify</option>
                     <option value="Referral">Referral</option>
+                    <option value="LLM">LLM Scraper</option>
                   </select>
                 </div>
 
@@ -1028,11 +1017,9 @@ export default function Leads({ onAddLead }: Props) {
               </tr>
             )}
             {leads.map((lead, i) => {
-              const isLast = i === leads.length - 1;
               return (
               <tr
                 key={lead._id}
-                ref={isLast ? lastLeadElementRef : null}
                 onClick={() => openDrawer(lead, primaryChannel(lead))}
                 className={`cursor-pointer transition-colors ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
                 style={{
@@ -1113,7 +1100,7 @@ export default function Leads({ onAddLead }: Props) {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3"><SourceBadge source={lead.source} /></td>
+                <td className="px-4 py-3"><SourceBadge source={lead.source} llmProvider={lead.llmProvider} /></td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-1">
                     <div className="flex gap-1">
@@ -1294,22 +1281,51 @@ export default function Leads({ onAddLead }: Props) {
           <div className="text-[13px] font-medium text-text3 dark:text-text3">
             Showing <span className="font-semibold text-text2 dark:text-text4">{leads.length}</span> of <span className="font-semibold text-text2 dark:text-text4">{total}</span> {trashView ? "trashed leads" : "leads"}
           </div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center">
-            {isLoading && page > 1 ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-all">
-                <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500/30 border-t-indigo-600 animate-spin" />
-                <span className="text-[11.5px] font-bold tracking-wide uppercase">Loading more...</span>
+          
+          {total > 0 && Math.ceil(total / pageSize) > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border bg-bg2 text-text2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg3 transition-colors"
+                style={{ borderColor: "var(--color-bg4)" }}
+              >
+                Prev
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === Math.ceil(total / pageSize) || Math.abs(p - page) <= 1)
+                  .map((p, i, arr) => (
+                    <React.Fragment key={p}>
+                      {i > 0 && arr[i - 1] !== p - 1 && <span className="text-text4 px-1">...</span>}
+                      <button
+                        onClick={() => setPage(p)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-[12.5px] font-semibold cursor-pointer transition-colors ${
+                          page === p
+                            ? "border-none text-white shadow-sm"
+                            : "bg-transparent text-text2 border border-transparent hover:bg-bg3 hover:border-[var(--color-bg4)]"
+                        }`}
+                        style={{
+                          background: page === p ? "var(--color-primary-light)" : "transparent",
+                        }}
+                      >
+                        {p}
+                      </button>
+                    </React.Fragment>
+                  ))}
               </div>
-            ) : leads.length > 0 && leads.length < total ? (
-              <div className="text-[11.5px] font-semibold text-text3 tracking-wide uppercase">
-                Scroll for more ↓
-              </div>
-            ) : leads.length > 0 && leads.length >= total ? (
-              <div className="text-[11.5px] font-semibold text-text3 tracking-wide uppercase flex items-center gap-1">
-                <IconCheck size={14} /> All leads loaded
-              </div>
-            ) : null}
-          </div>
+
+              <button
+                onClick={() => setPage(p => Math.min(Math.ceil(total / pageSize), p + 1))}
+                disabled={page === Math.ceil(total / pageSize)}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border bg-bg2 text-text2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg3 transition-colors"
+                style={{ borderColor: "var(--color-bg4)" }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -11,10 +11,12 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const leadId  = searchParams.get("leadId");
   const channel = searchParams.get("channel");
+  const agentId = searchParams.get("agentId");
 
   const filter: Record<string, unknown> = {};
   if (leadId) filter.leadId = leadId;
   if (channel) filter.channel = channel;
+  if (agentId) filter.agentId = agentId;
 
   const convos = await Conversation.find(filter).lean();
 

@@ -200,7 +200,8 @@ ${websiteAnalysisContext}
 RULES FOR HUMAN-LIKE WRITING:
 - NO AI BUZZWORDS. BANNED WORDS: "elevate", "leverage", "seamlessly", "tailored", "unlock", "synergy", "testament", "delve", "comprehensive", "innovative".
 - NEVER start with a generic "I noticed your business". Vary your openings. Example openings: "Hey [Name], came across [Company]...", "Was just looking at [Company]'s profile...", "Quick question about [Company]...".
-- Keep it extremely casual and punchy. Write like you are texting a peer. 
+- Keep it extremely casual and punchy. Write like you are texting a peer.
+- FORMATTING: Separate your ideas with line breaks (blank lines) for readability. Do not output a single massive block of text. Put a blank line before the sign-off.
 - Do NOT sound like a marketer or a bot. Don't use perfect, rigid grammar. 
 - ANALYSIS STEP: Deeply analyze everything provided. Compare this to OUR services.
 - IF THEY LACK A WEBSITE ('Website: NONE'): explicitly mention we noticed they don't have a website and casually offer to build one, highlighting the benefits for their specific industry.
@@ -209,7 +210,7 @@ RULES FOR HUMAN-LIKE WRITING:
 - Then one soft CTA asking if they're open to a quick chat or if they'd like to see a quick demo.
 - NEVER use: "hope you're doing well", "hope this message finds you".
 - Emojis only if natural (at most one).
-- End with: "– ${lead.senderName || "our team"}"
+- End with a sign-off: "– ${lead.senderName || "our team"}"
 - Return ONLY the message text — no JSON, no quotes, no preamble.`;
 
   // Increased temperature slightly to 0.85 to encourage more varied and creative text structures

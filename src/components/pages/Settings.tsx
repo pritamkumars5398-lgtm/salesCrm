@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash } from "@tabler/icons-react";
+import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { GENERAL_CARDS, INTEGRATION_CARDS, type SettingsCard } from "@/lib/constants/settings";
 import SettingsNavItem from "@/components/settings/SettingsNavItem";
 import SettingsToggle from "@/components/settings/SettingsToggle";
 import SavedBadge from "@/components/settings/SavedBadge";
 import ApifySources from "@/components/pages/ApifySources";
+import LlmSources from "@/components/pages/LlmSources";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Settings() {
@@ -436,7 +437,8 @@ export default function Settings() {
 
   const ALL_CARDS = [...GENERAL_CARDS, ...INTEGRATION_CARDS];
   const activeCard = ALL_CARDS.find((c) => c.key === active);
-  const isSourcesPage = active === "apify";
+  const isApifySourcesPage = active === "apify";
+  const isLlmSourcesPage = active === "llm-scraper";
   const isIntegration = INTEGRATION_CARDS.some((c) => c.key === active);
 
   return (
@@ -457,7 +459,7 @@ export default function Settings() {
         <button
           onClick={() => handleTabChange("apify")}
           className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-          style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer" }}
+          style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer", marginBottom: "4px" }}
         >
           <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "apify" ? "rgba(99,102,241,0.12)" : "var(--color-bg3)" }}>
             <IconDatabase size={15} style={{ color: active === "apify" ? "#6366f1" : "var(--color-text3)" }} />
@@ -467,12 +469,28 @@ export default function Settings() {
             <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Google Maps, LinkedIn & more</p>
           </div>
         </button>
+
+        <button
+          onClick={() => handleTabChange("llm-scraper")}
+          className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
+          style={{ padding: "8px 10px", borderRadius: 10, background: active === "llm-scraper" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer" }}
+        >
+          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "llm-scraper" ? "rgba(99,102,241,0.12)" : "var(--color-bg3)" }}>
+            <IconBrain size={15} style={{ color: active === "llm-scraper" ? "#6366f1" : "var(--color-text3)" }} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "llm-scraper" ? "#4f46e5" : "var(--color-text)" }}>LLM Scraper</p>
+            <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Claude, Gemini, ChatGPT</p>
+          </div>
+        </button>
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 overflow-y-auto" style={isSourcesPage ? {} : { maxWidth: 560, padding: "2rem" }}>
-        {isSourcesPage ? (
+      <div className="flex-1 overflow-y-auto" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { maxWidth: 560, padding: "2rem" }}>
+        {isApifySourcesPage ? (
           <ApifySources />
+        ) : isLlmSourcesPage ? (
+          <LlmSources />
         ) : activeCard ? (
           <>
             {/* Card header */}

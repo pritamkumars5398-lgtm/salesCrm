@@ -115,10 +115,16 @@ ${previousContext}Lead's new incoming message:
 Instructions:
 1. Analyze the entire conversation context and the intent of the incoming message:
    - What did we offer in our previous message, and what is the lead replying with?
-   - If the message is positive, interested, open to chat, or asking a question:
-     Set "status" to "replied". Acknowledge their interest or answer their question warmly and concisely (2-3 sentences) using our business context, and seamlessly suggest booking a time on our calendar: ${calendlyLink}. If they ask for information, details, or docs, include our Resource Document Link: ${docLink}.
+   - If the message is asking for more information, details, or docs:
+     Set "status" to "replied". Provide a detailed and helpful answer specifically addressing their question. If we have a document link, include it: ${docLink}. Look at the "Previous Conversation Context". If this is an ongoing conversation (you and the lead have exchanged 2 or more messages), automatically append the calendar link at the bottom. If this is the very first reply, do not push the calendar link yet.
+   - If the message explicitly agrees to a chat, call, or meeting, or shows clear interest:
+     Set "status" to "replied". Provide our calendar link to book a time. (It is okay to provide this link multiple times IF they explicitly ask for it).
+   - If they are generally positive but just saying things like "ok", "thanks", or "sounds good":
+     Set "status" to "replied". Acknowledge their response naturally.
+   - CRITICAL RULE FOR CALENDAR LINK: ANY TIME you include the calendar link (${calendlyLink}), you MUST precede it with a variation of this exact text: "If you are interested or need more details, you can schedule a meeting here: " followed by the link. The calendar link MUST be the very last thing in your message. Do NOT add any follow-up questions or text after the calendar link.
+   - CRITICAL RULE ON REPETITION: Read the "Previous Conversation Context". If we already provided the calendar link or already asked "Would you be open to a chat?", do NOT loop and ask it again if they just reply "ok". Only send the calendar link again if they explicitly ask for it.
    - If the message is explicitly negative, not interested, requesting to unsubscribe, or rejecting:
-     Set "status" to "closed". Write a polite, brief 1-sentence confirmation that we will stop contacting them.
+     Set "status" to "closed". Write a very polite, warm, and memorable closing message (1-2 sentences) leaving the door open for the future. Do NOT explicitly tell them "we will stop contacting you", "we are closing communication", or anything robotic. Just wish them well and let them know we are here if they ever need us.
    - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):
      Set "status" to "closed". Write a polite 1-sentence response asking if they meant to reply or if they want to clarify, without blindly inviting them to book a calendar slot.
 
@@ -126,6 +132,7 @@ Instructions:
    - You MUST return ONLY a valid JSON object.
    - For email channels, the JSON must contain "status", "subject", and "body".
    - For other channels (whatsapp, sms, call), the JSON must contain "status" and "body" (no subject).
+   - FORMATTING: Ensure the "body" uses line breaks (\\n\\n) to separate sentences or ideas. Do NOT output a single massive block of text. Put URLs on their own lines.
 
 Return ONLY valid JSON format:
 ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."}' : '{"status": "replied" | "closed", "body": "..."}'}`;
@@ -148,6 +155,9 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
     const json = await response.json();
     const raw = json.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(raw);
+    if (parsed.body) {
+      parsed.body = parsed.body.replace(/\\n/g, "\n");
+    }
 
     // 5. Update lead status/pipeline stage
     const leadDoc = await Lead.findById(lead._id);

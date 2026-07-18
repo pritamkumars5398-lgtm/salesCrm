@@ -13,9 +13,12 @@ export const PAGE_TITLES: Record<string, string> = {
   plans:     "Plans & Usage",
   superadmin: "Superadmin Portal",
   voice:     "Voice AI Test",
+  inbox:     "Inbox",
+  "voice-inbox": "Voice",
 };
 
 export const VALID_PAGES: Page[] = [
   "dashboard", "leads", "sequence", "crm", "calendar",
-  "activity", "settings", "crons", "profile", "plans", "superadmin", "voice"
+  "activity", "settings", "crons", "profile", "plans", "superadmin", "voice",
+  "inbox", "voice-inbox",
 ];
