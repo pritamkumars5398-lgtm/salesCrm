@@ -3,7 +3,9 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { Lead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
+import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
+import { checkUsageLimit } from "@/lib/usage-check";
 
 export async function POST(req: Request) {
   await connectDB();
@@ -11,6 +13,11 @@ export async function POST(req: Request) {
 
   if (!agentId || !providerType) {
     return NextResponse.json({ error: "agentId and providerType are required" }, { status: 400 });
+  }
+
+  const canScrape = await checkUsageLimit(agentId, "leadsScraped", 1);
+  if (!canScrape) {
+    return NextResponse.json({ error: "Plan limit exceeded for AI lead scraping." }, { status: 403 });
   }
 
   try {
@@ -223,6 +230,11 @@ If any data is missing, use an empty string "" instead of null.`;
 
     if (insertedCount > 0) {
       await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: insertedCount } });
+      await Usage.findOneAndUpdate(
+        { agentId, month: currentMonth() },
+        { $inc: { leadsScraped: insertedCount } },
+        { upsert: true }
+      );
     }
 
     return NextResponse.json({

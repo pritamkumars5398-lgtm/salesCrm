@@ -5,7 +5,7 @@ export interface PlanLimits {
   messagesPerMonth: number;
   callsPerMonth: number;
   emailsPerMonth: number;
-  agents: number;
+  smsPerMonth: number;
 }
 
 export interface Plan {
@@ -29,14 +29,14 @@ export const PLANS: Record<PlanId, Plan> = {
       messagesPerMonth: 50,
       callsPerMonth: 5,
       emailsPerMonth: 100,
-      agents: 1,
+      smsPerMonth: 20,
     },
     features: [
-      "25 leads scraped / month",
+      "25 leads / month",
       "50 WhatsApp messages / month",
+      "20 SMS messages / month",
       "5 AI calls / month",
       "100 emails / month",
-      "1 agent",
       "BYOK (bring your own API keys)",
     ],
   },
@@ -50,14 +50,14 @@ export const PLANS: Record<PlanId, Plan> = {
       messagesPerMonth: 500,
       callsPerMonth: 30,
       emailsPerMonth: -1,
-      agents: 1,
+      smsPerMonth: 200,
     },
     features: [
-      "200 leads scraped / month",
+      "200 leads / month",
       "500 WhatsApp messages / month",
+      "200 SMS messages / month",
       "30 AI calls / month",
       "Unlimited emails",
-      "1 agent",
       "CRM pipeline",
       "Email sequences",
     ],
@@ -73,14 +73,14 @@ export const PLANS: Record<PlanId, Plan> = {
       messagesPerMonth: 2000,
       callsPerMonth: 100,
       emailsPerMonth: -1,
-      agents: 3,
+      smsPerMonth: 1000,
     },
     features: [
-      "1,000 leads scraped / month",
+      "1,000 leads / month",
       "2,000 WhatsApp messages / month",
+      "1,000 SMS messages / month",
       "100 AI calls / month",
       "Unlimited emails",
-      "3 agents",
       "Priority support",
       "CSV export",
     ],
@@ -95,14 +95,14 @@ export const PLANS: Record<PlanId, Plan> = {
       messagesPerMonth: -1,
       callsPerMonth: 500,
       emailsPerMonth: -1,
-      agents: 10,
+      smsPerMonth: 3000,
     },
     features: [
-      "5,000 leads scraped / month",
+      "5,000 leads / month",
       "Unlimited WhatsApp messages",
+      "3,000 SMS messages / month",
       "500 AI calls / month",
       "Unlimited emails",
-      "10 agents",
       "API access",
       "Webhook integrations",
       "White-label option",

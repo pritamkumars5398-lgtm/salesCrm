@@ -41,6 +41,7 @@ export async function GET(req: Request) {
       messagesSent: usage?.messagesSent ?? 0,
       callsMade:    usage?.callsMade    ?? 0,
       emailsSent:   usage?.emailsSent   ?? 0,
+      smsSent:      usage?.smsSent      ?? 0,
     },
   });
 }
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
   await connectDB();
   const { agentId, field, by = 1 } = (await req.json()) as {
     agentId: string;
-    field: "leadsScraped" | "messagesSent" | "callsMade" | "emailsSent";
+    field: "leadsScraped" | "messagesSent" | "callsMade" | "emailsSent" | "smsSent";
     by?: number;
   };
   if (!agentId || !field) return NextResponse.json({ error: "agentId and field required" }, { status: 400 });

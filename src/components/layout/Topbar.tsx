@@ -33,6 +33,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
+  const [isSyncLocked, setIsSyncLocked] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // ── Click-outside to close status menu (preserved exactly) ───
@@ -55,8 +56,24 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
         if (!cancelled && campaigns.length > 0) setActiveCampaign(campaigns[0]);
       })
       .catch(() => { /* no campaign to resume */ });
+
+    // Check Sync Limit
+    fetch(`/api/usage?agentId=${activeAgent._id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!cancelled) {
+          const { plan, usage } = d;
+          if (plan.limits.leadsPerMonth !== -1 && usage.leadsScraped >= plan.limits.leadsPerMonth) {
+            setIsSyncLocked(true);
+          } else {
+            setIsSyncLocked(false);
+          }
+        }
+      })
+      .catch(() => {});
+
     return () => { cancelled = true; };
-  }, [activeAgent?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAgent?._id, syncing]); // recheck after sync finishes
 
   // ── Business logic handlers (preserved exactly) ──────────────
   async function handlePublish() {
@@ -380,22 +397,22 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
         {/* Sync Sources */}
         <button
           onClick={onSyncApify}
-          disabled={syncing}
+          disabled={syncing || isSyncLocked}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
             padding: "6px 14px",
             borderRadius: "var(--radius-lg)",
-            background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-light))",
+            background: isSyncLocked ? "var(--color-red)" : "linear-gradient(135deg, var(--color-primary), var(--color-primary-light))",
             border: "none",
             color: "#fff",
             fontSize: 12.5,
             fontWeight: 600,
-            cursor: syncing ? "not-allowed" : "pointer",
-            opacity: syncing ? 0.75 : 1,
+            cursor: (syncing || isSyncLocked) ? "not-allowed" : "pointer",
+            opacity: (syncing || isSyncLocked) ? 0.75 : 1,
             transition: "all var(--transition-fast)",
-            boxShadow: syncing ? "none" : "var(--shadow-primary)",
+            boxShadow: (syncing || isSyncLocked) ? "none" : "var(--shadow-primary)",
           }}
           onMouseEnter={(e) => {
             if (!syncing) (e.currentTarget as HTMLButtonElement).style.boxShadow = "var(--shadow-primary-lg)";
@@ -405,8 +422,8 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
           }}
         >
           <IconRefresh size={14} className={syncing ? "animate-spin" : ""} />
-          <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync Sources"}</span>
-          <span className="sm:hidden">{syncing ? "…" : "Sync"}</span>
+          <span className="hidden sm:inline">{isSyncLocked ? "Limit Exceeded" : (syncing ? "Syncing…" : "Sync Sources")}</span>
+          <span className="sm:hidden">{isSyncLocked ? "Locked" : (syncing ? "…" : "Sync")}</span>
         </button>
 
         <ThemeToggle />

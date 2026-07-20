@@ -7,7 +7,7 @@ import { PLANS, type PlanId, type Plan } from "@/lib/plans";
 interface UsageData {
   planId: PlanId;
   plan: Plan;
-  usage: { leadsScraped: number; messagesSent: number; callsMade: number; emailsSent: number };
+  usage: { leadsScraped: number; messagesSent: number; callsMade: number; emailsSent: number; smsSent: number };
   month: string;
 }
 
@@ -204,10 +204,11 @@ export default function Plans() {
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 28px" }}>
-          <UsageMeter label="Leads scraped" used={usage.leadsScraped} limit={plan.limits.leadsPerMonth} color={plan.color} />
+          <UsageMeter label="Monthly leads quota" used={usage.leadsScraped} limit={plan.limits.leadsPerMonth} color={plan.color} />
           <UsageMeter label="WhatsApp messages" used={usage.messagesSent} limit={plan.limits.messagesPerMonth} color={plan.color} />
           <UsageMeter label="AI calls" used={usage.callsMade} limit={plan.limits.callsPerMonth} color={plan.color} />
           <UsageMeter label="Emails sent" used={usage.emailsSent} limit={plan.limits.emailsPerMonth} color={plan.color} />
+          <UsageMeter label="SMS sent" used={usage.smsSent} limit={plan.limits.smsPerMonth} color={plan.color} />
         </div>
       </div>
 

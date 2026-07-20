@@ -3,8 +3,11 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
 import { Activity } from "@/lib/models/Activity";
 import { Agent } from "@/lib/models/Agent";
+import { Usage } from "@/lib/models/Usage";
+import { currentMonth } from "@/lib/utils/date";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
+import { checkUsageLimit } from "@/lib/usage-check";
 import twilio from "twilio";
 
 export async function handleAgentReply(
@@ -19,6 +22,13 @@ export async function handleAgentReply(
     const agent = await Agent.findById(agentId).lean();
     if (agent && agent.status === "inactive") {
       console.warn(`[Auto Agent Reply] Skipped because agent is inactive/unpublished (agentId=${agentId})`);
+      return;
+    }
+
+    const usageField = channel === "email" ? "emailsSent" : "messagesSent";
+    const canReply = await checkUsageLimit(agentId, usageField, 1);
+    if (!canReply) {
+      console.warn(`[Auto Agent Reply] Skipped because ${usageField} limit is exhausted (agentId=${agentId})`);
       return;
     }
 
@@ -273,6 +283,25 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
           }),
         });
       }
+    }
+
+    // 7.5 Increment Usage metrics for AI Auto-Replies
+    try {
+      if (channel === "whatsapp") {
+        await Usage.findOneAndUpdate(
+          { agentId, month: currentMonth() },
+          { $inc: { messagesSent: 1 } },
+          { upsert: true }
+        );
+      } else if (channel === "email") {
+        await Usage.findOneAndUpdate(
+          { agentId, month: currentMonth() },
+          { $inc: { emailsSent: 1 } },
+          { upsert: true }
+        );
+      }
+    } catch (e) {
+      console.error("[Auto Agent Reply] Failed to increment usage", e);
     }
 
     // 8. Log activity

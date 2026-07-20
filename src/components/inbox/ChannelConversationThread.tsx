@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import {
   IconRobot, IconBrandWhatsapp, IconMail, IconMessage, IconSend,
-  IconAlertCircle, IconCalendarCheck, IconRefresh, IconLoader2, IconPaperclip
+  IconAlertCircle, IconCalendarCheck, IconRefresh, IconLoader2, IconPaperclip, IconPhoto
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel, Lead } from "@/store/types";
@@ -36,6 +36,7 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
   const [marking, setMarking] = useState(false);
   const [sendAs, setSendAs] = useState<"agent" | "lead">("agent");
   const [syncing, setSyncing] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [agentTyping, setAgentTyping] = useState(false);
@@ -46,6 +47,27 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
 
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isLocked, setIsLocked] = useState(false);
+
+  useEffect(() => {
+    if (!activeAgent || !channel) return;
+    fetch(`/api/usage?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((d) => {
+         const { plan, usage } = d;
+         if (channel === "whatsapp" && plan.limits.messagesPerMonth !== -1 && usage.messagesSent >= plan.limits.messagesPerMonth) {
+           setIsLocked(true);
+         } else if (channel === "email" && plan.limits.emailsPerMonth !== -1 && usage.emailsSent >= plan.limits.emailsPerMonth) {
+           setIsLocked(true);
+         } else if (channel === "sms" && plan.limits.smsPerMonth !== -1 && usage.smsSent >= plan.limits.smsPerMonth) {
+           setIsLocked(true);
+         } else {
+           setIsLocked(false);
+         }
+      })
+      .catch(() => {});
+  }, [activeAgent?._id, channel, conversations]);
 
   const sendTypingStatus = async (isTyping: boolean) => {
     if (!lead || !activeAgent) return;
@@ -75,7 +97,11 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
-      await sendReply(data.url);
+      if (channel === "email") {
+        setReplyText(prev => prev + (prev ? "\n\n" : "") + data.url);
+      } else {
+        await sendReply(data.url);
+      }
     } catch {
       showToast("Failed to upload image. Please try again.", "error");
     } finally {
@@ -89,6 +115,7 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
     setAgentOn(lead.agentEnabled);
     setSendAs("agent");
     setReplyText("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setEmailSubject("");
     setAgentTyping(false);
     setLeadTyping(false);
@@ -200,7 +227,10 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
     isCurrentlyTyping.current = false;
     sendTypingStatus(false);
 
-    if (!customText) setReplyText("");
+    if (!customText) {
+      setReplyText("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+    }
     if (channel === "email") setEmailSubject("");
     setSending(true);
 
@@ -366,69 +396,164 @@ export default function ChannelConversationThread({ lead, channel, onSent }: Pro
           </div>
         )}
 
-        {channel === "email" && sendAs === "agent" && (
-          <input
-            value={emailSubject}
-            onChange={(e) => setEmailSubject(e.target.value)}
-            placeholder="Subject line..."
-            className="w-full rounded-[8px] px-3 py-1.5 text-[12px] outline-none border mb-2"
-            style={{ background: "var(--color-bg3)", borderColor: "var(--color-bg4)", color: "var(--color-text)" }}
-          />
+        {channel === "email" ? (
+          <>
+            {isReplying ? (
+              <div className="rounded-[8px] overflow-hidden flex flex-col border shadow-sm mb-1" style={{ borderColor: "rgba(0,0,0,0.1)", background: "var(--color-bg)" }}>
+              {/* To Field */}
+              <div className="px-3 py-2 border-b flex items-center text-[12px]" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                <span className="w-8 font-medium" style={{ color: "var(--color-text3)" }}>To</span>
+                <span className="px-2 py-0.5 rounded-md text-[11.5px] border" style={{ background: "var(--color-bg3)", borderColor: "rgba(0,0,0,0.06)", color: "var(--color-text)" }}>
+                  {sendAs === "agent" ? `${lead.fullName} <${lead.email || "No email"}>` : `Agent`}
+                </span>
+              </div>
+              
+              {/* Subject Field */}
+              {sendAs === "agent" && (
+                <div className="px-3 py-2 border-b" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                  <input
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Subject"
+                    className="w-full text-[12px] outline-none font-medium bg-transparent"
+                    style={{ color: "var(--color-text)" }}
+                  />
+                </div>
+              )}
+              
+              {/* Body Textarea */}
+              <div className="p-3">
+                <textarea
+                  ref={textareaRef}
+                  value={replyText}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setReplyText(val);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                    if (!isCurrentlyTyping.current && val.trim().length > 0) {
+                      isCurrentlyTyping.current = true;
+                      sendTypingStatus(true);
+                    }
+                    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                    typingTimeoutRef.current = setTimeout(() => {
+                      isCurrentlyTyping.current = false;
+                      sendTypingStatus(false);
+                    }, 1500);
+                  }}
+                  disabled={isLocked}
+                  placeholder={isLocked ? "Plan limit exceeded. Upgrade to send more emails." : (sendAs === "lead" ? "Simulate client reply..." : "Write your email here...")}
+                  className={`w-full text-[12.5px] outline-none resize-none bg-transparent font-[family-name:var(--font-sans)] ${isLocked ? 'cursor-not-allowed opacity-50' : ''}`}
+                  style={{ minHeight: 160, color: isLocked ? "var(--color-red)" : "var(--color-text)" }}
+                />
+              </div>
+              
+              {/* Toolbar */}
+              <div className="px-3 py-2.5 flex items-center justify-between border-t" style={{ borderColor: "rgba(0,0,0,0.06)", background: "var(--color-bg2)" }}>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      sendReply();
+                      setIsReplying(false);
+                    }}
+                    disabled={sending || isLocked}
+                    className={`px-5 py-1.5 rounded-full text-[12px] font-bold text-white transition-all flex items-center gap-1.5 ${isLocked ? 'opacity-50 cursor-not-allowed' : 'hover:brightness-110'}`}
+                    style={{ background: isLocked ? "var(--color-red)" : "#0b57d0", cursor: (sending || isLocked) ? "wait" : "pointer", border: "none" }}
+                  >
+                    Send
+                  </button>
+                  <button
+                    onClick={() => setIsReplying(false)}
+                    className="px-3 py-1.5 text-[12px] font-medium border-none cursor-pointer transition-colors hover:text-gray-900"
+                    style={{ background: "transparent", color: "var(--color-text3)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              <div className="flex gap-2.5">
+                <button type="button" onClick={() => showToast("Rich text formatting coming soon")} className="p-1 hover:bg-[var(--color-bg3)] rounded transition-colors bg-transparent border-none cursor-pointer" style={{ color: "var(--color-text3)" }} title="Formatting options">
+                  <span className="font-serif font-bold text-[14px]">A</span>
+                </button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:bg-[var(--color-bg3)] rounded transition-colors bg-transparent border-none" style={{ color: "var(--color-text3)", cursor: uploading ? "wait" : "pointer" }} title="Attach files" disabled={uploading}>
+                  <IconPaperclip size={16} />
+                </button>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:bg-[var(--color-bg3)] rounded transition-colors bg-transparent border-none" style={{ color: "var(--color-text3)", cursor: uploading ? "wait" : "pointer" }} title="Insert photo" disabled={uploading}>
+                  <IconPhoto size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-1">
+            <button
+              onClick={() => setIsReplying(true)}
+              className="w-full text-left px-4 py-3 rounded-[8px] border text-[13px] transition-colors cursor-pointer hover:bg-black/5"
+              style={{ background: "var(--color-bg)", borderColor: "rgba(0,0,0,0.1)", color: "var(--color-text3)" }}
+            >
+              Reply to {lead.fullName.split(" ")[0]}...
+            </button>
+          </div>
         )}
+        </>
+      ) : (
+        <div className="flex gap-2 items-end mb-1">
+            <textarea
+              ref={textareaRef}
+              value={replyText}
+              onChange={(e) => {
+                const val = e.target.value;
+                setReplyText(val);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+                if (!isCurrentlyTyping.current && val.trim().length > 0) {
+                  isCurrentlyTyping.current = true;
+                  sendTypingStatus(true);
+                }
+                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                typingTimeoutRef.current = setTimeout(() => {
+                  isCurrentlyTyping.current = false;
+                  sendTypingStatus(false);
+                }, 1500);
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
+              disabled={isLocked}
+              placeholder={isLocked ? "Plan limit exceeded. Upgrade to send more messages." : (sendAs === "lead" ? `Reply as ${lead.fullName.split(" ")[0]}...` : "Type a message...")}
+              rows={1}
+              className={`flex-1 rounded-[8px] px-3 py-2 text-[12px] outline-none resize-none border transition-colors duration-150 font-[family-name:var(--font-sans)] ${isLocked ? 'cursor-not-allowed opacity-50' : ''}`}
+              style={{ background: "var(--color-bg3)", borderColor: isLocked ? "rgba(239,68,68,0.3)" : "var(--color-bg4)", color: isLocked ? "var(--color-red)" : "var(--color-text)", minHeight: 34, maxHeight: 100 }}
+            />
+            {channel === "whatsapp" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || sending}
+                  className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors border"
+                  style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg3)", color: "var(--color-text3)", cursor: (uploading || sending) ? "wait" : "pointer" }}
+                  title="Upload image"
+                >
+                  {uploading ? <IconLoader2 size={15} className="animate-spin" /> : <IconPaperclip size={15} />}
+                </button>
 
-        <div className="flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            value={replyText}
-            onChange={(e) => {
-              const val = e.target.value;
-              setReplyText(val);
-              if (!isCurrentlyTyping.current && val.trim().length > 0) {
-                isCurrentlyTyping.current = true;
-                sendTypingStatus(true);
-              }
-              if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-              typingTimeoutRef.current = setTimeout(() => {
-                isCurrentlyTyping.current = false;
-                sendTypingStatus(false);
-              }, 1500);
-            }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
-            placeholder={sendAs === "lead" ? `Reply as ${lead.fullName.split(" ")[0]}...` : "Type a message..."}
-            rows={1}
-            className="flex-1 rounded-[8px] px-3 py-2 text-[12px] outline-none resize-none border transition-colors duration-150 font-[family-name:var(--font-sans)]"
-            style={{ background: "var(--color-bg3)", borderColor: "var(--color-bg4)", color: "var(--color-text)", minHeight: 34, maxHeight: 100 }}
-          />
-          {channel === "whatsapp" && (
-            <>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || sending}
-                className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors border"
-                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg3)", color: "var(--color-text3)", cursor: (uploading || sending) ? "wait" : "pointer" }}
-                title="Upload image"
-              >
-                {uploading ? <IconLoader2 size={15} className="animate-spin" /> : <IconPaperclip size={15} />}
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="hidden"
-              />
-            </>
-          )}
-          <button
-            onClick={() => sendReply()}
-            disabled={sending || uploading}
-            className="w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors border-none"
-            style={{ background: (sending || uploading) ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"), color: "#fff", cursor: (sending || uploading) ? "wait" : "pointer" }}
-          >
-            <IconSend size={14} />
-          </button>
-        </div>
+              </>
+            )}
+            <button
+              onClick={() => sendReply()}
+              disabled={sending || uploading || isLocked}
+              className={`w-[34px] h-[34px] rounded-[8px] flex items-center justify-center flex-shrink-0 transition-colors border-none ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+              style={{ background: (sending || uploading || isLocked) ? "var(--color-bg4)" : (sendAs === "lead" ? "#10b981" : "#6c63ff"), color: isLocked ? "var(--color-text4)" : "#fff", cursor: (sending || uploading || isLocked) ? (isLocked ? "not-allowed" : "wait") : "pointer" }}
+            >
+              <IconSend size={14} />
+            </button>
+          </div>
+        )}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          className="hidden"
+        />
         <div className="flex items-center gap-1 mt-1 text-[10.5px]" style={{ color: "var(--color-text3)" }}>
           <hint.icon size={13} style={{ color: hint.color }} />
           {hint.label}

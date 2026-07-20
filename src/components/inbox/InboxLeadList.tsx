@@ -16,6 +16,9 @@ interface Props {
   search: string;
   onSearchChange: (v: string) => void;
   loading?: boolean;
+  isFetchingMore?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
   headerActions?: React.ReactNode;
   accentColor: string;
 }
@@ -43,8 +46,15 @@ function formatTimestamp(iso?: string): string {
 }
 
 export default function InboxLeadList({
-  items, channel, selectedLeadId, onSelect, search, onSearchChange, loading, headerActions, accentColor,
+  items, channel, selectedLeadId, onSelect, search, onSearchChange, loading, isFetchingMore, hasMore, onLoadMore, headerActions, accentColor,
 }: Props) {
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 50) {
+      onLoadMore?.();
+    }
+  }
+
   return (
     <div className="flex flex-col h-full" style={{ width: 300, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)" }}>
       <div className="p-3 flex flex-col gap-2 flex-shrink-0 border-b" style={{ borderColor: "var(--color-bg4)" }}>
@@ -61,7 +71,7 @@ export default function InboxLeadList({
         {headerActions}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
         {loading ? (
           <div className="flex items-center justify-center py-10 text-[12px]" style={{ color: "var(--color-text3)" }}>
             Loading…
@@ -74,32 +84,39 @@ export default function InboxLeadList({
             </p>
           </div>
         ) : (
-          items.map(({ lead, lastMessage }) => {
-            const isSelected = lead._id === selectedLeadId;
-            return (
-              <button
-                key={lead._id}
-                onClick={() => onSelect(lead)}
-                className="flex items-start gap-2.5 w-full text-left px-3 py-2.5 border-none cursor-pointer transition-colors"
-                style={{ background: isSelected ? "var(--color-bg3)" : "transparent", borderBottom: "1px solid var(--color-bg4)" }}
-              >
-                <Avatar name={lead.fullName} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12.5px] font-semibold truncate" style={{ color: isSelected ? accentColor : "var(--color-text)" }}>
-                      {lead.fullName}
-                    </span>
-                    <span className="text-[10px] flex-shrink-0" style={{ color: "var(--color-text3)" }}>
-                      {formatTimestamp(lastMessage?.timestamp)}
-                    </span>
+          <>
+            {items.map(({ lead, lastMessage }) => {
+              const isSelected = lead._id === selectedLeadId;
+              return (
+                <button
+                  key={lead._id}
+                  onClick={() => onSelect(lead)}
+                  className="flex items-start gap-2.5 w-full text-left px-3 py-2.5 border-none cursor-pointer transition-colors"
+                  style={{ background: isSelected ? "var(--color-bg3)" : "transparent", borderBottom: "1px solid var(--color-bg4)" }}
+                >
+                  <Avatar name={lead.fullName} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12.5px] font-semibold truncate" style={{ color: isSelected ? accentColor : "var(--color-text)" }}>
+                        {lead.fullName}
+                      </span>
+                      <span className="text-[10px] flex-shrink-0" style={{ color: "var(--color-text3)" }}>
+                        {formatTimestamp(lastMessage?.timestamp)}
+                      </span>
+                    </div>
+                    <div className="text-[11px] truncate mt-0.5" style={{ color: "var(--color-text3)", fontStyle: lastMessage ? "normal" : "italic" }}>
+                      {previewText(lastMessage, channel)}
+                    </div>
                   </div>
-                  <div className="text-[11px] truncate mt-0.5" style={{ color: "var(--color-text3)", fontStyle: lastMessage ? "normal" : "italic" }}>
-                    {previewText(lastMessage, channel)}
-                  </div>
-                </div>
-              </button>
-            );
-          })
+                </button>
+              );
+            })}
+            {isFetchingMore && (
+              <div className="flex items-center justify-center py-4 text-[11px]" style={{ color: "var(--color-text3)" }}>
+                Loading more...
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
