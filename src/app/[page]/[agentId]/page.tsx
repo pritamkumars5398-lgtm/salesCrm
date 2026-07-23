@@ -17,6 +17,8 @@ import Plans from "@/components/pages/Plans";
 import Profile from "@/components/pages/Profile";
 import Superadmin from "@/components/pages/Superadmin";
 import VoiceTest from "@/components/pages/VoiceTest";
+import Inbox from "@/components/pages/Inbox";
+import VoiceInboxComingSoon from "@/components/pages/VoiceInboxComingSoon";
 
 interface PageProps {
   params: Promise<{ page: string; agentId: string }>;
@@ -64,6 +66,10 @@ export default function Home({ params }: PageProps) {
       return <Plans />;
     case "voice":
       return <VoiceTest />;
+    case "inbox":
+      return <Inbox />;
+    case "voice-inbox":
+      return <VoiceInboxComingSoon />;
     case "superadmin":
       return userEmail?.toLowerCase() === "admin@salesagent.ai" ? (
         <Superadmin />

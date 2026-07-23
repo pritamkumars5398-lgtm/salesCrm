@@ -7,6 +7,7 @@ export interface IUsage extends Document {
   messagesSent: number;
   callsMade: number;
   emailsSent: number;
+  smsSent: number;
 }
 
 const UsageSchema = new Schema<IUsage>({
@@ -16,6 +17,7 @@ const UsageSchema = new Schema<IUsage>({
   messagesSent: { type: Number, default: 0 },
   callsMade:    { type: Number, default: 0 },
   emailsSent:   { type: Number, default: 0 },
+  smsSent:      { type: Number, default: 0 },
 });
 
 UsageSchema.index({ agentId: 1, month: 1 }, { unique: true });

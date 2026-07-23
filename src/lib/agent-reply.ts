@@ -3,8 +3,11 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
 import { Activity } from "@/lib/models/Activity";
 import { Agent } from "@/lib/models/Agent";
+import { Usage } from "@/lib/models/Usage";
+import { currentMonth } from "@/lib/utils/date";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
+import { checkUsageLimit } from "@/lib/usage-check";
 import twilio from "twilio";
 
 export async function handleAgentReply(
@@ -19,6 +22,13 @@ export async function handleAgentReply(
     const agent = await Agent.findById(agentId).lean();
     if (agent && agent.status === "inactive") {
       console.warn(`[Auto Agent Reply] Skipped because agent is inactive/unpublished (agentId=${agentId})`);
+      return;
+    }
+
+    const usageField = channel === "email" ? "emailsSent" : "messagesSent";
+    const canReply = await checkUsageLimit(agentId, usageField, 1);
+    if (!canReply) {
+      console.warn(`[Auto Agent Reply] Skipped because ${usageField} limit is exhausted (agentId=${agentId})`);
       return;
     }
 
@@ -94,6 +104,14 @@ export async function handleAgentReply(
       businessContext += `Important Custom Guidelines/Instructions you must follow:\n${customPrompt}\n`;
     }
 
+    let previousContext = "";
+    const existingConvo = await Conversation.findOne({ leadId: lead._id, channel }).lean();
+    if (existingConvo && existingConvo.messages && existingConvo.messages.length > 0) {
+      // Get the last 6 messages to provide good context without overflowing tokens
+      const recentMessages = existingConvo.messages.slice(-6);
+      previousContext = "Previous Conversation Context:\n" + recentMessages.map((m: any) => `${m.role === 'agent' ? 'Us' : 'Lead'}: ${m.content}`).join("\n") + "\n\n";
+    }
+
     // 3. Build prompt with relevance classification instructions
     const prompt = `You are an expert sales representative. A lead has just replied to your outreach via ${channel}.
 ${businessContext ? `Business context and instructions:\n${businessContext}\n` : ""}
@@ -101,15 +119,22 @@ Lead Details:
 - Name: ${lead.fullName}
 - Company: ${lead.company || "N/A"}
 
-Lead's incoming message:
+${previousContext}Lead's new incoming message:
 "${clientMessageContent}"
 
 Instructions:
-1. Analyze the intent of the incoming message:
-   - If the message is positive, interested, open to chat, or asking a question:
-     Set "status" to "replied". Acknowledge their interest or answer their question warmly and concisely (2-3 sentences) using our business context, and politely invite them to book a time on our calendar: ${calendlyLink}. If they ask for information, details, or docs, include our Resource Document Link: ${docLink}.
+1. Analyze the entire conversation context and the intent of the incoming message:
+   - What did we offer in our previous message, and what is the lead replying with?
+   - If the message is asking for more information, details, or docs:
+     Set "status" to "replied". Provide a detailed and helpful answer specifically addressing their question. If we have a document link, include it: ${docLink}. Look at the "Previous Conversation Context". If this is an ongoing conversation (you and the lead have exchanged 2 or more messages), automatically append the calendar link at the bottom. If this is the very first reply, do not push the calendar link yet.
+   - If the message explicitly agrees to a chat, call, or meeting, or shows clear interest:
+     Set "status" to "replied". Provide our calendar link to book a time. (It is okay to provide this link multiple times IF they explicitly ask for it).
+   - If they are generally positive but just saying things like "ok", "thanks", or "sounds good":
+     Set "status" to "replied". Acknowledge their response naturally.
+   - CRITICAL RULE FOR CALENDAR LINK: ANY TIME you include the calendar link (${calendlyLink}), you MUST precede it with a variation of this exact text: "If you are interested or need more details, you can schedule a meeting here: " followed by the link. The calendar link MUST be the very last thing in your message. Do NOT add any follow-up questions or text after the calendar link.
+   - CRITICAL RULE ON REPETITION: Read the "Previous Conversation Context". If we already provided the calendar link or already asked "Would you be open to a chat?", do NOT loop and ask it again if they just reply "ok". Only send the calendar link again if they explicitly ask for it.
    - If the message is explicitly negative, not interested, requesting to unsubscribe, or rejecting:
-     Set "status" to "closed". Write a polite, brief 1-sentence confirmation that we will stop contacting them.
+     Set "status" to "closed". Write a very polite, warm, and memorable closing message (1-2 sentences) leaving the door open for the future. Do NOT explicitly tell them "we will stop contacting you", "we are closing communication", or anything robotic. Just wish them well and let them know we are here if they ever need us.
    - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):
      Set "status" to "closed". Write a polite 1-sentence response asking if they meant to reply or if they want to clarify, without blindly inviting them to book a calendar slot.
 
@@ -117,6 +142,7 @@ Instructions:
    - You MUST return ONLY a valid JSON object.
    - For email channels, the JSON must contain "status", "subject", and "body".
    - For other channels (whatsapp, sms, call), the JSON must contain "status" and "body" (no subject).
+   - FORMATTING: Ensure the "body" uses line breaks (\\n\\n) to separate sentences or ideas. Do NOT output a single massive block of text. Put URLs on their own lines.
 
 Return ONLY valid JSON format:
 ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."}' : '{"status": "replied" | "closed", "body": "..."}'}`;
@@ -139,6 +165,9 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
     const json = await response.json();
     const raw = json.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(raw);
+    if (parsed.body) {
+      parsed.body = parsed.body.replace(/\\n/g, "\n");
+    }
 
     // 5. Update lead status/pipeline stage
     const leadDoc = await Lead.findById(lead._id);
@@ -254,6 +283,25 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
           }),
         });
       }
+    }
+
+    // 7.5 Increment Usage metrics for AI Auto-Replies
+    try {
+      if (channel === "whatsapp") {
+        await Usage.findOneAndUpdate(
+          { agentId, month: currentMonth() },
+          { $inc: { messagesSent: 1 } },
+          { upsert: true }
+        );
+      } else if (channel === "email") {
+        await Usage.findOneAndUpdate(
+          { agentId, month: currentMonth() },
+          { $inc: { emailsSent: 1 } },
+          { upsert: true }
+        );
+      }
+    } catch (e) {
+      console.error("[Auto Agent Reply] Failed to increment usage", e);
     }
 
     // 8. Log activity

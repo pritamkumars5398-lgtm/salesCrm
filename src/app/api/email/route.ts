@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import nodemailer from "nodemailer";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
+import { Usage } from "@/lib/models/Usage";
+import { currentMonth } from "@/lib/utils/date";
+import { checkUsageLimit } from "@/lib/usage-check";
 
 export async function POST(req: Request) {
   await connectDB();
@@ -16,6 +19,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "agentId, to, subject, body required" }, { status: 400 });
   }
 
+  const canSend = await checkUsageLimit(agentId, "emailsSent", 1);
+  if (!canSend) {
+    return NextResponse.json({ error: "Plan limit exceeded for Emails." }, { status: 403 });
+  }
+
   const cfg = await getEmailConfig(agentId);
   if (!cfg) {
     return NextResponse.json(
@@ -28,6 +36,15 @@ export async function POST(req: Request) {
 
   try {
     await sendEmail(cfg, to, subject, emailBody);
+    
+    // Increment usage
+    const month = currentMonth();
+    await Usage.findOneAndUpdate(
+      { agentId, month },
+      { $inc: { emailsSent: 1 } },
+      { upsert: true }
+    );
+
     return NextResponse.json({ ok: true, provider: cfg.provider, from, to });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

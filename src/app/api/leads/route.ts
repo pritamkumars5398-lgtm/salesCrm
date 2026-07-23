@@ -5,6 +5,9 @@ import { Lead } from "@/lib/models/Lead";
 import { Agent } from "@/lib/models/Agent";
 import { Conversation } from "@/lib/models/Conversation";
 import { Activity } from "@/lib/models/Activity";
+import { Usage } from "@/lib/models/Usage";
+import { currentMonth } from "@/lib/utils/date";
+import { checkUsageLimit } from "@/lib/usage-check";
 import { countEligibleLeads } from "@/server/services/campaign.service";
 
 const MAX_PAGE_SIZE = 200;
@@ -41,6 +44,7 @@ export async function GET(req: Request) {
   const source = searchParams.get("source");
   const channel = searchParams.get("channel");
   const missingContact = searchParams.get("missingContact");
+  const requireContact = searchParams.get("requireContact");
   const location = searchParams.get("location");
   const addedDate = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
   const outreach = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
@@ -86,6 +90,11 @@ export async function GET(req: Request) {
       { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] },
       { $or: [{ phone: { $in: [null, ""] } }, { phone: { $exists: false } }] },
     ];
+  }
+  if (requireContact === "email") {
+    baseFilter.email = { $nin: [null, ""] };
+  } else if (requireContact === "phone") {
+    baseFilter.phone = { $nin: [null, ""] };
   }
   if (pipelineStage && pipelineStage !== "all") {
     baseFilter.pipelineStage = pipelineStage;
@@ -186,15 +195,31 @@ export async function POST(req: Request) {
         channels: l.channels || [],
       };
     });
-    const leads = await Lead.insertMany(leadsToInsert);
     const agentId = body[0]?.agentId;
     if (agentId) {
+      const canScrape = await checkUsageLimit(agentId, "leadsScraped", body.length);
+      if (!canScrape) {
+        return NextResponse.json({ error: "Plan limit exceeded for scraping/importing leads." }, { status: 403 });
+      }
+    }
+
+    const leads = await Lead.insertMany(leadsToInsert);
+    if (agentId) {
       await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: leads.length } });
+      await Usage.findOneAndUpdate(
+        { agentId, month: currentMonth() },
+        { $inc: { leadsScraped: leads.length } },
+        { upsert: true }
+      );
     }
     return NextResponse.json(leads, { status: 201 });
   } else {
+    const agentId = body.agentId;
     const lead = await Lead.create(body);
-    await Agent.findByIdAndUpdate(body.agentId, { $inc: { leadCount: 1 } });
+    if (agentId) {
+      await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: 1 } });
+      // Note: Manual lead addition does NOT consume 'leadsScraped' usage limit.
+    }
     return NextResponse.json(lead, { status: 201 });
   }
 }

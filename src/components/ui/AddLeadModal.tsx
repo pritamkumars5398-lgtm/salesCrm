@@ -6,6 +6,7 @@ import {
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel } from "@/store/types";
+import { useEffect } from "react";
 import * as XLSX from "xlsx";
 
 interface Props {
@@ -67,6 +68,26 @@ const COUNTRY_CODES = [
 export default function AddLeadModal({ open, onClose }: Props) {
   const { activeAgent, addLead, addLeads, showToast } = useAppStore();
   const [importMode, setImportMode] = useState<"manual" | "ai" | "file">("manual");
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
+
+  useEffect(() => {
+    if (open && activeAgent) {
+      fetch(`/api/usage?agentId=${activeAgent._id}`)
+        .then((r) => r.json())
+        .then((d) => {
+          setPlanId(d.planId);
+          if (d.plan.limits.leadsPerMonth !== -1 && d.usage.leadsScraped >= d.plan.limits.leadsPerMonth) {
+            setIsLocked(true);
+          } else {
+            setIsLocked(false);
+          }
+        })
+        .catch(console.error);
+    } else if (!open) {
+      setImportMode("manual");
+    }
+  }, [open, activeAgent]);
 
   // Manual Form State
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -408,6 +429,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
         {/* Mode Selector Tabs */}
         <div className="flex px-5 pt-3 border-b shrink-0 gap-4" style={{ borderColor: "rgba(0,0,0,0.05)" }}>
           {(["manual", "ai", "file"] as const).map((m) => {
+            if (m === "file" && planId === "free") return null;
             const labels = { manual: "Manual Entry", ai: "AI Lead Extractor", file: "Excel / CSV Import" };
             const isActive = importMode === m;
             return (
@@ -790,8 +812,8 @@ export default function AddLeadModal({ open, onClose }: Props) {
               </button>
               {showPreview && (
                 <button
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 border-none text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={selectedLeads.size === 0 || saving}
+                  className={`inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold border-none text-white transition-all ${isLocked ? 'cursor-not-allowed opacity-50 bg-red-500' : 'bg-gradient-to-br from-indigo-600 to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                  disabled={selectedLeads.size === 0 || saving || isLocked}
                   onClick={submitBulk}
                 >
                   {saving ? (
@@ -802,7 +824,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                   ) : (
                     <>
                       <IconUserCheck size={14} />
-                      Save {selectedLeads.size} lead{selectedLeads.size !== 1 ? "s" : ""}
+                      {isLocked ? "Limit Exceeded" : `Save ${selectedLeads.size} lead${selectedLeads.size !== 1 ? "s" : ""}`}
                     </>
                   )}
                 </button>

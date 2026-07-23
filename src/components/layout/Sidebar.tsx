@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX, IconChevronRight, IconMicrophone,
+  IconShield, IconX, IconChevronRight, IconMicrophone, IconLock,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -147,6 +147,8 @@ function CountBadge({ count, color }: { count: number; color?: string }) {
 
 export default function Sidebar() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeChannel = searchParams.get("channel");
   const {
     agents, activeAgent, setActiveAgent, currentPage, setPage,
     leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast,
@@ -508,9 +510,18 @@ export default function Sidebar() {
               {OUTREACH_CHANNELS.map(({ key, label, Icon, color, bg, enabledKey, valueKey }) => {
                 const enabled = outreach[enabledKey] !== "false";
                 const value   = outreach[valueKey] || "";
+                const isLocked = key === "voice";
+                const isActive = isLocked
+                  ? currentPage === "voice-inbox"
+                  : currentPage === "inbox" && activeChannel === key;
                 return (
-                  <div
+                  <button
                     key={key}
+                    onClick={() => {
+                      const agentId = activeAgent?._id || "default";
+                      if (isLocked) navigate(`/voice-inbox/${agentId}`);
+                      else navigate(`/inbox/${agentId}?channel=${key}`);
+                    }}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -518,11 +529,23 @@ export default function Sidebar() {
                       gap: collapsed ? 0 : 8,
                       padding: collapsed ? "7px 0" : "7px 10px",
                       borderRadius: "var(--radius-lg)",
-                      background: enabled ? bg : "transparent",
+                      background: isActive ? "var(--color-primary-subtle)" : enabled ? bg : "transparent",
                       opacity: enabled ? 1 : 0.45,
-                      transition: "opacity var(--transition-fast)",
+                      transition: "opacity var(--transition-fast), background var(--transition-fast)",
+                      border: "none",
+                      width: "100%",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      font: "inherit",
+                      color: "inherit",
                     }}
-                    title={collapsed ? `${label}: ${enabled && value ? value : enabled ? "Not configured" : "Disabled"}` : undefined}
+                    title={
+                      isLocked
+                        ? "Voice inbox — coming soon"
+                        : collapsed
+                          ? `${label}: ${enabled && value ? value : enabled ? "Not configured" : "Disabled"}`
+                          : undefined
+                    }
                   >
                     <span
                       style={{
@@ -548,21 +571,25 @@ export default function Sidebar() {
                             style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                             title={value}
                           >
-                            {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
+                            {isLocked ? "Coming soon" : enabled && value ? value : enabled ? "Not configured" : "Disabled"}
                           </p>
                         </div>
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: enabled ? "var(--color-green)" : "var(--color-bg5)",
-                            flexShrink: 0,
-                          }}
-                        />
+                        {isLocked ? (
+                          <IconLock size={12} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
+                        ) : (
+                          <span
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: enabled ? "var(--color-green)" : "var(--color-bg5)",
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
                       </>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

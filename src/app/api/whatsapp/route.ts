@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { Usage } from "@/lib/models/Usage";
+import { currentMonth } from "@/lib/utils/date";
+import { checkUsageLimit } from "@/lib/usage-check";
 import twilio from "twilio";
 
 export async function POST(req: Request) {
@@ -14,6 +17,11 @@ export async function POST(req: Request) {
 
     if (!agentId || !to || !text) {
       return NextResponse.json({ error: "agentId, to, and text required" }, { status: 400 });
+    }
+
+    const canSend = await checkUsageLimit(agentId, "messagesSent", 1);
+    if (!canSend) {
+      return NextResponse.json({ error: "Plan limit exceeded for WhatsApp messages." }, { status: 403 });
     }
 
     // 1. Remove all non-digit characters (including spaces, dashes, '+', etc.)
@@ -73,6 +81,15 @@ export async function POST(req: Request) {
         }
         const msg = await client.messages.create(payload);
         console.log(`[WhatsApp] Twilio Success Response: MSG SID ${msg.sid}`);
+        
+        // Increment usage
+        const month = currentMonth();
+        await Usage.findOneAndUpdate(
+          { agentId, month },
+          { $inc: { messagesSent: 1 } },
+          { upsert: true }
+        );
+
         return NextResponse.json({ ok: true });
       } catch (err: any) {
         console.error(`[WhatsApp] Twilio Error:`, err);
@@ -138,6 +155,15 @@ export async function POST(req: Request) {
     }
 
     console.log(`[WhatsApp] ${provider} Success Response: 200 OK`);
+    
+    // Increment usage
+    const month = currentMonth();
+    await Usage.findOneAndUpdate(
+      { agentId, month },
+      { $inc: { messagesSent: 1 } },
+      { upsert: true }
+    );
+
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

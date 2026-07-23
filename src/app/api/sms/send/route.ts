@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { Conversation } from "@/lib/models/Conversation";
+import { Usage } from "@/lib/models/Usage";
+import { checkUsageLimit } from "@/lib/usage-check";
+import { currentMonth } from "@/lib/utils/date";
 
 export async function POST(req: Request) {
   try {
@@ -9,8 +12,14 @@ export async function POST(req: Request) {
     if (!agentId || !to || !text) {
       return NextResponse.json({ error: "agentId, to, and text are required" }, { status: 400 });
     }
-
     await connectDB();
+    
+    // Check limit
+    const canSend = await checkUsageLimit(agentId, "smsSent", 1);
+    if (!canSend) {
+      return NextResponse.json({ error: "Plan limit exceeded for SMS." }, { status: 403 });
+    }
+
     const rows = await Setting.find({
       agentId,
       key: { $in: ["smsProvider", "smsApiKey", "smsAccountSid", "smsFrom"] },
@@ -52,6 +61,7 @@ export async function POST(req: Request) {
       if (!res.ok) {
         return NextResponse.json({ error: `Twilio: ${data.message || "unknown error"}` }, { status: 502 });
       }
+      await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { smsSent: 1 } }, { upsert: true });
       return NextResponse.json({ ok: true, provider: "Twilio SMS", sid: data.sid });
     }
 
@@ -85,6 +95,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `MSG91 rejected the request: ${resText.trim()}` }, { status: 502 });
       }
 
+      await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { smsSent: 1 } }, { upsert: true });
       return NextResponse.json({ ok: true, provider: "MSG91", msgId: resText.trim() });
     }
 
@@ -121,6 +132,7 @@ export async function POST(req: Request) {
 
       const queued = (data.message as string) || "";
       if (queued.toLowerCase().includes("queued") || Array.isArray(data.message_uuid)) {
+        await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { smsSent: 1 } }, { upsert: true });
         return NextResponse.json({ ok: true, provider: "Plivo", uuid: (data.message_uuid as string[])?.[0] });
       }
       return NextResponse.json({ error: `Plivo couldn't confirm delivery: ${rawText}` }, { status: 502 });

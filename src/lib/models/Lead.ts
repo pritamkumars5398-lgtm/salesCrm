@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
 export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | "closed";
 export type OutreachStatus = "none" | "pending" | "sending" | "sent" | "failed";
-export type LeadSource = "LinkedIn" | "Google Maps" | "JustDial" | "Manual" | "Apify" | "Referral";
+export type LeadSource = "LinkedIn" | "Google Maps" | "JustDial" | "Manual" | "Apify" | "Referral" | "LLM";
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 
 export interface ILeadNote {
@@ -31,6 +31,7 @@ export interface ILead extends Document {
   email: string;
   phone: string;
   source: LeadSource;
+  llmProvider?: string;
   channels: Channel[];
   status: LeadStatus;
   sequenceId?: Types.ObjectId;
@@ -61,7 +62,8 @@ const LeadSchema = new Schema<ILead>(
     company:       { type: String, trim: true },
     email:         { type: String, trim: true, lowercase: true },
     phone:         { type: String, trim: true },
-    source:        { type: String, enum: ["LinkedIn", "Google Maps", "JustDial", "Manual", "Apify", "Referral"], default: "Manual" },
+    source:        { type: String, enum: ["LinkedIn", "Google Maps", "JustDial", "Manual", "Apify", "Referral", "LLM"], default: "Manual" },
+    llmProvider:   { type: String },
     channels:      [{ type: String, enum: ["email", "whatsapp", "sms", "call"] }],
     status:        { type: String, enum: ["new", "in_outreach", "replied", "meeting_booked", "closed"], default: "new" },
     sequenceId:    { type: Schema.Types.ObjectId, ref: "Sequence" },
@@ -102,5 +104,8 @@ LeadSchema.index({ agentId: 1, outreachStatus: 1 });
 LeadSchema.index({ agentId: 1, deletedAt: 1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
 
-export const Lead: Model<ILead> =
-  mongoose.models.Lead ?? mongoose.model<ILead>("Lead", LeadSchema);
+// Delete the cached model if it exists to ensure HMR picks up schema changes like the new 'LLM' source enum
+if (mongoose.models.Lead) {
+  delete mongoose.models.Lead;
+}
+export const Lead: Model<ILead> = mongoose.model<ILead>("Lead", LeadSchema);
