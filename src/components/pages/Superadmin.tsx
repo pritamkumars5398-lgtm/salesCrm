@@ -160,7 +160,6 @@ export default function Superadmin() {
           messagesPerMonth: Number(editLimitWA),
           callsPerMonth: Number(editLimitCalls),
           emailsPerMonth: Number(editLimitEmails),
-          agents: PLANS[editPlanId]?.limits.agents ?? 1,
         }
       : null;
 

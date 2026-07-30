@@ -8,6 +8,10 @@ const run = async () => {
   console.log("Connected to MongoDB.");
 
   const db = mongoose.connection.db;
+  if (!db) {
+    console.error("Database connection not established.");
+    process.exit(1);
+  }
   const leadCollection = db.collection("leads");
   const convoCollection = db.collection("conversations");
 
