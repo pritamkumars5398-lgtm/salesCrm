@@ -2,18 +2,20 @@
    SalesCRM Premium Design System (Light & Dark)
    ═══════════════════════════════════════════════════════════════ */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @import "tailwindcss";
 
 /* ── Base Theme (Light Mode Default) ──────────────────────────── */
 @theme {
   /* Brand */
-  --color-primary:        #4f46e5;
-  --color-primary-light:  #6366f1;
-  --color-primary-dark:   #4338ca;
-  --color-primary-glow:   rgba(99,102,241,0.15);
-  --color-primary-subtle: rgba(99,102,241,0.08);
+  --color-primary:        #df2a2a;
+  --color-primary-light:  #f24444;
+  --color-primary-dark:   #b91c1c;
+  --color-primary-glow:   rgba(223,42,42,0.15);
+  --color-primary-subtle: rgba(223,42,42,0.08);
+  --color-accent:         #df2a2a;
+  --color-accent2:        #f24444;
 
   /* Surfaces */
   --color-bg:   #fcfcfc;
@@ -39,6 +41,11 @@
   --color-red-bg:   rgba(239,68,68,0.1);
   --color-purple:   #8b5cf6;
   --color-purple-bg:rgba(139,92,246,0.1);
+  /* Warning — #a1470a/#b45309 chosen over --color-amber for text/button use:
+     white-on-amber (#f59e0b) is 3.2:1 and fails WCAG AA (4.5:1) for normal text. */
+  --color-warning:        #b45309;
+  --color-warning-light:  #f59e0b;
+  --color-warning-subtle: rgba(180,83,9,0.1);
 
   /* Channel Colors */
   --color-email:     #4dabf7;
@@ -50,8 +57,10 @@
   --color-voice:     #f5a623;
   --color-voice-bg:  rgba(245,166,35,0.1);
 
-  /* Typography */
+  /* Typography — Plus Jakarta Sans for display/headings, Inter for body/UI */
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-hand: "Caveat", cursive;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
   /* Radius */
@@ -70,8 +79,8 @@
   --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.03);
   --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.02);
   --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.1);
-  --shadow-primary: 0 4px 14px rgba(79,70,229,0.25);
-  --shadow-primary-lg: 0 8px 24px rgba(79,70,229,0.3);
+  --shadow-primary: 0 4px 14px rgba(223,42,42,0.25);
+  --shadow-primary-lg: 0 8px 24px rgba(223,42,42,0.3);
 
   /* Transitions */
   --transition-fast:    150ms ease;
@@ -92,11 +101,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     /* Brand - Brighter for dark mode contrast */
-    --color-primary:        #818cf8;
-    --color-primary-light:  #a5b4fc;
-    --color-primary-dark:   #4f46e5;
-    --color-primary-glow:   rgba(129, 140, 248, 0.15);
-    --color-primary-subtle: rgba(129, 140, 248, 0.1);
+    --color-primary:        #f24444;
+    --color-primary-light:  #f87171;
+    --color-primary-dark:   #df2a2a;
+    --color-primary-glow:   rgba(242, 68, 68, 0.15);
+    --color-primary-subtle: rgba(242, 68, 68, 0.1);
+    --color-warning:        #f59e0b;
+    --color-warning-light:  #fbbf24;
+    --color-warning-subtle: rgba(245,158,11,0.15);
 
     /* Surfaces - Pitch dark */
     --color-bg:   #09090b; /* zinc-950 */
@@ -118,18 +130,21 @@
     --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5);
     --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.7), 0 8px 10px -6px rgba(0,0,0,0.6);
     --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.8);
-    --shadow-primary: 0 4px 14px rgba(129, 140, 248, 0.25);
-    --shadow-primary-lg: 0 8px 24px rgba(129, 140, 248, 0.35);
+    --shadow-primary: 0 4px 14px rgba(242, 68, 68, 0.25);
+    --shadow-primary-lg: 0 8px 24px rgba(242, 68, 68, 0.35);
   }
 }
 
 :root[data-theme="dark"] {
     /* Brand - Brighter for dark mode contrast */
-    --color-primary:        #818cf8;
-    --color-primary-light:  #a5b4fc;
-    --color-primary-dark:   #4f46e5;
-    --color-primary-glow:   rgba(129, 140, 248, 0.15);
-    --color-primary-subtle: rgba(129, 140, 248, 0.1);
+    --color-primary:        #f24444;
+    --color-primary-light:  #f87171;
+    --color-primary-dark:   #df2a2a;
+    --color-primary-glow:   rgba(242, 68, 68, 0.15);
+    --color-primary-subtle: rgba(242, 68, 68, 0.1);
+    --color-warning:        #f59e0b;
+    --color-warning-light:  #fbbf24;
+    --color-warning-subtle: rgba(245,158,11,0.15);
 
     /* Surfaces - Pitch dark */
     --color-bg:   #09090b; /* zinc-950 */
@@ -151,8 +166,8 @@
     --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5);
     --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.7), 0 8px 10px -6px rgba(0,0,0,0.6);
     --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.8);
-    --shadow-primary: 0 4px 14px rgba(129, 140, 248, 0.25);
-    --shadow-primary-lg: 0 8px 24px rgba(129, 140, 248, 0.35);
+    --shadow-primary: 0 4px 14px rgba(242, 68, 68, 0.25);
+    --shadow-primary-lg: 0 8px 24px rgba(242, 68, 68, 0.35);
   }
 
 /* ── Base Reset ───────────────────────────────────────────────── */
@@ -176,6 +191,22 @@ body {
   transition: background-color var(--transition-base), color var(--transition-base);
 }
 
+/* Same display face on every heading, app-wide — inline styles that set their
+   own font-size/weight still cascade this unless they also set font-family. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* ── Reduced Motion ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -189,7 +220,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  ::selection { color: #fff; }
+  :root:not([data-theme="light"]) ::selection { color: #fff; }
 }
 
 /* Manual Dark Mode Override */
@@ -220,7 +251,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .form-input {
+  :root:not([data-theme="light"]) .form-input {
     background-color: rgba(255,255,255,0.03);
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
   }
@@ -243,7 +274,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .form-input:hover:not(:disabled) {
+  :root:not([data-theme="light"]) .form-input:hover:not(:disabled) {
     background-color: rgba(255,255,255,0.05);
   }
 }
@@ -262,7 +293,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .form-input:focus {
+  :root:not([data-theme="light"]) .form-input:focus {
     box-shadow: 0 0 0 3px var(--color-primary-glow), inset 0 1px 2px rgba(0,0,0,0.2);
     background-color: rgba(255,255,255,0.06);
   }
@@ -283,7 +314,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .form-input:disabled {
+  :root:not([data-theme="light"]) .form-input:disabled {
     background-color: rgba(255,255,255,0.01);
   }
 }
@@ -318,7 +349,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .glass {
+  :root:not([data-theme="light"]) .glass {
     background: rgba(24, 24, 27, 0.7);
     border: 1px solid rgba(255,255,255,0.08);
     border-top: 1px solid rgba(255,255,255,0.12);
@@ -340,6 +371,17 @@ textarea.form-input {
   border: 1px solid var(--color-bg4);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
+}
+
+/* Opt-in lift for cards that are themselves clickable/interactive —
+   plain informational cards should not look pressable. */
+.card-hover {
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-bg5);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */
@@ -381,7 +423,7 @@ textarea.form-input {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), var(--shadow-primary);
 }
 @media (prefers-color-scheme: dark) {
-  .btn-primary {
+  :root:not([data-theme="light"]) .btn-primary {
     background: linear-gradient(180deg, var(--color-primary-light), var(--color-primary));
     color: #111827;
   }
@@ -396,7 +438,7 @@ textarea.form-input {
 
 .btn-primary:hover:not(:disabled) {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), var(--shadow-primary-lg);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.015);
 }
 
 .btn-secondary {
@@ -406,7 +448,7 @@ textarea.form-input {
   box-shadow: var(--shadow-xs);
 }
 @media (prefers-color-scheme: dark) {
-  .btn-secondary {
+  :root:not([data-theme="light"]) .btn-secondary {
     background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
     color: var(--color-text);
     border: 1px solid rgba(255,255,255,0.1);
@@ -426,9 +468,10 @@ textarea.form-input {
 .btn-secondary:hover:not(:disabled) {
   background: var(--color-bg3);
   border-color: var(--color-bg5);
+  transform: scale(1.015);
 }
 @media (prefers-color-scheme: dark) {
-  .btn-secondary:hover:not(:disabled) {
+  :root:not([data-theme="light"]) .btn-secondary:hover:not(:disabled) {
     background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
     border-color: rgba(255,255,255,0.2);
   }
@@ -449,9 +492,10 @@ textarea.form-input {
 .btn-ghost:hover:not(:disabled) {
   background: var(--color-bg3);
   color: var(--color-text);
+  transform: scale(1.015);
 }
 @media (prefers-color-scheme: dark) {
-  .btn-ghost:hover:not(:disabled) {
+  :root:not([data-theme="light"]) .btn-ghost:hover:not(:disabled) {
     background: rgba(255,255,255,0.08);
   }
 }
@@ -470,7 +514,7 @@ textarea.form-input {
 }
 .btn-danger:hover:not(:disabled) {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 20px rgba(239,68,68,0.35);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.015);
 }
 
 .btn-success {
@@ -480,7 +524,33 @@ textarea.form-input {
 }
 .btn-success:hover:not(:disabled) {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 20px rgba(16,185,129,0.35);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.015);
+}
+
+.btn-warning {
+  /* #a1470a → var(--color-warning): both stops hold 4.5:1+ with #fff text (6.1:1 / 5.0:1). */
+  background: linear-gradient(135deg, #a1470a, var(--color-warning));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 14px rgba(180,83,9,0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-warning {
+    /* Brighter bg in dark mode needs dark text to hold contrast (9.8:1), same swap as .btn-primary. */
+    background: linear-gradient(180deg, var(--color-warning-light), var(--color-warning));
+    color: #111827;
+  }
+}
+
+/* Manual Dark Mode Override */
+
+[data-theme="dark"] .btn-warning{
+    background: linear-gradient(180deg, var(--color-warning-light), var(--color-warning));
+    color: #111827;
+  }
+
+.btn-warning:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 20px rgba(180,83,9,0.35);
+  transform: translateY(-1px) scale(1.015);
 }
 
 /* ── Pill / Badge ─────────────────────────────────────────────── */
@@ -497,7 +567,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .pill {
+  :root:not([data-theme="light"]) .pill {
     border: 1px solid rgba(255,255,255,0.1);
     background: rgba(255,255,255,0.05);
   }
@@ -531,7 +601,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .data-table thead th {
+  :root:not([data-theme="light"]) .data-table thead th {
     background: rgba(255,255,255,0.02);
   }
 }
@@ -553,7 +623,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .data-table tbody tr:hover {
+  :root:not([data-theme="light"]) .data-table tbody tr:hover {
     background: rgba(255,255,255,0.04);
   }
 }
@@ -632,6 +702,76 @@ textarea.form-input {
   to { opacity: 0; transform: translateX(40px); max-height: 0; margin-bottom: 0; }
 }
 
+@keyframes floatSlow {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -14px, 0); }
+}
+
+@keyframes gradientPan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes rocketLaunch {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-26px); }
+}
+
+@keyframes rocketTakeoff {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translateY(-160px) scale(1.15);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-750px) scale(1.3);
+    opacity: 0;
+  }
+  71% {
+    transform: translateY(240px) scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes thrustFlicker {
+  0%, 100% { opacity: 0.25; transform: scaleY(0.85); }
+  50% { opacity: 1; transform: scaleY(1.2); }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes scrollVerticalMarquee {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+@keyframes orbitSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Cursor glow — hide on dark mode to avoid harsh blend */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cursor-glow {
+    opacity: 0.5;
+    mix-blend-mode: screen;
+  }
+}
+[data-theme="dark"] .cursor-glow {
+  opacity: 0.5;
+  mix-blend-mode: screen;
+}
+
 /* ── Animation Utilities ──────────────────────────────────────── */
 .animate-fade-in { animation: fadeIn var(--transition-enter) both; }
 .animate-slide-up { animation: slideUp var(--transition-spring) both; }
@@ -640,6 +780,74 @@ textarea.form-input {
 .animate-scale-in { animation: scaleIn var(--transition-spring) both; }
 .animate-shimmer { animation: shimmer 1.4s infinite; }
 .animate-spin { animation: spin 0.7s linear infinite; }
+.animate-float { animation: floatSlow 7s ease-in-out infinite; will-change: transform; }
+.animate-float-delayed { animation: floatSlow 7s ease-in-out infinite; animation-delay: -3.5s; will-change: transform; }
+.animate-rocket { animation: rocketLaunch 4s ease-in-out infinite; will-change: transform; }
+.animate-rocket-takeoff { animation: rocketTakeoff 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; will-change: transform, opacity; }
+.animate-thrust { animation: thrustFlicker 0.8s ease-in-out infinite; transform-origin: top center; }
+.animate-scroll-vertical { animation: scrollVerticalMarquee 8s linear infinite; will-change: transform; }
+
+/* ── Marquee ──────────────────────────────────────────────────── */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+.marquee-viewport:hover .marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}
+
+/* ── Scroll Reveal ────────────────────────────────────────────── */
+/* Toggle `.is-visible` (e.g. via IntersectionObserver) to trigger. Elements
+   are visible-by-default so content never hides behind unrun/failed JS. */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s var(--ease, cubic-bezier(0.16, 1, 0.3, 1)),
+              transform 0.6s var(--ease, cubic-bezier(0.16, 1, 0.3, 1));
+  transition-delay: calc(var(--reveal-index, 0) * 70ms);
+}
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── Underline-on-hover link ──────────────────────────────────── */
+.link-underline {
+  position: relative;
+  text-decoration: none;
+}
+.link-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 0;
+  height: 1.5px;
+  background: currentColor;
+  transition: width var(--transition-base);
+}
+.link-underline:hover::after,
+.link-underline:focus-visible::after {
+  width: 100%;
+}
+
+/* ── Sticky Nav Scroll State ──────────────────────────────────── */
+.nav-floating {
+  transition: background-color var(--transition-base), box-shadow var(--transition-base),
+              border-color var(--transition-base), backdrop-filter var(--transition-base);
+}
+.nav-floating.is-scrolled {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-bg4);
+  background-color: color-mix(in srgb, var(--color-bg2) 92%, transparent);
+}
 
 /* ── Gradient Text ────────────────────────────────────────────── */
 .gradient-text {
@@ -658,7 +866,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .skeleton {
+  :root:not([data-theme="light"]) .skeleton {
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.02);
   }
@@ -681,7 +889,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .skeleton::after {
+  :root:not([data-theme="light"]) .skeleton::after {
     background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
     animation: shimmer 2s infinite linear;
   }
@@ -719,7 +927,7 @@ textarea.form-input {
   color: var(--color-text);
 }
 @media (prefers-color-scheme: dark) {
-  .nav-item:hover {
+  :root:not([data-theme="light"]) .nav-item:hover {
     background: rgba(255,255,255,0.05);
   }
 }
@@ -737,7 +945,7 @@ textarea.form-input {
   font-weight: 600;
 }
 @media (prefers-color-scheme: dark) {
-  .nav-item.active {
+  :root:not([data-theme="light"]) .nav-item.active {
     background: linear-gradient(90deg, var(--color-primary-subtle), transparent);
     color: #fff;
     box-shadow: inset 2px 0 0 var(--color-primary);
@@ -764,7 +972,7 @@ textarea.form-input {
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
 }
 @media (prefers-color-scheme: dark) {
-  .nav-item.active::before {
+  :root:not([data-theme="light"]) .nav-item.active::before {
     display: none;
   }
 }
@@ -799,7 +1007,7 @@ textarea.form-input {
 }
 
 @media (prefers-color-scheme: dark) {
-  .tooltip-content {
+  :root:not([data-theme="light"]) .tooltip-content {
     background: var(--color-bg2);
     color: var(--color-text);
     border: 1px solid rgba(255,255,255,0.1);
@@ -821,6 +1029,7 @@ textarea.form-input {
 .page-header { margin-bottom: 28px; }
 
 .page-title {
+  font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
   color: var(--color-text);

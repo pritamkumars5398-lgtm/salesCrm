@@ -8,7 +8,7 @@ import {
 import { useAppStore } from "@/store/useAppStore";
 
 function avatarColor(name: string) {
-  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
+  const colors = ["#df2a2a", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777"];
   const i = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length;
   return colors[i];
 }
@@ -245,11 +245,11 @@ function Section({
         <span
           style={{
             width: 34, height: 34, borderRadius: 9,
-            background: danger ? "rgba(239,68,68,0.1)" : "rgba(99,102,241,0.08)",
+            background: danger ? "rgba(239,68,68,0.1)" : "rgba(223,42,42,0.08)",
             display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}
         >
-          <Icon size={16} style={{ color: danger ? "#ef4444" : "#6366f1" }} />
+          <Icon size={16} style={{ color: danger ? "#ef4444" : "#df2a2a" }} />
         </span>
         <div>
           <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>{title}</p>
@@ -274,10 +274,10 @@ function SaveRow({ saved, onSave, label = "Save changes" }: { saved: boolean; on
         onClick={onSave}
         style={{
           padding: "8px 20px", borderRadius: 10,
-          background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+          background: "linear-gradient(135deg, #df2a2a, #f24444)",
           color: "#fff", fontSize: 13, fontWeight: 700,
           border: "none", cursor: "pointer",
-          boxShadow: "0 4px 12px rgba(79,70,229,0.25)",
+          boxShadow: "0 4px 12px rgba(223,42,42,0.25)",
         }}
       >
         {label}

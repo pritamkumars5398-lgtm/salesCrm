@@ -76,8 +76,8 @@ const SCRAPERS: ScraperDef[] = [
     label: "Custom Actor",
     description: "Use any Apify actor with a custom JSON input. Full control — for power users and custom scrapers.",
     Icon: IconCode,
-    iconBg: "rgba(99,102,241,0.1)",
-    iconColor: "#6366f1",
+    iconBg: "rgba(223,42,42,0.1)",
+    iconColor: "#df2a2a",
     defaultActorId: "",
     fields: [
       { label: "Actor ID", key: "customActorId", placeholder: "e.g. username~actor-name or alphanumeric ID" },
@@ -118,7 +118,7 @@ function Field({
             style={{
               background: "transparent",
               border: "none",
-              color: "#6366f1",
+              color: "#df2a2a",
               fontSize: 10.5,
               fontWeight: 600,
               cursor: "pointer",
@@ -188,11 +188,11 @@ function ScraperCard({
   return (
     <div
       style={{
-        border: `1px solid ${isActive && isEnabled ? "rgba(79,70,229,0.3)" : "var(--color-bg4)"}`,
+        border: `1px solid ${isActive && isEnabled ? "rgba(223,42,42,0.3)" : "var(--color-bg4)"}`,
         borderRadius: 14,
         overflow: "hidden",
         background: isEnabled ? "var(--color-bg2)" : "var(--color-bg)",
-        boxShadow: isActive && isEnabled ? "0 0 0 3px rgba(79,70,229,0.07)" : "none",
+        boxShadow: isActive && isEnabled ? "0 0 0 3px rgba(223,42,42,0.07)" : "none",
         transition: "box-shadow 0.2s, border-color 0.2s, opacity 0.2s",
         opacity: isEnabled ? 1 : 0.55,
       }}
@@ -248,7 +248,7 @@ function ScraperCard({
           onClick={(e) => { e.stopPropagation(); onToggleEnabled(!isEnabled); }}
           style={{
             width: 38, height: 22, borderRadius: 11,
-            background: isEnabled ? "#4f46e5" : "#cbd5e1",
+            background: isEnabled ? "#df2a2a" : "#cbd5e1",
             border: "none", cursor: "pointer", padding: 0,
             position: "relative", flexShrink: 0,
             transition: "background 0.2s",
@@ -277,7 +277,7 @@ function ScraperCard({
               href={def.actorLink}
               target="_blank"
               rel="noreferrer"
-              style={{ fontSize: 11.5, color: "#6366f1", display: "inline-block", marginBottom: 16, textDecoration: "none" }}
+              style={{ fontSize: 11.5, color: "#df2a2a", display: "inline-block", marginBottom: 16, textDecoration: "none" }}
             >
               Find actor on Apify Store →
             </a>
@@ -315,9 +315,9 @@ function ScraperCard({
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "8px 18px", borderRadius: 9,
-                background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                background: "linear-gradient(135deg, #df2a2a, #f24444)",
                 border: "none", color: "#fff", fontSize: 12.5, fontWeight: 700,
-                cursor: "pointer", boxShadow: "0 4px 12px rgba(79,70,229,0.28)",
+                cursor: "pointer", boxShadow: "0 4px 12px rgba(223,42,42,0.28)",
               }}
             >
               {isSaved ? <><IconCheck size={13} /> Saved</> : "Save config"}
@@ -537,8 +537,8 @@ export default function ApifySources() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <IconKey size={15} style={{ color: "#6366f1" }} />
+          <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <IconKey size={15} style={{ color: "#df2a2a" }} />
           </span>
           <div>
             <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Apify API Token</p>
@@ -561,7 +561,7 @@ export default function ApifySources() {
             onClick={handleTokenSave}
             style={{
               padding: "9px 18px", borderRadius: 9,
-              background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#4f46e5,#6366f1)",
+              background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#df2a2a,#f24444)",
               border: tokenSaved ? "1px solid rgba(16,185,129,0.3)" : "none",
               color: tokenSaved ? "#10b981" : "#fff",
               fontSize: 13, fontWeight: 700, cursor: "pointer",
@@ -589,8 +589,8 @@ export default function ApifySources() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <IconCopy size={15} style={{ color: "#6366f1" }} />
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <IconCopy size={15} style={{ color: "#df2a2a" }} />
             </span>
             <div>
               <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Copy Settings from Another Agent</p>
@@ -635,7 +635,7 @@ export default function ApifySources() {
               onClick={() => handleCopyApifySettings("all")}
               style={{
                 padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700,
-                border: "none", background: "linear-gradient(135deg,#4f46e5,#6366f1)",
+                border: "none", background: "linear-gradient(135deg,#df2a2a,#f24444)",
                 color: "#fff", cursor: copySourceAgentId ? "pointer" : "not-allowed",
                 opacity: copySourceAgentId ? 1 : 0.5, transition: "opacity 0.15s",
                 whiteSpace: "nowrap",

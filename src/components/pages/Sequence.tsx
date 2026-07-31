@@ -64,8 +64,8 @@ export default function Sequence() {
       <div className="flex-1 overflow-y-auto p-8" style={{ maxWidth: 600 }}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
-          <span className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(99,102,241,0.1)" }}>
-            <IconLayoutList size={20} style={{ color: "#6366f1" }} />
+          <span className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(223,42,42,0.1)" }}>
+            <IconLayoutList size={20} style={{ color: "#df2a2a" }} />
           </span>
           <div>
             <h2 className="text-[16px] font-semibold leading-tight" style={{ color: "var(--color-text)" }}>Sequence builder</h2>
@@ -93,7 +93,7 @@ export default function Sequence() {
           <button
             onClick={addStep}
             className="flex items-center gap-1.5 transition-all duration-150 active:scale-95"
-            style={{ padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,0.1)", border: "none", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            style={{ padding: "6px 14px", borderRadius: 8, background: "rgba(223,42,42,0.1)", border: "none", color: "#df2a2a", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
           >
             <IconPlus size={13} /> Add step
           </button>
@@ -129,7 +129,7 @@ export default function Sequence() {
           </select>
         </div>
 
-        <div className="flex items-start gap-2 p-3 rounded-[10px] text-[12px] mb-6" style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.15)", color: "#6366f1" }}>
+        <div className="flex items-start gap-2 p-3 rounded-[10px] text-[12px] mb-6" style={{ background: "rgba(223,42,42,0.07)", border: "1px solid rgba(223,42,42,0.15)", color: "#df2a2a" }}>
           <IconSparkles size={13} style={{ marginTop: 1, flexShrink: 0 }} />
           Smart stop — if a lead replies on any channel, remaining steps cancel automatically.
         </div>
@@ -137,7 +137,7 @@ export default function Sequence() {
         <button
           onClick={saveSequence}
           className="flex items-center justify-center gap-2 w-full transition-all duration-150 active:scale-[0.98]"
-          style={{ padding: "10px 20px", borderRadius: 10, background: "linear-gradient(135deg, #4f46e5, #6366f1)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(79,70,229,0.28)" }}
+          style={{ padding: "10px 20px", borderRadius: 10, background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(223,42,42,0.28)" }}
         >
           <IconDeviceFloppy size={15} /> Save sequence
         </button>

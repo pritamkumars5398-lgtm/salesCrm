@@ -164,7 +164,7 @@ Return ONLY valid JSON format:
 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eaeaea; font-family: sans-serif;">
   <p style="font-size: 13px; color: #666;">Are you open to a quick chat?</p>
   <div style="display: flex; gap: 12px; margin-top: 12px;">
-    <a href="${interestedUrl}" style="display: inline-block; padding: 10px 18px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">Yes, I'm interested</a>
+    <a href="${interestedUrl}" style="display: inline-block; padding: 10px 18px; background-color: #df2a2a; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">Yes, I'm interested</a>
     <a href="${notInterestedUrl}" style="display: inline-block; padding: 10px 18px; background-color: #f1f5f9; color: #475569; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid #cbd5e1;">Not right now</a>
   </div>
 </div>

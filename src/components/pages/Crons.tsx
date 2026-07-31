@@ -216,7 +216,7 @@ export default function Crons() {
       {showForm && (
         <div
           className="bg-bg2 backdrop-blur-md border border-bg4 rounded-[20px] mb-4 overflow-hidden mb-4"
-          style={{ borderColor: "rgba(108,99,255,0.25)", background: "rgba(108,99,255,0.04)" }}
+          style={{ borderColor: "rgba(223,42,42,0.25)", background: "rgba(223,42,42,0.04)" }}
         >
           <div className="flex items-center justify-between px-5 py-4 border-b border-bg4 bg-bg2">
             <div className="text-[14.5px] font-bold flex items-center gap-2.5 text-text tracking-tight"><IconClock size={16} style={{ color: "var(--color-accent2)" }} /> New schedule</div>
@@ -281,7 +281,7 @@ export default function Crons() {
               className="rounded-[14px] border overflow-hidden transition-colors"
               style={{
                 background: "var(--color-bg2)",
-                borderColor: isEditing ? "rgba(108,99,255,0.35)" : job.enabled ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.05)",
+                borderColor: isEditing ? "rgba(223,42,42,0.35)" : job.enabled ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.05)",
                 opacity: job.enabled ? 1 : 0.6,
               }}
             >
@@ -350,7 +350,7 @@ export default function Crons() {
                     onClick={() => isEditing ? setEditingId(null) : startEdit(job)}
                     title="Edit"
                     className="inline-flex items-center justify-center gap-1.5 !px-3 !py-[7px] !text-xs !rounded-lg !bg-transparent !border-transparent !shadow-none hover:!bg-bg3 hover:!text-text transition-all duration-150"
-                    style={{ color: isEditing ? "#6366f1" : "var(--color-text3)" }}
+                    style={{ color: isEditing ? "#df2a2a" : "var(--color-text3)" }}
                   >
                     <IconPencil size={13} /> {isEditing ? "Cancel" : "Edit"}
                   </button>
@@ -374,7 +374,7 @@ export default function Crons() {
 
               {/* Inline edit form */}
               {isEditing && (
-                <div className="border-t px-5 py-5 grid grid-cols-2 gap-4" style={{ borderColor: "rgba(108,99,255,0.15)", background: "rgba(108,99,255,0.03)" }}>
+                <div className="border-t px-5 py-5 grid grid-cols-2 gap-4" style={{ borderColor: "rgba(223,42,42,0.15)", background: "rgba(223,42,42,0.03)" }}>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Name</label>
                     <input
@@ -408,7 +408,7 @@ export default function Crons() {
                     </button>
                     <button
                       className="inline-flex items-center justify-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-semibold text-white hover:brightness-105 transition-all"
-                      style={{ background: "linear-gradient(135deg,#4f46e5,#6366f1)", border: "none" }}
+                      style={{ background: "linear-gradient(135deg,#df2a2a,#f24444)", border: "none" }}
                       onClick={() => saveEdit(job)}
                     >
                       <IconCheck size={13} /> Save changes

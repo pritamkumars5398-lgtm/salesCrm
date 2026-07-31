@@ -104,7 +104,7 @@ export default function CallConvo({ messages, lead }: Props) {
             className="max-w-[82%] px-3.5 py-2.5 rounded-xl text-[12.5px] leading-[1.55] border"
             style={
               msg.role === "agent"
-                ? { background: "rgba(108,99,255,0.12)", color: "var(--color-accent2)", borderColor: "rgba(108,99,255,0.2)" }
+                ? { background: "rgba(223,42,42,0.12)", color: "var(--color-accent2)", borderColor: "rgba(223,42,42,0.2)" }
                 : { background: "var(--color-bg3)", color: "var(--color-text)", borderColor: "rgba(0,0,0,0.1)" }
             }
           >

@@ -52,8 +52,8 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     title: "AI Brain",
     description: "Language model & API credentials",
     Icon: IconBrain,
-    iconBg: "rgba(99,102,241,0.1)",
-    iconColor: "#6366f1",
+    iconBg: "rgba(223,42,42,0.1)",
+    iconColor: "#df2a2a",
     fields: [
       { label: "Provider", key: "llmProvider", placeholder: "", options: ["Groq (Llama 3)", "Claude (Anthropic)", "GPT-4o (OpenAI)", "Gemini 1.5 Pro"], hint: "Model used for all AI responses" },
       { label: "LLM API Key (Groq/OpenAI)", key: "llmApiKey", type: "password", placeholder: "Enter your Groq or OpenAI API key...", hint: "Stored encrypted, never exposed" },

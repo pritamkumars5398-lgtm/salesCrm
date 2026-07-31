@@ -3,7 +3,7 @@ import React from "react";
 
 function avatarColor(name: string): string {
   const COLORS = [
-    "#4f46e5", "#0891b2", "#059669", "#d97706",
+    "#df2a2a", "#0891b2", "#059669", "#d97706",
     "#7c3aed", "#db2777", "#dc2626", "#0369a1",
   ];
   const i = name

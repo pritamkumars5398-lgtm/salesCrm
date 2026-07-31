@@ -546,7 +546,7 @@ export default function Leads({ onAddLead }: Props) {
                   gap: 4,
                   padding: "4px 10px",
                   borderRadius: 8,
-                  border: isActive ? "1px solid rgba(99,102,241,0.15)" : "1px solid transparent",
+                  border: isActive ? "1px solid rgba(223,42,42,0.15)" : "1px solid transparent",
                   background: isActive ? "var(--color-primary-subtle)" : "transparent",
                   color: isActive ? "var(--color-primary-light)" : "var(--color-text3)",
                   fontSize: 12,
@@ -563,7 +563,7 @@ export default function Leads({ onAddLead }: Props) {
                     fontWeight: 700,
                     padding: "1px 5px",
                     borderRadius: 99,
-                    background: isActive ? "rgba(99,102,241,0.12)" : "var(--color-bg3)",
+                    background: isActive ? "rgba(223,42,42,0.12)" : "var(--color-bg3)",
                     color: isActive ? "var(--color-primary-light)" : "var(--color-text4)",
                     fontFamily: "var(--font-mono)",
                   }}
@@ -875,7 +875,7 @@ export default function Leads({ onAddLead }: Props) {
                     color: trashView ? "var(--color-primary-light)" : undefined,
                     background: trashView ? "var(--color-primary-subtle)" : undefined,
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = trashView ? "rgba(99,102,241,0.15)" : "var(--color-bg3)"}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = trashView ? "rgba(223,42,42,0.15)" : "var(--color-bg3)"}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = trashView ? "var(--color-primary-subtle)" : "transparent"}
                 >
                   <IconTrash size={13} /> {trashView ? "Viewing Active" : "Viewing Trash"}
@@ -896,7 +896,7 @@ export default function Leads({ onAddLead }: Props) {
             padding: "10px 16px",
             marginBottom: 8,
             background: "var(--color-primary-subtle)",
-            border: "1px solid rgba(99,102,241,0.2)",
+            border: "1px solid rgba(223,42,42,0.2)",
             borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
             animation: "slideDown 150ms ease both",
           }}
@@ -907,7 +907,7 @@ export default function Leads({ onAddLead }: Props) {
               height: 22,
               borderRadius: "var(--radius-md)",
               background: "var(--color-primary-subtle)",
-              border: "1px solid rgba(99,102,241,0.3)",
+              border: "1px solid rgba(223,42,42,0.3)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1025,7 +1025,7 @@ export default function Leads({ onAddLead }: Props) {
                 style={{
                   background: lead.outreachStatus === "sending"
                     ? "var(--color-primary-subtle)"
-                    : selected.has(lead._id) ? "rgba(99,102,241,0.06)" : undefined,
+                    : selected.has(lead._id) ? "rgba(223,42,42,0.06)" : undefined,
                 }}
               >
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1146,7 +1146,7 @@ export default function Leads({ onAddLead }: Props) {
                     <StatusPill status={lead.status} />
                     {lead.outreachStatus === "sending" && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse"
-                        style={{ background: "rgba(99,102,241,0.12)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.3)" }}>
+                        style={{ background: "rgba(223,42,42,0.12)", color: "#df2a2a", border: "1px solid rgba(223,42,42,0.3)" }}>
                         ● Sending…
                       </span>
                     )}
@@ -1222,7 +1222,7 @@ export default function Leads({ onAddLead }: Props) {
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150"
                           style={{
                             padding: "5px 10px",
-                            background: noContact ? "var(--color-bg3)" : "linear-gradient(135deg,#4f46e5,#6366f1)",
+                            background: noContact ? "var(--color-bg3)" : "linear-gradient(135deg,#df2a2a,#f24444)",
                             color: noContact ? "var(--color-text3)" : "#fff",
                             border: noContact ? "1px solid var(--color-bg4)" : "none",
                             cursor: noContact ? "not-allowed" : "pointer",

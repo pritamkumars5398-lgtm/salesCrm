@@ -164,7 +164,7 @@ export default function CampaignProgress() {
                 onClick={handleRetry}
                 disabled={retrying}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
-                style={{ background: "#4f46e5", opacity: retrying ? 0.7 : 1 }}
+                style={{ background: "#df2a2a", opacity: retrying ? 0.7 : 1 }}
               >
                 <IconRefresh size={13} className={retrying ? "animate-spin" : ""} />
                 Retry {activeCampaign.failed} failed

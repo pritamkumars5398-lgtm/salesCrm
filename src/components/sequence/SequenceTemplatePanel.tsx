@@ -24,8 +24,8 @@ export default function SequenceTemplatePanel({ steps, onLoad }: Props) {
             className="text-left transition-all duration-150"
             style={{ padding: "12px 14px", borderRadius: 12, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", cursor: "pointer" }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "#6366f1";
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(99,102,241,0.06)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "#df2a2a";
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(223,42,42,0.06)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-bg4)";
@@ -34,7 +34,7 @@ export default function SequenceTemplatePanel({ steps, onLoad }: Props) {
           >
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-text)" }}>{t.name}</p>
             <p className="text-[11.5px] mt-0.5" style={{ color: "var(--color-text3)" }}>{t.desc}</p>
-            <p className="text-[10.5px] mt-1.5 font-medium" style={{ color: "#6366f1" }}>{t.meta}</p>
+            <p className="text-[10.5px] mt-1.5 font-medium" style={{ color: "#df2a2a" }}>{t.meta}</p>
           </button>
         ))}
       </div>

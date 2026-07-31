@@ -2,19 +2,14 @@
 import { useState } from "react";
 import { IconArrowLeft, IconEye, IconEyeOff } from "@tabler/icons-react";
 import { authLogin, authSignup } from "@/lib/auth";
+import Button from "@/components/ui/Button";
+import { HandNote } from "@/components/ui/HandDrawn";
 
 interface Props {
   mode: "login" | "signup";
   onClose: () => void;
   onAuth: (name: string, email: string) => void;
 }
-
-const INPUT_STYLE: React.CSSProperties = {
-  width: "100%", padding: "10px 14px", borderRadius: 10,
-  border: "1px solid var(--color-bg4)", background: "transparent",
-  color: "var(--color-text)", fontSize: 13, outline: "none", boxSizing: "border-box",
-  boxShadow: "none",
-};
 
 export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props) {
   const [mode, setMode] = useState(initialMode);
@@ -33,14 +28,6 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [businessServices, setBusinessServices] = useState("");
   const [docLink, setDocLink] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
-
-  const TEXTAREA_STYLE: React.CSSProperties = {
-    ...INPUT_STYLE,
-    minHeight: 70,
-    resize: "vertical",
-    padding: "8px 12px",
-    fontFamily: "inherit",
-  };
 
   async function handleAction(e: React.FormEvent) {
     e.preventDefault();
@@ -108,24 +95,56 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
         padding: "24px 48px",
       }}
     >
-      {/* Grid background */}
+      {/* Perspective floor grid */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           zIndex: 0,
-          backgroundImage: `
-            linear-gradient(rgba(99,102,241,0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(99,102,241,0.06) 1px, transparent 1px)
-          `,
-          backgroundSize: "44px 44px",
+          overflow: "hidden",
+          perspective: "500px",
+          perspectiveOrigin: "50% 100%",
           pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: "-25%",
+            right: "-25%",
+            bottom: 0,
+            height: "60%",
+            backgroundImage: `
+              linear-gradient(rgba(223,42,42,0.14) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(223,42,42,0.14) 1px, transparent 1px)
+            `,
+            backgroundSize: "48px 48px",
+            transform: "rotateX(72deg)",
+            transformOrigin: "bottom",
+            maskImage: "linear-gradient(to top, black 15%, transparent 85%)",
+            WebkitMaskImage: "linear-gradient(to top, black 15%, transparent 85%)",
+          }}
+        />
+      </div>
+      {/* Grain texture */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 0,
+          opacity: 0.03,
+          mixBlendMode: "overlay",
+          pointerEvents: "none",
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
         }}
       />
       {/* Glow */}
-      {/* <div
+      <div
         aria-hidden
+        className="animate-float"
         style={{
           position: "absolute",
           top: "10%",
@@ -134,10 +153,10 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
           width: 700,
           height: 400,
           zIndex: 0,
-          background: "radial-gradient(ellipse at center, rgba(99,102,241,0.14) 0%, transparent 70%)",
+          background: "radial-gradient(ellipse at center, rgba(223,42,42,0.14) 0%, transparent 70%)",
           pointerEvents: "none",
         }}
-      /> */}
+      />
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 10 }}>
@@ -163,9 +182,9 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1" }} />
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#df2a2a" }} />
           <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text)" }}>
-            Sales<span style={{ color: "#6366f1" }}>Agent</span>
+            Sales<span style={{ color: "#df2a2a" }}>Agent</span>
           </span>
         </div>
       </div>
@@ -173,7 +192,8 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
       {/* Center content */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1, zIndex: 1, margin: "40px 0" }}>
         <div
-          className="relative w-full"
+          key={`${mode}-${signupStep}`}
+          className="relative w-full animate-slide-up"
           style={{
             maxWidth: 440,
             background: "transparent",
@@ -183,7 +203,11 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
             boxSizing: "border-box",
           }}
         >
-
+          <HandNote
+            label={mode === "login" ? "Welcome back!" : "Free to start"}
+            rotate={-8}
+            style={{ top: -6, left: "calc(100% + 20px)" }}
+          />
 
           {mode === "login" ? (
             <div style={{ marginBottom: 24 }}>
@@ -211,9 +235,9 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 Step {signupStep} of 3
               </span>
               <div style={{ display: "flex", gap: 4, width: "60%" }}>
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 1 ? "#6366f1" : "var(--color-bg4)" }} />
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 2 ? "#6366f1" : "var(--color-bg4)" }} />
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 3 ? "#6366f1" : "var(--color-bg4)" }} />
+                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 1 ? "#df2a2a" : "var(--color-bg4)" }} />
+                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 2 ? "#df2a2a" : "var(--color-bg4)" }} />
+                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 3 ? "#df2a2a" : "var(--color-bg4)" }} />
               </div>
             </div>
           )}
@@ -223,14 +247,14 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               <>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
-                  <input disabled={loading} style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input disabled={loading} className="form-input" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
                   <div style={{ position: "relative", width: "100%" }}>
                     <input
                       disabled={loading}
-                      style={{ ...INPUT_STYLE, paddingRight: 40 }}
+                      className="form-input" style={{ paddingRight: 40 }}
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter password"
                       value={password}
@@ -266,18 +290,18 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Full name</label>
-                      <input disabled={loading} style={INPUT_STYLE} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+                      <input disabled={loading} className="form-input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
-                      <input disabled={loading} style={INPUT_STYLE} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <input disabled={loading} className="form-input" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
                       <div style={{ position: "relative", width: "100%" }}>
                         <input
                           disabled={loading}
-                          style={{ ...INPUT_STYLE, paddingRight: 40 }}
+                          className="form-input" style={{ paddingRight: 40 }}
                           type={showPassword ? "text" : "password"}
                           placeholder="Min. 6 characters"
                           value={password}
@@ -313,15 +337,15 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business name</label>
-                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. Acme Inc" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+                      <input disabled={loading} className="form-input" placeholder="e.g. Acme Inc" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business website (optional)</label>
-                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. https://acme.com" value={businessWebsite} onChange={(e) => setBusinessWebsite(e.target.value)} />
+                      <input disabled={loading} className="form-input" placeholder="e.g. https://acme.com" value={businessWebsite} onChange={(e) => setBusinessWebsite(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Business phone number (optional)</label>
-                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. +91 98765 43210" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
+                      <input disabled={loading} className="form-input" placeholder="e.g. +91 98765 43210" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                     </div>
                   </>
                 )}
@@ -330,15 +354,15 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Services offered (optional)</label>
-                      <textarea disabled={loading} style={TEXTAREA_STYLE} placeholder="e.g. We offer residential plumbing, drain cleaning..." value={businessServices} onChange={(e) => setBusinessServices(e.target.value)} />
+                      <textarea disabled={loading} className="form-input" placeholder="e.g. We offer residential plumbing, drain cleaning..." value={businessServices} onChange={(e) => setBusinessServices(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Resource brochure / document link (optional)</label>
-                      <input disabled={loading} style={INPUT_STYLE} placeholder="e.g. https://acme.com/brochure.pdf" value={docLink} onChange={(e) => setDocLink(e.target.value)} />
+                      <input disabled={loading} className="form-input" placeholder="e.g. https://acme.com/brochure.pdf" value={docLink} onChange={(e) => setDocLink(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Custom AI prompt / instructions (optional)</label>
-                      <textarea disabled={loading} style={TEXTAREA_STYLE} placeholder="e.g. Speak politely. Always sign off with our name..." value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} />
+                      <textarea disabled={loading} className="form-input" placeholder="e.g. Speak politely. Always sign off with our name..." value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)} />
                     </div>
                   </>
                 )}
@@ -349,86 +373,30 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
 
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
               {mode === "signup" && signupStep > 1 && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="lg"
                   disabled={loading}
+                  style={{ flex: 1 }}
                   onClick={() => setSignupStep((s) => s - 1)}
-                  style={{
-                    flex: 1,
-                    padding: "11px 20px",
-                    borderRadius: 10,
-                    background: "var(--color-bg3)",
-                    color: "var(--color-text2)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    border: "1px solid var(--color-bg4)",
-                    cursor: loading ? "not-allowed" : "pointer",
-                    boxShadow: "none",
-                    opacity: loading ? 0.6 : 1,
-                  }}
                 >
                   Back
-                </button>
+                </Button>
               )}
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  flex: 2,
-                  padding: "11px 20px",
-                  borderRadius: 10,
-                  background: loading ? "var(--color-bg4)" : "linear-gradient(135deg, #4f46e5, #6366f1)",
-                  color: loading ? "var(--color-text3)" : "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  border: "none",
-                  cursor: loading ? "not-allowed" : "pointer",
-                  boxShadow: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                {loading ? (
-                  <>
-                    <svg
-                      className="animate-spin"
-                      style={{
-                        width: 16,
-                        height: 16,
-                        color: "currentColor",
-                      }}
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        style={{ opacity: 0.25 }}
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        style={{ opacity: 0.75 }}
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    <span>{mode === "login" ? "Logging in..." : "Creating account..."}</span>
-                  </>
-                ) : (
-                  mode === "login"
+              <Button type="submit" variant="primary" size="lg" loading={loading} style={{ flex: 2 }}>
+                {loading
+                  ? mode === "login"
+                    ? "Logging in..."
+                    : "Creating account..."
+                  : mode === "login"
                     ? "Log in →"
                     : signupStep === 1
                       ? "Next: Business Details →"
                       : signupStep === 2
                         ? "Next: AI Setup →"
-                        : "Create free account →"
-                )}
-              </button>
+                        : "Create free account →"}
+              </Button>
             </div>
           </form>
 
@@ -441,7 +409,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 type="button"
                 disabled={loading}
                 onClick={() => { setMode("login"); setError(""); setSignupStep(1); }}
-                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
+                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#df2a2a", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Log in to your dashboard →
               </button>
@@ -455,7 +423,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 type="button"
                 disabled={loading}
                 onClick={() => { setMode("signup"); setError(""); setSignupStep(1); }}
-                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#4f46e5", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
+                style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#df2a2a", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Create your free account →
               </button>

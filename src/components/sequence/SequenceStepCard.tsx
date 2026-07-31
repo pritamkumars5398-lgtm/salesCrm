@@ -20,7 +20,7 @@ export default function SequenceStepCard({ step, index, isLast, onChange, onRemo
       <div className="flex flex-col items-center" style={{ width: 32, flexShrink: 0 }}>
         <div
           className="flex items-center justify-center text-[11px] font-semibold"
-          style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(99,102,241,0.1)", color: "#6366f1", flexShrink: 0 }}
+          style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(223,42,42,0.1)", color: "#df2a2a", flexShrink: 0 }}
         >
           {step.order}
         </div>

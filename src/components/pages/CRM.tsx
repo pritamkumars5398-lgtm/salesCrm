@@ -255,7 +255,7 @@ export default function CRM() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-text2)" }}>Missing Contact Info</label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--color-text)", cursor: "pointer" }}>
-                    <input type="checkbox" checked={missingContact} onChange={(e) => setMissingContact(e.target.checked)} className="accent-[#6366f1] cursor-pointer" />
+                    <input type="checkbox" checked={missingContact} onChange={(e) => setMissingContact(e.target.checked)} className="accent-[#df2a2a] cursor-pointer" />
                     Show leads with no email AND no phone
                   </label>
                 </div>
@@ -276,10 +276,10 @@ export default function CRM() {
                 key={key}
                 className="rounded-[14px] p-3 border min-w-0 transition-all duration-200"
                 style={{
-                  background: isDraggingOver ? "rgba(99,102,241,0.04)" : "var(--color-bg2)",
-                  borderColor: isDraggingOver ? "#6366f1" : "rgba(0,0,0,0.1)",
+                  background: isDraggingOver ? "rgba(223,42,42,0.04)" : "var(--color-bg2)",
+                  borderColor: isDraggingOver ? "#df2a2a" : "rgba(0,0,0,0.1)",
                   minHeight: 450,
-                  boxShadow: isDraggingOver ? "0 0 14px rgba(99,102,241,0.12)" : "none",
+                  boxShadow: isDraggingOver ? "0 0 14px rgba(223,42,42,0.12)" : "none",
                 }}
                 onDragOver={(e) => handleDragOver(e, key)}
                 onDragLeave={() => setDragOverStage(null)}
@@ -345,7 +345,7 @@ export default function CRM() {
                             }}
                             title="Open Conversation"
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = "#6366f1";
+                              e.currentTarget.style.color = "#df2a2a";
                               e.currentTarget.style.backgroundColor = "var(--color-bg4)";
                             }}
                             onMouseLeave={(e) => {
@@ -437,7 +437,7 @@ export default function CRM() {
             <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 8px 0" }}>Update Pipeline Stage</h3>
             <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "0 0 20px 0", lineHeight: 1.4 }}>
               Move <strong>{moveModal.lead.fullName}</strong> to{" "}
-              <strong style={{ color: "#6366f1" }}>
+              <strong style={{ color: "#df2a2a" }}>
                 {STAGES.find((s) => s.key === moveModal.targetStage)?.label}
               </strong>
             </p>
@@ -490,13 +490,13 @@ export default function CRM() {
                   flex: 1,
                   padding: "10px 0",
                   borderRadius: 10,
-                  background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                  background: "linear-gradient(135deg, #df2a2a, #f24444)",
                   color: "#fff",
                   fontSize: 12.5,
                   fontWeight: 700,
                   border: "none",
                   cursor: "pointer",
-                  boxShadow: "0 4px 12px rgba(79,70,229,0.25)",
+                  boxShadow: "0 4px 12px rgba(223,42,42,0.25)",
                 }}
               >
                 Confirm

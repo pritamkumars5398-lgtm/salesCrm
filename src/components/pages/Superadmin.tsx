@@ -193,7 +193,7 @@ export default function Superadmin() {
     return (
       <div style={{ padding: 40, color: "var(--color-text3)", fontSize: 13, fontFamily: "var(--font-sans)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 16, height: 16, border: "2px solid #6366f1", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+          <div style={{ width: 16, height: 16, border: "2px solid #df2a2a", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
           <span>Syncing platform analytics...</span>
         </div>
         <style dangerouslySetInnerHTML={{ __html: `@keyframes spin { to { transform: rotate(360deg); } }` }} />
@@ -240,7 +240,7 @@ export default function Superadmin() {
       {/* Overview Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
         {[
-          { label: "Active Customers", val: summary.totalUsers.toLocaleString(), sub: `${summary.totalAgents} Agents active`, Icon: IconUsers, color: "#4f46e5" },
+          { label: "Active Customers", val: summary.totalUsers.toLocaleString(), sub: `${summary.totalAgents} Agents active`, Icon: IconUsers, color: "#df2a2a" },
           { label: "AI Outreach Calls", val: summary.totalCalls.toLocaleString(), sub: "Through Twilio/Vapi", Icon: IconPhoneCall, color: "#10b981" },
           { label: "Total LLM Tokens", val: summary.totalTokens.toLocaleString(), sub: `From ${summary.totalMessages} interactions`, Icon: IconCpu, color: "#8b5cf6" },
           {
@@ -287,8 +287,8 @@ export default function Superadmin() {
             <svg viewBox="0 0 500 180" style={{ width: "100%", height: "100%" }}>
               <defs>
                 <linearGradient id="gradient-area" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+                  <stop offset="0%" stopColor="#df2a2a" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#df2a2a" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
               {/* Grid Lines */}
@@ -311,10 +311,10 @@ export default function Superadmin() {
                 return (
                   <>
                     <path d={dArea} fill="url(#gradient-area)" />
-                    <path d={dLine} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" />
+                    <path d={dLine} fill="none" stroke="#df2a2a" strokeWidth="2.5" strokeLinecap="round" />
                     {points.map((p, idx) => (
                       <g key={idx}>
-                        <circle cx={p.x} cy={p.y} r="4" fill="#fff" stroke="#6366f1" strokeWidth="2" />
+                        <circle cx={p.x} cy={p.y} r="4" fill="#fff" stroke="#df2a2a" strokeWidth="2" />
                         <text x={p.x} y="166" fontSize="9" textAnchor="middle" fill="var(--color-text3)" fontWeight="bold">
                           {weeklyUsageTrend[idx].day}
                         </text>
@@ -359,11 +359,11 @@ export default function Superadmin() {
       </div>
 
       {/* Interactive Cost Analyzer & Customer Pricing Calculator */}
-      <div style={{ background: "rgba(99, 102, 241, 0.04)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: 20, padding: 24, marginBottom: 28 }}>
+      <div style={{ background: "rgba(223, 42, 42, 0.04)", border: "1px solid rgba(223, 42, 42, 0.15)", borderRadius: 20, padding: 24, marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-          <IconCalculator size={20} style={{ color: "#6366f1" }} />
+          <IconCalculator size={20} style={{ color: "#df2a2a" }} />
           <h4 style={{ fontSize: 16, fontWeight: 800, color: "var(--color-text)", margin: 0 }}>Customer Pricing & Cost Analyzer</h4>
-          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "rgba(99, 102, 241, 0.1)", color: "#6366f1", marginLeft: "auto" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "rgba(223, 42, 42, 0.1)", color: "#df2a2a", marginLeft: "auto" }}>
             Margins Calculator
           </span>
         </div>
@@ -374,41 +374,41 @@ export default function Superadmin() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 <span style={{ color: "var(--color-text2)" }}>Leads Scraped</span>
-                <span style={{ color: "#6366f1" }}>{calcLeads.toLocaleString()} leads</span>
+                <span style={{ color: "#df2a2a" }}>{calcLeads.toLocaleString()} leads</span>
               </div>
-              <input type="range" min="0" max="5000" step="50" value={calcLeads} onChange={(e) => setCalcLeads(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              <input type="range" min="0" max="5000" step="50" value={calcLeads} onChange={(e) => setCalcLeads(Number(e.target.value))} style={{ width: "100%", accentColor: "#df2a2a" }} />
             </div>
 
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 <span style={{ color: "var(--color-text2)" }}>WhatsApp Messages</span>
-                <span style={{ color: "#6366f1" }}>{calcWA.toLocaleString()} msgs</span>
+                <span style={{ color: "#df2a2a" }}>{calcWA.toLocaleString()} msgs</span>
               </div>
-              <input type="range" min="0" max="10000" step="100" value={calcWA} onChange={(e) => setCalcWA(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              <input type="range" min="0" max="10000" step="100" value={calcWA} onChange={(e) => setCalcWA(Number(e.target.value))} style={{ width: "100%", accentColor: "#df2a2a" }} />
             </div>
 
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 <span style={{ color: "var(--color-text2)" }}>SMS Messages</span>
-                <span style={{ color: "#6366f1" }}>{calcSMS.toLocaleString()} SMS</span>
+                <span style={{ color: "#df2a2a" }}>{calcSMS.toLocaleString()} SMS</span>
               </div>
-              <input type="range" min="0" max="5000" step="50" value={calcSMS} onChange={(e) => setCalcSMS(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              <input type="range" min="0" max="5000" step="50" value={calcSMS} onChange={(e) => setCalcSMS(Number(e.target.value))} style={{ width: "100%", accentColor: "#df2a2a" }} />
             </div>
 
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 <span style={{ color: "var(--color-text2)" }}>AI Call Duration</span>
-                <span style={{ color: "#6366f1" }}>{calcCalls.toLocaleString()} minutes</span>
+                <span style={{ color: "#df2a2a" }}>{calcCalls.toLocaleString()} minutes</span>
               </div>
-              <input type="range" min="0" max="1000" step="10" value={calcCalls} onChange={(e) => setCalcCalls(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              <input type="range" min="0" max="1000" step="10" value={calcCalls} onChange={(e) => setCalcCalls(Number(e.target.value))} style={{ width: "100%", accentColor: "#df2a2a" }} />
             </div>
 
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
                 <span style={{ color: "var(--color-text2)" }}>Emails Sent</span>
-                <span style={{ color: "#6366f1" }}>{calcEmails.toLocaleString()} emails</span>
+                <span style={{ color: "#df2a2a" }}>{calcEmails.toLocaleString()} emails</span>
               </div>
-              <input type="range" min="0" max="25000" step="500" value={calcEmails} onChange={(e) => setCalcEmails(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              <input type="range" min="0" max="25000" step="500" value={calcEmails} onChange={(e) => setCalcEmails(Number(e.target.value))} style={{ width: "100%", accentColor: "#df2a2a" }} />
             </div>
 
             <div>
@@ -458,7 +458,7 @@ export default function Superadmin() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text3)", margin: 0 }}>SUGGESTED CLIENT SUBSCRIPTION RETAIL</p>
-                  <p style={{ fontSize: 24, fontWeight: 800, color: "#6366f1", margin: 0 }}>₹{Math.round(recommendedRetail).toLocaleString()}/mo</p>
+                  <p style={{ fontSize: 24, fontWeight: 800, color: "#df2a2a", margin: 0 }}>₹{Math.round(recommendedRetail).toLocaleString()}/mo</p>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "#10b981", margin: 0 }}>NET MARGIN (₹)</p>
@@ -807,7 +807,7 @@ export default function Superadmin() {
                         flex: 1,
                         padding: "10px 0",
                         borderRadius: 10,
-                        background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                        background: "linear-gradient(135deg, #df2a2a, #f24444)",
                         color: "#fff",
                         fontSize: 12.5,
                         fontWeight: 700,

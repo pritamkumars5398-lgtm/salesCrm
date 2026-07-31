@@ -145,9 +145,9 @@ export default function ScheduleBuilder({
                 onClick={() => toggleDay(d)}
                 className="px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border transition-all"
                 style={{
-                  background: active ? "rgba(99,102,241,0.12)" : "#fff",
-                  borderColor: active ? "#6366f1" : "#e2e8f0",
-                  color: active ? "#4f46e5" : "#64748b",
+                  background: active ? "rgba(223,42,42,0.12)" : "#fff",
+                  borderColor: active ? "#df2a2a" : "#e2e8f0",
+                  color: active ? "#df2a2a" : "#64748b",
                 }}
               >
                 {label}

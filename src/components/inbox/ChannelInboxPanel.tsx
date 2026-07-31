@@ -135,7 +135,7 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
           <button
             onClick={() => setComposeOpen(true)}
             className="flex items-center justify-center gap-1.5 w-full rounded-lg text-[12px] font-semibold py-2 border-none cursor-pointer"
-            style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)", color: "#fff" }}
+            style={{ background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff" }}
           >
             <IconPencilPlus size={14} /> Compose
           </button>

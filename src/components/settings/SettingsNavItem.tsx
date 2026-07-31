@@ -14,7 +14,7 @@ export default function SettingsNavItem({ card, active, toggles, onSelect }: Pro
     <button
       onClick={() => onSelect(card.key)}
       className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-      style={{ padding: "8px 10px", borderRadius: 10, background: isActive ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer" }}
+      style={{ padding: "8px 10px", borderRadius: 10, background: isActive ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer" }}
     >
       <span
         className="shrink-0 flex items-center justify-center"
@@ -23,7 +23,7 @@ export default function SettingsNavItem({ card, active, toggles, onSelect }: Pro
         <card.Icon size={15} style={{ color: isActive ? card.iconColor : "var(--color-text3)" }} />
       </span>
       <div className="min-w-0">
-        <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: isActive ? "#4f46e5" : "var(--color-text)" }}>
+        <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: isActive ? "#df2a2a" : "var(--color-text)" }}>
           {card.title}
         </p>
         <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>

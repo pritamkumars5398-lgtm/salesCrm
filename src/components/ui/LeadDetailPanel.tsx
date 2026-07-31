@@ -22,7 +22,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 function avatarColor(name: string) {
-  const colors = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#dc2626"];
+  const colors = ["#df2a2a", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#dc2626"];
   const i = name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
   return colors[i];
 }
@@ -228,7 +228,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
             {label}
           </p>
           {href ? (
-            <a href={href} style={{ fontSize: 13, color: "#4f46e5", textDecoration: "none", wordBreak: "break-all" }}>{value}</a>
+            <a href={href} style={{ fontSize: 13, color: "#df2a2a", textDecoration: "none", wordBreak: "break-all" }}>{value}</a>
           ) : (
             <p style={{ fontSize: 13, color: "var(--color-text)", margin: 0, wordBreak: "break-all" }}>{value}</p>
           )}
@@ -257,7 +257,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
           </p>
           <button
             onClick={() => setIsEditing(true)}
-            style={{ fontSize: 10.5, fontWeight: 600, color: "#4f46e5", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+            style={{ fontSize: 10.5, fontWeight: 600, color: "#df2a2a", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
           >
             + Add now
           </button>
@@ -334,7 +334,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 onClick={() => setIsEditing(true)}
                 style={{
                   background: "none", border: "none", cursor: "pointer", padding: "4px 8px",
-                  color: "#4f46e5", display: "flex", alignItems: "center", gap: 4,
+                  color: "#df2a2a", display: "flex", alignItems: "center", gap: 4,
                   fontSize: 12, fontWeight: 600, borderRadius: 6
                 }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "var(--color-bg4)")}
@@ -592,9 +592,9 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     padding: "10px 8px",
                     fontSize: 12.5,
                     fontWeight: activeTab === tab ? 700 : 500,
-                    color: activeTab === tab ? "#4f46e5" : "var(--color-text3)",
+                    color: activeTab === tab ? "#df2a2a" : "var(--color-text3)",
                     border: "none",
-                    borderBottom: activeTab === tab ? "2px solid #4f46e5" : "2px solid transparent",
+                    borderBottom: activeTab === tab ? "2px solid #df2a2a" : "2px solid transparent",
                     background: "none",
                     cursor: "pointer",
                     textTransform: "capitalize",
@@ -622,16 +622,16 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                             <div
                               style={{
                                 width: 20, height: 20, borderRadius: "50%",
-                                background: done ? "#4f46e5" : "var(--color-bg4)",
-                                border: current ? "2px solid #4f46e5" : "2px solid transparent",
+                                background: done ? "#df2a2a" : "var(--color-bg4)",
+                                border: current ? "2px solid #df2a2a" : "2px solid transparent",
                                 boxSizing: "border-box",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                boxShadow: current ? "0 0 0 3px rgba(79,70,229,0.15)" : "none",
+                                boxShadow: current ? "0 0 0 3px rgba(223,42,42,0.15)" : "none",
                               }}
                             >
                               {done && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
                             </div>
-                            <span style={{ fontSize: 9.5, fontWeight: 600, color: done ? "#4f46e5" : "var(--color-text3)", whiteSpace: "nowrap" }}>
+                            <span style={{ fontSize: 9.5, fontWeight: 600, color: done ? "#df2a2a" : "var(--color-text3)", whiteSpace: "nowrap" }}>
                               {STAGE_LABELS[s]}
                             </span>
                           </div>
@@ -639,7 +639,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                             <div
                               style={{
                                 flex: 1, height: 2, marginBottom: 14,
-                                background: i < stageIdx ? "#4f46e5" : "var(--color-bg4)",
+                                background: i < stageIdx ? "#df2a2a" : "var(--color-bg4)",
                               }}
                             />
                           )}
@@ -778,7 +778,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     disabled={postingNote || !newNote.trim()}
                     style={{
                       alignSelf: "flex-end", padding: "6px 16px", borderRadius: 8,
-                      background: newNote.trim() ? "linear-gradient(135deg, #4f46e5, #6366f1)" : "var(--color-bg4)",
+                      background: newNote.trim() ? "linear-gradient(135deg, #df2a2a, #f24444)" : "var(--color-bg4)",
                       color: newNote.trim() ? "#fff" : "var(--color-text3)",
                       fontSize: 12, fontWeight: 600, border: "none",
                       cursor: newNote.trim() && !postingNote ? "pointer" : "not-allowed"
@@ -822,7 +822,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                           style={{
                             position: "absolute", left: -16, top: 4,
                             width: 10, height: 10, borderRadius: "50%",
-                            background: h.field === "call" ? "#10b981" : h.field === "note" ? "#6366f1" : "var(--color-text3)",
+                            background: h.field === "call" ? "#10b981" : h.field === "note" ? "#df2a2a" : "var(--color-text3)",
                             border: "2px solid var(--color-bg2)"
                           }}
                         />
@@ -868,10 +868,10 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 disabled={saving}
                 style={{
                   flex: 1, padding: "10px 20px", borderRadius: 10,
-                  background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                  background: "linear-gradient(135deg, #df2a2a, #f24444)",
                   color: "#fff", fontSize: 13, fontWeight: 700,
                   border: "none", cursor: saving ? "wait" : "pointer",
-                  boxShadow: "0 4px 12px rgba(79,70,229,0.28)",
+                  boxShadow: "0 4px 12px rgba(223,42,42,0.28)",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 }}
               >
@@ -920,12 +920,12 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                         width: "100%", padding: "11px 20px", borderRadius: 10,
                         background: noContact
                           ? "var(--color-bg3)"
-                          : "linear-gradient(135deg, #4f46e5, #6366f1)",
+                          : "linear-gradient(135deg, #df2a2a, #f24444)",
                         color: noContact ? "var(--color-text3)" : "#fff",
                         fontSize: 13, fontWeight: 700,
                         border: noContact ? "1px solid var(--color-bg4)" : "none",
                         cursor: noContact ? "not-allowed" : "pointer",
-                        boxShadow: noContact ? "none" : "0 4px 12px rgba(79,70,229,0.28)",
+                        boxShadow: noContact ? "none" : "0 4px 12px rgba(223,42,42,0.28)",
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                         opacity: noContact ? 0.6 : 1,
                       }}

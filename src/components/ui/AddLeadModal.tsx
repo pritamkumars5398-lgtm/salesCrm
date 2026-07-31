@@ -549,7 +549,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                       className="px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors capitalize cursor-pointer"
                       style={{
                         borderColor: form.channels.includes(ch) ? "#6c63ff" : "rgba(0,0,0,0.1)",
-                        background: form.channels.includes(ch) ? "rgba(108,99,255,0.12)" : "var(--color-bg3)",
+                        background: form.channels.includes(ch) ? "rgba(223,42,42,0.12)" : "var(--color-bg3)",
                         color: form.channels.includes(ch) ? "var(--color-accent2)" : "var(--color-text2)",
                       }}
                     >

@@ -459,13 +459,13 @@ export default function Settings() {
         <button
           onClick={() => handleTabChange("apify")}
           className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-          style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer", marginBottom: "4px" }}
+          style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer", marginBottom: "4px" }}
         >
-          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "apify" ? "rgba(99,102,241,0.12)" : "var(--color-bg3)" }}>
-            <IconDatabase size={15} style={{ color: active === "apify" ? "#6366f1" : "var(--color-text3)" }} />
+          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "apify" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
+            <IconDatabase size={15} style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text3)" }} />
           </span>
           <div className="min-w-0">
-            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "apify" ? "#4f46e5" : "var(--color-text)" }}>Apify Scrapers</p>
+            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text)" }}>Apify Scrapers</p>
             <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Google Maps, LinkedIn & more</p>
           </div>
         </button>
@@ -473,13 +473,13 @@ export default function Settings() {
         <button
           onClick={() => handleTabChange("llm-scraper")}
           className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-          style={{ padding: "8px 10px", borderRadius: 10, background: active === "llm-scraper" ? "rgba(79,70,229,0.08)" : "transparent", border: "none", cursor: "pointer" }}
+          style={{ padding: "8px 10px", borderRadius: 10, background: active === "llm-scraper" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer" }}
         >
-          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "llm-scraper" ? "rgba(99,102,241,0.12)" : "var(--color-bg3)" }}>
-            <IconBrain size={15} style={{ color: active === "llm-scraper" ? "#6366f1" : "var(--color-text3)" }} />
+          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "llm-scraper" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
+            <IconBrain size={15} style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text3)" }} />
           </span>
           <div className="min-w-0">
-            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "llm-scraper" ? "#4f46e5" : "var(--color-text)" }}>LLM Scraper</p>
+            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text)" }}>LLM Scraper</p>
             <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Claude, Gemini, ChatGPT</p>
           </div>
         </button>
@@ -550,7 +550,7 @@ export default function Settings() {
                     onClick={() => handleCopySettings("all")}
                     disabled={!copySourceAgentId}
                     className="flex items-center justify-center text-[12px] font-semibold rounded-lg text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ height: "34px", padding: "0 12px", background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
+                    style={{ height: "34px", padding: "0 12px", background: "linear-gradient(135deg, #df2a2a, #f24444)" }}
                   >
                     All Integrations
                   </button>
@@ -1014,10 +1014,10 @@ export default function Settings() {
 
                     {/* Lead response */}
                     <div className="flex items-start gap-2 justify-end">
-                      <div className="rounded-2xl rounded-tr-none px-4 py-3 text-[12.5px] max-w-[260px]" style={{ background: "rgba(108,99,255,0.1)", color: "var(--color-text)", lineHeight: 1.6 }}>
+                      <div className="rounded-2xl rounded-tr-none px-4 py-3 text-[12.5px] max-w-[260px]" style={{ background: "rgba(223,42,42,0.1)", color: "var(--color-text)", lineHeight: 1.6 }}>
                         Yes, speaking. Who is this?
                       </div>
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold" style={{ background: "rgba(108,99,255,0.12)", color: "#6366f1" }}>R</div>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold" style={{ background: "rgba(223,42,42,0.12)", color: "#df2a2a" }}>R</div>
                     </div>
 
                     {/* Agent continues */}
@@ -1319,7 +1319,7 @@ export default function Settings() {
               <button
                 onClick={() => saveCard(activeCard)}
                 className="flex items-center justify-center"
-                style={{ padding: "8px 20px", borderRadius: 10, background: "linear-gradient(135deg, #4f46e5, #6366f1)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}
+                style={{ padding: "8px 20px", borderRadius: 10, background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}
               >
                 Save changes
               </button>

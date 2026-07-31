@@ -225,11 +225,11 @@ export default function Plans() {
       {/* Revenue context */}
       <div style={{
         marginTop: 32, padding: "18px 20px",
-        background: "rgba(99,102,241,0.05)",
-        border: "1px solid rgba(99,102,241,0.15)",
+        background: "rgba(223,42,42,0.05)",
+        border: "1px solid rgba(223,42,42,0.15)",
         borderRadius: 12,
       }}>
-        <p style={{ fontSize: 12.5, fontWeight: 700, color: "#6366f1", margin: "0 0 8px" }}>
+        <p style={{ fontSize: 12.5, fontWeight: 700, color: "#df2a2a", margin: "0 0 8px" }}>
           SalesAgent Economics (your SaaS math)
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>

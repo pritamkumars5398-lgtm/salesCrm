@@ -165,10 +165,10 @@ function ProviderCard({
   return (
     <div
       style={{
-        border: `1px solid ${isEnabled ? "rgba(79,70,229,0.3)" : "var(--color-bg4)"}`,
+        border: `1px solid ${isEnabled ? "rgba(223,42,42,0.3)" : "var(--color-bg4)"}`,
         borderRadius: 14, overflow: "hidden",
         background: isEnabled ? "var(--color-bg2)" : "var(--color-bg)",
-        boxShadow: isEnabled ? "0 0 0 3px rgba(79,70,229,0.07)" : "none",
+        boxShadow: isEnabled ? "0 0 0 3px rgba(223,42,42,0.07)" : "none",
         transition: "box-shadow 0.2s, border-color 0.2s, opacity 0.2s",
         opacity: isEnabled ? 1 : 0.55,
       }}
@@ -198,7 +198,7 @@ function ProviderCard({
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onToggleEnabled(!isEnabled); }}
-          style={{ width: 38, height: 22, borderRadius: 11, background: isEnabled ? "#4f46e5" : "#cbd5e1", border: "none", cursor: "pointer", padding: 0, position: "relative", flexShrink: 0, transition: "background 0.2s" }}
+          style={{ width: 38, height: 22, borderRadius: 11, background: isEnabled ? "#df2a2a" : "#cbd5e1", border: "none", cursor: "pointer", padding: 0, position: "relative", flexShrink: 0, transition: "background 0.2s" }}
         >
           <span style={{ position: "absolute", top: 3, left: isEnabled ? 19 : 3, width: 16, height: 16, borderRadius: "50%", background: "var(--color-bg2)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s ease", display: "block" }} />
         </button>
@@ -219,7 +219,7 @@ function ProviderCard({
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
             <button
               onClick={(e) => { e.stopPropagation(); onSave(def.fields.map((f) => f.key)); }}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, background: "linear-gradient(135deg, #4f46e5, #6366f1)", border: "none", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(79,70,229,0.28)" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 9, background: "linear-gradient(135deg, #df2a2a, #f24444)", border: "none", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(223,42,42,0.28)" }}
             >
               {isSaved ? <><IconCheck size={13} /> Saved</> : "Save config"}
             </button>

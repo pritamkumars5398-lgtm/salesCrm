@@ -12,7 +12,7 @@ export default function SettingsToggle({ checked, onChange }: Props) {
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className="relative shrink-0 transition-colors duration-200"
-      style={{ width: 36, height: 20, borderRadius: 10, background: checked ? "#4f46e5" : "var(--color-bg5)", border: "none", cursor: "pointer", padding: 0 }}
+      style={{ width: 36, height: 20, borderRadius: 10, background: checked ? "#df2a2a" : "var(--color-bg5)", border: "none", cursor: "pointer", padding: 0 }}
     >
       <span
         style={{

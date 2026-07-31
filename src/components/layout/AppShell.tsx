@@ -197,7 +197,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         <Topbar onAddLead={() => setAddLeadOpen(true)} onSyncApify={handleSyncApify} syncing={syncing} />
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 min-w-0 overflow-y-auto">{children}</div>
+          <div key={pathname} className="flex-1 min-w-0 overflow-y-auto animate-fade-in">
+            {children}
+          </div>
           <ConversationDrawer />
         </div>
       </div>

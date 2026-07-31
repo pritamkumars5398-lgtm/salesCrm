@@ -120,7 +120,7 @@ export default function Pagination({
               style={{
                 ...btnBase,
                 background: item === page ? "var(--color-primary-subtle)" : "var(--color-bg2)",
-                borderColor: item === page ? "rgba(99,102,241,0.3)" : "var(--color-bg4)",
+                borderColor: item === page ? "rgba(223,42,42,0.3)" : "var(--color-bg4)",
                 color: item === page ? "var(--color-primary-light)" : "var(--color-text2)",
                 fontWeight: item === page ? 700 : 600,
               }}

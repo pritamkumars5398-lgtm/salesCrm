@@ -40,7 +40,7 @@ const VARIANT_CLASS: Record<Variant, string> = {
   ghost: "btn btn-ghost",
   danger: "btn btn-danger",
   success: "btn btn-success",
-  warning: "btn",
+  warning: "btn btn-warning",
 };
 
 const VARIANT_STYLE: Record<Variant, React.CSSProperties> = {
@@ -49,11 +49,7 @@ const VARIANT_STYLE: Record<Variant, React.CSSProperties> = {
   ghost: {},
   danger: {},
   success: {},
-  warning: {
-    background: "linear-gradient(135deg, #d97706, #f59e0b)",
-    color: "#fff",
-    boxShadow: "0 4px 14px rgba(217,119,6,0.28)",
-  },
+  warning: {},
 };
 
 const SIZE_CLASS: Record<Size, string> = {

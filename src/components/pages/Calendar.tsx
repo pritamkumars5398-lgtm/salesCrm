@@ -90,7 +90,7 @@ export default function Calendar() {
                   <div
                     key={day}
                     className="text-center py-2 rounded-lg text-[12.5px] cursor-pointer relative transition-colors hover:bg-[var(--color-bg3)]"
-                    style={today ? { background: "rgba(108,99,255,0.12)", color: "var(--color-accent2)", fontWeight: 600 } : {}}
+                    style={today ? { background: "rgba(223,42,42,0.12)", color: "var(--color-accent2)", fontWeight: 600 } : {}}
                   >
                     {day}
                     {hasEvent && (

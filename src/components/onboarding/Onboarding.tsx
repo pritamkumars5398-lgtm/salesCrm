@@ -83,7 +83,7 @@ function Dots({ total, current }: { total: number; current: number }) {
             width: i === current ? 20 : 7,
             height: 7,
             borderRadius: 99,
-            background: i <= current ? "#4f46e5" : "var(--color-bg4)",
+            background: i <= current ? "#df2a2a" : "var(--color-bg4)",
             transition: "all 0.25s ease",
           }}
         />
@@ -177,8 +177,8 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
       case 0:
         return (
           <div style={{ textAlign: "center" }}>
-            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-              <IconSparkles size={28} style={{ color: "#6366f1" }} />
+            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <IconSparkles size={28} style={{ color: "#df2a2a" }} />
             </div>
             <h2 style={{ fontSize: 22, fontWeight: 800, color: "var(--color-text)", margin: "0 0 10px" }}>
               Welcome, {userName.split(" ")[0]} 👋
@@ -235,9 +235,9 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
                       onClick={() => patch({ teamSize: t })}
                       style={{
                         padding: "6px 14px", borderRadius: 99, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                        background: data.teamSize === t ? "#4f46e5" : "var(--color-bg3)",
+                        background: data.teamSize === t ? "#df2a2a" : "var(--color-bg3)",
                         color: data.teamSize === t ? "#fff" : "var(--color-text2)",
-                        border: `1.5px solid ${data.teamSize === t ? "#4f46e5" : "var(--color-bg4)"}`,
+                        border: `1.5px solid ${data.teamSize === t ? "#df2a2a" : "var(--color-bg4)"}`,
                         transition: "all 0.15s",
                       }}
                     >
@@ -280,8 +280,8 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
               ))}
             </div>
 
-            <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.15)" }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", margin: "0 0 8px" }}>Apify API token <span style={{ fontWeight: 400, color: "var(--color-text3)" }}>(optional — add later in Settings)</span></p>
+            <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(223,42,42,0.05)", border: "1px solid rgba(223,42,42,0.15)" }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#df2a2a", margin: "0 0 8px" }}>Apify API token <span style={{ fontWeight: 400, color: "var(--color-text3)" }}>(optional — add later in Settings)</span></p>
               <input
                 style={inputSx}
                 type="password"
@@ -301,8 +301,8 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
         return (
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-              <span style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(99,102,241,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <IconUser size={18} style={{ color: "#6366f1" }} />
+              <span style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <IconUser size={18} style={{ color: "#df2a2a" }} />
               </span>
               <div>
                 <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--color-text)", margin: 0 }}>Name your AI agent</h3>
@@ -331,18 +331,18 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
                     onClick={() => patch({ goal: g })}
                     style={{
                       padding: "10px 14px", borderRadius: 10, cursor: "pointer", textAlign: "left",
-                      background: data.goal === g ? "rgba(79,70,229,0.07)" : "var(--color-bg)",
-                      border: `1.5px solid ${data.goal === g ? "#4f46e5" : "var(--color-bg4)"}`,
+                      background: data.goal === g ? "rgba(223,42,42,0.07)" : "var(--color-bg)",
+                      border: `1.5px solid ${data.goal === g ? "#df2a2a" : "var(--color-bg4)"}`,
                       fontSize: 13, fontWeight: data.goal === g ? 600 : 400,
-                      color: data.goal === g ? "#4f46e5" : "var(--color-text2)",
+                      color: data.goal === g ? "#df2a2a" : "var(--color-text2)",
                       display: "flex", alignItems: "center", gap: 10,
                       transition: "all 0.15s",
                     }}
                   >
                     <div style={{
                       width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                      background: data.goal === g ? "#4f46e5" : "transparent",
-                      border: `2px solid ${data.goal === g ? "#4f46e5" : "var(--color-bg4)"}`,
+                      background: data.goal === g ? "#df2a2a" : "transparent",
+                      border: `2px solid ${data.goal === g ? "#df2a2a" : "var(--color-bg4)"}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {data.goal === g && <IconCheck size={9} style={{ color: "#fff" }} />}
@@ -361,10 +361,10 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
           <div style={{ textAlign: "center" }}>
             <div style={{
               width: 68, height: 68, borderRadius: "50%",
-              background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+              background: "linear-gradient(135deg, #df2a2a, #f24444)",
               display: "flex", alignItems: "center", justifyContent: "center",
               margin: "0 auto 22px",
-              boxShadow: "0 8px 24px rgba(79,70,229,0.3)",
+              boxShadow: "0 8px 24px rgba(223,42,42,0.3)",
             }}>
               <IconConfetti size={32} style={{ color: "#fff" }} />
             </div>
@@ -386,8 +386,8 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
               ].filter(Boolean).map((tag) => (
                 <span key={tag} style={{
                   padding: "4px 12px", borderRadius: 99, fontSize: 11.5, fontWeight: 600,
-                  background: "rgba(99,102,241,0.08)", color: "#6366f1",
-                  border: "1px solid rgba(99,102,241,0.2)",
+                  background: "rgba(223,42,42,0.08)", color: "#df2a2a",
+                  border: "1px solid rgba(223,42,42,0.2)",
                 }}>
                   {tag}
                 </span>
@@ -399,10 +399,10 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
               disabled={saving}
               style={{
                 width: "100%", padding: "13px 0", borderRadius: 12,
-                background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                background: "linear-gradient(135deg, #df2a2a, #f24444)",
                 color: "#fff", fontSize: 14, fontWeight: 700,
                 border: "none", cursor: saving ? "not-allowed" : "pointer",
-                boxShadow: "0 6px 20px rgba(79,70,229,0.3)",
+                boxShadow: "0 6px 20px rgba(223,42,42,0.3)",
                 opacity: saving ? 0.7 : 1,
                 transition: "opacity 0.2s",
               }}
@@ -452,9 +452,9 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6366f1" }} />
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#df2a2a" }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)" }}>
-              Sales<span style={{ color: "#6366f1" }}>Agent</span>
+              Sales<span style={{ color: "#df2a2a" }}>Agent</span>
             </span>
           </div>
           <span style={{ fontSize: 11.5, color: "var(--color-text3)", fontWeight: 600 }}>
@@ -492,11 +492,11 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
                 disabled={!canNext()}
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 10, cursor: canNext() ? "pointer" : "not-allowed",
-                  background: canNext() ? "linear-gradient(135deg, #4f46e5, #6366f1)" : "var(--color-bg4)",
+                  background: canNext() ? "linear-gradient(135deg, #df2a2a, #f24444)" : "var(--color-bg4)",
                   color: canNext() ? "#fff" : "var(--color-text3)",
                   fontSize: 13, fontWeight: 700, border: "none",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  boxShadow: canNext() ? "0 4px 14px rgba(79,70,229,0.28)" : "none",
+                  boxShadow: canNext() ? "0 4px 14px rgba(223,42,42,0.28)" : "none",
                   transition: "all 0.15s",
                 }}
               >

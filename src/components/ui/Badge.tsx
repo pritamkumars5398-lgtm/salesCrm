@@ -30,7 +30,7 @@ const VARIANT_STYLES: Record<BadgeVariant, React.CSSProperties> = {
   primary: {
     background: "var(--color-primary-subtle)",
     color: "var(--color-primary-light)",
-    border: "1px solid rgba(99,102,241,0.2)",
+    border: "1px solid rgba(223,42,42,0.2)",
   },
   success: {
     background: "var(--color-green-bg)",

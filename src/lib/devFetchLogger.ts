@@ -14,7 +14,7 @@ if (
 
     console.log(
       `%c[API Request] %c${method} %c${url}`,
-      "color: #6366f1; font-weight: bold;",
+      "color: #df2a2a; font-weight: bold;",
       "color: #3b82f6; font-weight: bold;",
       "color: #94a3b8;"
     );
@@ -36,7 +36,7 @@ if (
 
       console.log(
         `%c[API Response] %c${method} %c${url} %c${response.status} (${duration}ms)`,
-        "color: #6366f1; font-weight: bold;",
+        "color: #df2a2a; font-weight: bold;",
         "color: #3b82f6; font-weight: bold;",
         "color: #94a3b8;",
         statusColor

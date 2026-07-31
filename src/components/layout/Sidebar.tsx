@@ -376,7 +376,7 @@ export default function Sidebar() {
                     padding: "10px 12px",
                     borderRadius: "var(--radius-lg)",
                     background: "var(--color-primary-subtle)",
-                    border: "1px solid rgba(99,102,241,0.15)",
+                    border: "1px solid rgba(223,42,42,0.15)",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -429,7 +429,7 @@ export default function Sidebar() {
                         fontWeight: 700,
                         padding: "1px 6px",
                         borderRadius: "var(--radius-full)",
-                        background: "rgba(99,102,241,0.12)",
+                        background: "rgba(223,42,42,0.12)",
                         color: "var(--color-primary-light)",
                         fontFamily: "var(--font-mono)",
                       }}
@@ -447,7 +447,7 @@ export default function Sidebar() {
                         </span>
                         <span style={{ fontSize: 9.5, color: "var(--color-text3)" }}>{outreachPct}%</span>
                       </div>
-                      <div style={{ height: 3, borderRadius: 99, background: "rgba(99,102,241,0.15)", overflow: "hidden" }}>
+                      <div style={{ height: 3, borderRadius: 99, background: "rgba(223,42,42,0.15)", overflow: "hidden" }}>
                         <div
                           style={{
                             height: "100%",

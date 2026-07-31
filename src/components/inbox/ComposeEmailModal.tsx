@@ -155,7 +155,7 @@ export default function ComposeEmailModal({ leads, agentId, onClose, onSent }: P
             disabled={!selectedLead || !subject.trim() || !body.trim() || sending}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-semibold text-white border-none"
             style={{
-              background: (!selectedLead || !subject.trim() || !body.trim() || sending) ? "var(--color-bg4)" : "linear-gradient(135deg, #4f46e5, #6366f1)",
+              background: (!selectedLead || !subject.trim() || !body.trim() || sending) ? "var(--color-bg4)" : "linear-gradient(135deg, #df2a2a, #f24444)",
               cursor: (!selectedLead || !subject.trim() || !body.trim() || sending) ? "not-allowed" : "pointer",
             }}
           >

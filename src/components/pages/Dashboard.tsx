@@ -14,7 +14,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 
-const SYSTEM_STYLE = { bg: "rgba(108,99,255,0.12)", color: "var(--color-primary-light)" };
+const SYSTEM_STYLE = { bg: "rgba(223,42,42,0.12)", color: "var(--color-primary-light)" };
 
 const STAT_DEFS = [
   {

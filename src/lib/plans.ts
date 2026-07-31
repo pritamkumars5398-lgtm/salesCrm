@@ -44,7 +44,7 @@ export const PLANS: Record<PlanId, Plan> = {
     id: "starter",
     name: "Starter",
     priceINR: 999,
-    color: "#6366f1",
+    color: "#df2a2a",
     limits: {
       leadsPerMonth: 200,
       messagesPerMonth: 500,

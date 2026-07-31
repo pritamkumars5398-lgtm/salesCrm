@@ -12,7 +12,7 @@ const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; bg: string; color
   whatsapp: { Icon: IconBrandWhatsapp,  bg: "rgba(34,201,122,0.1)",  color: "#22c97a" },
   sms:      { Icon: IconMessage,        bg: "rgba(204,153,255,0.1)", color: "#cc99ff" },
   call:     { Icon: IconPhone,          bg: "rgba(245,166,35,0.1)",  color: "#f5a623" },
-  system:   { Icon: IconCalendar,       bg: "rgba(108,99,255,0.12)", color: "var(--color-accent2)" },
+  system:   { Icon: IconCalendar,       bg: "rgba(223,42,42,0.12)", color: "var(--color-accent2)" },
 };
 
 export default function Activity() {
