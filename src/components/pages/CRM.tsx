@@ -81,6 +81,7 @@ export default function CRM() {
   const [totalCols, setTotalCols] = useState<Record<string, number>>({});
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
@@ -110,7 +111,7 @@ export default function CRM() {
       if (addedDateFilter !== "all") params.set("addedDate", addedDateFilter);
       if (outreachFilter !== "all") params.set("outreachStatus", outreachFilter);
       if (jobTitleFilter !== "all") params.set("jobTitle", jobTitleFilter);
-      if (search) params.set("q", search);
+      if (debouncedSearch) params.set("q", debouncedSearch);
       if (missingContact) params.set("missingContact", "true");
 
       const data = await fetch(`/api/leads?${params}`).then((r) => r.json());
@@ -142,15 +143,28 @@ export default function CRM() {
     } finally {
       setLoadingCols(p => ({ ...p, [stageKey]: false }));
     }
-  }, [activeAgent?._id, search, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, missingContact, setLeads]);
+  }, [activeAgent?._id, debouncedSearch, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, missingContact, setLeads]);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  const hasLoadedBoardRef = useRef(false);
+  useEffect(() => {
     if (!activeAgent) return;
-    setLoading(true);
+    const isFirstLoad = !hasLoadedBoardRef.current;
+    if (isFirstLoad) setLoading(true);
     Promise.all(CRM_COLUMNS.map(({ key }) => {
       setPages(p => ({ ...p, [key]: 1 }));
       return fetchColumn(key, 1, true);
-    })).finally(() => setLoading(false));
+    })).finally(() => {
+      hasLoadedBoardRef.current = true;
+      if (isFirstLoad) setLoading(false);
+    });
   }, [fetchColumn, activeAgent?._id]);
 
   const observersRef = useRef<Record<string, IntersectionObserver | null>>({});
@@ -351,6 +365,19 @@ export default function CRM() {
     }).format(new Date(updatedAt))}`;
   };
 
+  const matchesSearch = (lead: Lead) => {
+    if (!debouncedSearch) return true;
+    const query = debouncedSearch.toLowerCase();
+    return [
+      lead.fullName,
+      lead.firstName,
+      lead.lastName,
+      lead.company,
+      lead.email,
+      lead.phone,
+    ].some((value) => value?.toLowerCase().includes(query));
+  };
+
   const getLastNote = (lead: Lead): LeadNote | undefined => lead.notes?.reduce<LeadNote | undefined>((latest, note) =>
     !latest || new Date(note.createdAt).getTime() > new Date(latest.createdAt).getTime() ? note : latest,
   undefined);
@@ -400,7 +427,7 @@ export default function CRM() {
             // Scope the shared store to the selected agent, then mirror the API's
             // newest-updated order so a just-moved card lands at the top at once.
             const stageLeads = leads
-              .filter((l) => l.agentId === activeAgent?._id && (
+              .filter((l) => l.agentId === activeAgent?._id && matchesSearch(l) && (
                 key === "deleted"
                   ? Boolean(l.deletedAt)
                   : key === "recent"
@@ -568,6 +595,11 @@ export default function CRM() {
                   })}
                   {loadingCols[key] && pages[key] > 1 && (
                     <div className="flex justify-center py-2">
+                      <div className="w-4 h-4 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                    </div>
+                  )}
+                  {loadingCols[key] && (pages[key] ?? 1) === 1 && (
+                    <div className="flex justify-center py-3">
                       <div className="w-4 h-4 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
                     </div>
                   )}

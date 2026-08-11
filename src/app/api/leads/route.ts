@@ -27,6 +27,10 @@ function zonedDayRange(day: string, tz: string): { start: Date; end: Date } | nu
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * GET /api/leads — always returns `{ leads, total, page, limit, totalPages }`.
  *
@@ -93,7 +97,17 @@ export async function GET(req: Request) {
   if (jobTitle && jobTitle !== "all") {
     baseFilter.jobTitle = { $regex: jobTitle, $options: "i" };
   }
-  if (search) baseFilter.$text = { $search: search };
+  if (search?.trim()) {
+    const q = escapeRegex(search.trim());
+    baseFilter.$or = [
+      { fullName: { $regex: q, $options: "i" } },
+      { firstName: { $regex: q, $options: "i" } },
+      { lastName: { $regex: q, $options: "i" } },
+      { company: { $regex: q, $options: "i" } },
+      { email: { $regex: q, $options: "i" } },
+      { phone: { $regex: q, $options: "i" } },
+    ];
+  }
   if (missingContact === "true") {
     baseFilter.$and = [
       { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] },
