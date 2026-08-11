@@ -20,6 +20,7 @@ const STAGE_STEPS = ["new", "contacted", "replied", "qualified", "closed"];
 const STAGE_LABELS: Record<string, string> = {
   new: "New", contacted: "Contacted", replied: "Replied", qualified: "Qualified", closed: "Closed",
 };
+const DETAIL_PANEL_TOP = 64;
 
 function avatarColor(name: string) {
   const colors = ["#df2a2a", "#0891b2", "#059669", "#d97706", "#7c3aed", "#db2777", "#dc2626"];
@@ -272,7 +273,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       <div
         onClick={handleClose}
         style={{
-          position: "fixed", inset: 0, zIndex: 40,
+          position: "fixed", top: DETAIL_PANEL_TOP, right: 0, bottom: 0, left: 0, zIndex: 40,
           background: "rgba(15,23,42,0.3)",
           backdropFilter: "blur(2px)",
           opacity: visible ? 1 : 0,
@@ -283,7 +284,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       {/* Panel */}
       <div
         style={{
-          position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50,
+          position: "fixed", top: DETAIL_PANEL_TOP, right: 0, bottom: 0, zIndex: 50,
           width: 400,
           background: "var(--color-bg2)",
           borderLeft: "1px solid var(--color-bg4)",

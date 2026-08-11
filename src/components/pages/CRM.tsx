@@ -426,6 +426,14 @@ export default function CRM() {
                   borderColor: isDraggingOver ? "#df2a2a" : "rgba(0,0,0,0.1)",
                   minHeight: 0,
                   boxShadow: isDraggingOver ? "0 0 14px rgba(223,42,42,0.12)" : "none",
+                  ...(key === "recent"
+                    ? {
+                        position: "sticky",
+                        left: 0,
+                        zIndex: 5,
+                        boxShadow: "8px 0 18px rgba(15, 23, 42, 0.08)",
+                      }
+                    : {}),
                 }}
                 onDragOver={key === "deleted" || key === "recent" ? undefined : (e) => handleDragOver(e, key)}
                 onDragLeave={key === "deleted" || key === "recent" ? undefined : () => setDragOverStage(null)}
