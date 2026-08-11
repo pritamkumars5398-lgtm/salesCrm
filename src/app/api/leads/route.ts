@@ -51,6 +51,9 @@ export async function GET(req: Request) {
   const jobTitle = searchParams.get("jobTitle");
   const pipelineStage = searchParams.get("pipelineStage");
   const website = searchParams.get("website");
+  // Sorting is opt-in so the Leads table and other consumers retain their
+  // existing newest-created ordering. The CRM pipeline requests this explicitly.
+  const sort = searchParams.get("sort");
 
   const trashed = searchParams.get("trashed") === "1";
   // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
@@ -121,14 +124,19 @@ export async function GET(req: Request) {
   }
 
   const filter = { ...baseFilter, ...statusFilter, ...dateFilter };
+  const sortOrder: Record<string, 1 | -1> = sort === "updatedAt"
+    ? { updatedAt: -1 as const, _id: -1 as const }
+    : sort === "deletedAt"
+      ? { deletedAt: -1 as const, _id: -1 as const }
+      : { createdAt: -1 as const, _id: -1 as const };
 
   if (!paginated) {
-    const leads = await Lead.find(filter).sort({ createdAt: -1, _id: -1 }).lean();
+    const leads = await Lead.find(filter).sort(sortOrder).lean();
     return NextResponse.json({ leads, total: leads.length, page: 1, limit: leads.length, totalPages: 1 });
   }
 
   const [leads, total] = await Promise.all([
-    Lead.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    Lead.find(filter).sort(sortOrder).skip((page - 1) * limit).limit(limit).lean(),
     Lead.countDocuments(filter),
   ]);
 

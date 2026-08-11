@@ -102,6 +102,8 @@ LeadSchema.pre("save", function (next) {
 LeadSchema.index({ agentId: 1, status: 1 });
 LeadSchema.index({ agentId: 1, outreachStatus: 1 });
 LeadSchema.index({ agentId: 1, deletedAt: 1 });
+// Supports the CRM's per-stage, most-recently-updated ordering.
+LeadSchema.index({ agentId: 1, deletedAt: 1, pipelineStage: 1, updatedAt: -1, _id: -1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
 
 // Delete the cached model if it exists to ensure HMR picks up schema changes like the new 'LLM' source enum

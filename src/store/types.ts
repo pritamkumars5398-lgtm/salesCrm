@@ -49,7 +49,9 @@ export interface Lead {
   location?: string;
   notes?: LeadNote[];
   history?: LeadHistory[];
+  deletedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Message {

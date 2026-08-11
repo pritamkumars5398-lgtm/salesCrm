@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { IconSearch, IconFilter, IconChevronDown, IconCheck, IconX } from "@tabler/icons-react";
+import { IconSearch, IconFilter, IconChevronDown, IconCheck, IconX, IconTrash, IconRestore } from "@tabler/icons-react";
 import { SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 import { useAppStore } from "@/store/useAppStore";
@@ -8,21 +8,25 @@ import Avatar from "@/components/ui/Avatar";
 import StatusPill from "@/components/ui/Pill";
 import { CRM_STAGES as STAGES } from "@/lib/constants/crm";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
-import { startLeadOutreach } from "@/lib/api/leads.api";
+import { startLeadOutreach, deleteLeads, restoreLeads } from "@/lib/api/leads.api";
 import type { Lead } from "@/store/types";
 import { IconMessageCircle } from "@tabler/icons-react";
 
+const CRM_COLUMNS = [...STAGES, { key: "deleted", label: "Deleted", pillClass: "pill-gray" }] as const;
+
 export default function CRM() {
-  const { activeAgent, leads, setLeads, updateLead, openDrawer, showToast } = useAppStore();
+  const { activeAgent, leads, setLeads, updateLead, updateAgentLeadCount, openDrawer, showToast } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [hoveredNote, setHoveredNote] = useState<{ lead: Lead; x: number; y: number } | null>(null);
   const [moveModal, setMoveModal] = useState<{
     lead: any;
     targetStage: string;
     note: string;
   } | null>(null);
+  const [deleteConfirmLead, setDeleteConfirmLead] = useState<Lead | null>(null);
 
   async function handleStartOutreach(lead: any) {
     if (activeAgent?.status === "inactive") {
@@ -89,9 +93,11 @@ export default function CRM() {
         agentId: activeAgent._id,
         page: String(pageNum),
         limit: "50",
-        pipelineStage: stageKey,
+        sort: stageKey === "deleted" ? "deletedAt" : "updatedAt",
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
+      if (stageKey === "deleted") params.set("trashed", "1");
+      else params.set("pipelineStage", stageKey);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
       if (locationFilter !== "all") params.set("location", locationFilter);
@@ -105,7 +111,9 @@ export default function CRM() {
       
       setLeads((prev: Lead[]) => {
         if (isInitial) {
-           const others = prev.filter(l => l.pipelineStage !== stageKey);
+           const others = prev.filter((l) => stageKey === "deleted"
+             ? !l.deletedAt
+             : l.pipelineStage !== stageKey);
            return [...others, ...(data.leads ?? [])];
         } else {
            const existingIds = new Set(prev.map(l => l._id));
@@ -124,7 +132,7 @@ export default function CRM() {
   useEffect(() => {
     if (!activeAgent) return;
     setLoading(true);
-    Promise.all(STAGES.map(({ key }) => {
+    Promise.all(CRM_COLUMNS.map(({ key }) => {
       setPages(p => ({ ...p, [key]: 1 }));
       return fetchColumn(key, 1, true);
     })).finally(() => setLoading(false));
@@ -165,7 +173,7 @@ export default function CRM() {
 
     const previousStage = lead.pipelineStage;
     // Optimistic UI update
-    updateLead(leadId, { ...lead, pipelineStage: stage });
+    updateLead(leadId, { ...lead, pipelineStage: stage, updatedAt: new Date().toISOString() });
 
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -226,6 +234,72 @@ export default function CRM() {
     setMoveModal(null);
   };
 
+  async function deleteLead(lead: Lead) {
+    if (!activeAgent) return;
+    const deletedAt = new Date().toISOString();
+    updateLead(lead._id, { deletedAt, updatedAt: deletedAt });
+    setTotalCols((counts) => ({
+      ...counts,
+      [lead.pipelineStage ?? "new"]: Math.max(0, (counts[lead.pipelineStage ?? "new"] ?? 1) - 1),
+      deleted: (counts.deleted ?? 0) + 1,
+    }));
+    updateAgentLeadCount(activeAgent._id, Math.max(0, activeAgent.leadCount - 1));
+    try {
+      const { deleted } = await deleteLeads(activeAgent._id, [lead._id]);
+      if (deleted !== 1) throw new Error("Lead was not deleted");
+      showToast("Lead moved to Deleted", "success");
+    } catch {
+      updateLead(lead._id, { deletedAt: null });
+      updateAgentLeadCount(activeAgent._id, activeAgent.leadCount);
+      setTotalCols((counts) => ({
+        ...counts,
+        [lead.pipelineStage ?? "new"]: (counts[lead.pipelineStage ?? "new"] ?? 0) + 1,
+        deleted: Math.max(0, (counts.deleted ?? 1) - 1),
+      }));
+      showToast("Failed to delete lead", "error");
+    }
+  }
+
+  async function restoreLead(lead: Lead) {
+    if (!activeAgent) return;
+    updateLead(lead._id, { deletedAt: null, updatedAt: new Date().toISOString() });
+    setTotalCols((counts) => ({
+      ...counts,
+      [lead.pipelineStage ?? "new"]: (counts[lead.pipelineStage ?? "new"] ?? 0) + 1,
+      deleted: Math.max(0, (counts.deleted ?? 1) - 1),
+    }));
+    updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + 1);
+    try {
+      const { restored } = await restoreLeads(activeAgent._id, [lead._id]);
+      if (restored !== 1) throw new Error("Lead was not restored");
+      showToast("Lead restored to its pipeline stage", "success");
+    } catch {
+      updateLead(lead._id, { deletedAt: lead.deletedAt });
+      updateAgentLeadCount(activeAgent._id, activeAgent.leadCount);
+      setTotalCols((counts) => ({
+        ...counts,
+        [lead.pipelineStage ?? "new"]: Math.max(0, (counts[lead.pipelineStage ?? "new"] ?? 1) - 1),
+        deleted: (counts.deleted ?? 0) + 1,
+      }));
+      showToast("Failed to restore lead", "error");
+    }
+  }
+
+  const formatUpdatedAt = (updatedAt?: string | null) => {
+    if (!updatedAt || Number.isNaN(new Date(updatedAt).getTime())) return "Updated just now";
+    return `Updated ${new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(updatedAt))}`;
+  };
+
+  const getLastNote = (lead: Lead) => lead.notes?.reduce((latest, note) =>
+    !latest || new Date(note.createdAt).getTime() > new Date(latest.createdAt).getTime() ? note : latest,
+  undefined as Lead["notes"] extends (infer Note)[] | undefined ? Note | undefined : never);
+
   return (
     <div className="p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
@@ -266,9 +340,17 @@ export default function CRM() {
       </div>
 
       <div className="overflow-x-auto pb-4">
-        <div className="grid gap-3 min-w-[1100px]" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
-          {STAGES.map(({ key, label, pillClass }) => {
-            const stageLeads = leads.filter((l) => (l.pipelineStage ?? "new") === key);
+        <div className="grid gap-3 min-w-[1320px]" style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
+          {CRM_COLUMNS.map(({ key, label, pillClass }) => {
+            // Scope the shared store to the selected agent, then mirror the API's
+            // newest-updated order so a just-moved card lands at the top at once.
+            const stageLeads = leads
+              .filter((l) => l.agentId === activeAgent?._id && (key === "deleted" ? Boolean(l.deletedAt) : !l.deletedAt && (l.pipelineStage ?? "new") === key))
+              .sort((a, b) => {
+                const aTime = new Date(key === "deleted" ? a.deletedAt || a.updatedAt || a.createdAt : a.updatedAt || a.createdAt).getTime();
+                const bTime = new Date(key === "deleted" ? b.deletedAt || b.updatedAt || b.createdAt : b.updatedAt || b.createdAt).getTime();
+                return bTime - aTime || b._id.localeCompare(a._id);
+              });
             const isDraggingOver = dragOverStage === key;
 
             return (
@@ -281,9 +363,9 @@ export default function CRM() {
                   minHeight: 450,
                   boxShadow: isDraggingOver ? "0 0 14px rgba(223,42,42,0.12)" : "none",
                 }}
-                onDragOver={(e) => handleDragOver(e, key)}
-                onDragLeave={() => setDragOverStage(null)}
-                onDrop={(e) => handleDrop(e, key)}
+                onDragOver={key === "deleted" ? undefined : (e) => handleDragOver(e, key)}
+                onDragLeave={key === "deleted" ? undefined : () => setDragOverStage(null)}
+                onDrop={key === "deleted" ? undefined : (e) => handleDrop(e, key)}
               >
                 <div className="flex items-center justify-between mb-3 min-w-0">
                   <span className="text-[11px] font-semibold tracking-widest uppercase truncate" style={{ color: "var(--color-text3)" }}>
@@ -298,6 +380,7 @@ export default function CRM() {
                   {stageLeads.map((lead, index) => {
                     const isDragging = draggingId === lead._id;
                     const isLast = index === stageLeads.length - 1;
+                    const lastNote = getLastNote(lead);
                     return (
                       <div
                         key={lead._id}
@@ -316,9 +399,11 @@ export default function CRM() {
                         onClick={() => setSelectedLead(lead)}
                         onMouseEnter={(e) => {
                           if (!isDragging) e.currentTarget.style.borderColor = "rgba(0,0,0,0.2)";
+                          if (lastNote) setHoveredNote({ lead, x: e.clientX, y: e.clientY });
                         }}
                         onMouseLeave={(e) => {
                           if (!isDragging) e.currentTarget.style.borderColor = "rgba(0,0,0,0.1)";
+                          setHoveredNote(null);
                         }}
                       >
                         <div className="flex items-center justify-between mb-1 min-w-0">
@@ -355,6 +440,15 @@ export default function CRM() {
                           >
                             <IconMessageCircle size={14} />
                           </button>
+                          {key !== "deleted" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmLead(lead); }}
+                              style={{ padding: 4, background: "transparent", border: "none", cursor: "pointer", color: "var(--color-text3)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6 }}
+                              title="Move to Deleted"
+                            >
+                              <IconTrash size={14} />
+                            </button>
+                          )}
                         </div>
                         <div className="text-[11.5px] truncate" style={{ color: "var(--color-text3)" }} title={lead.company}>{lead.company}</div>
                         {lead.status === "meeting_booked" && (
@@ -364,7 +458,16 @@ export default function CRM() {
                             </span>
                           </div>
                         )}
-                        <select
+                        {key === "deleted" ? (
+                          <button
+                            className="mt-2 w-full rounded-xl text-[11px] font-semibold"
+                            style={{ padding: "5px 6px", border: "1px solid rgba(34, 197, 122, 0.3)", background: "rgba(34, 197, 122, 0.08)", color: "#159767", cursor: "pointer" }}
+                            onClick={(e) => { e.stopPropagation(); restoreLead(lead); }}
+                            title="Restore this lead"
+                          >
+                            <span className="inline-flex items-center gap-1"><IconRestore size={12} /> Restore</span>
+                          </button>
+                        ) : <select
                           className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mt-2 cursor-pointer"
                           style={{ fontSize: 11, padding: "3px 6px" }}
                           value={lead.pipelineStage ?? "new"}
@@ -375,7 +478,10 @@ export default function CRM() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
+                        </select>}
+                        <div className="mt-1 text-[10px]" style={{ color: "var(--color-text3)" }}>
+                          {key === "deleted" ? `Deleted ${formatUpdatedAt(lead.deletedAt).replace("Updated ", "")}` : formatUpdatedAt(lead.updatedAt)}
+                        </div>
                       </div>
                     );
                   })}
@@ -405,6 +511,31 @@ export default function CRM() {
           })}
         </div>
       </div>
+
+      {hoveredNote && (() => {
+        const note = getLastNote(hoveredNote.lead);
+        if (!note) return null;
+        return (
+          <div
+            role="tooltip"
+            style={{
+              position: "fixed", left: hoveredNote.x + 12, top: hoveredNote.y - 8,
+              transform: "translateY(-100%)", zIndex: 200, width: 280, padding: "11px 12px",
+              borderRadius: 10, background: "var(--color-bg2)", border: "1px solid var(--color-bg4)",
+              boxShadow: "var(--shadow-lg)", pointerEvents: "none", color: "var(--color-text)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 5, color: "var(--color-text3)", fontSize: 10.5 }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Last note</span>
+              <span>{note.author}</span>
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.45, overflowWrap: "anywhere" }}>{note.text}</div>
+            <div style={{ marginTop: 6, color: "var(--color-text3)", fontSize: 10.5 }}>
+              {formatUpdatedAt(note.createdAt)}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Status Change Note Modal */}
       {moveModal && (
@@ -500,6 +631,51 @@ export default function CRM() {
                 }}
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmLead && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+            justifyContent: "center", zIndex: 110,
+          }}
+          onMouseDown={() => setDeleteConfirmLead(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-lead-title"
+            style={{
+              background: "var(--color-bg2)", border: "1px solid var(--color-bg4)", borderRadius: 20,
+              width: "100%", maxWidth: 400, padding: 24, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15)",
+              boxSizing: "border-box", color: "var(--color-text)", fontFamily: "var(--font-sans)",
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(223,42,42,0.1)", color: "#df2a2a", marginBottom: 14 }}>
+              <IconTrash size={19} />
+            </div>
+            <h3 id="delete-lead-title" style={{ fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>Move lead to Deleted?</h3>
+            <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "0 0 22px", lineHeight: 1.5 }}>
+              <strong style={{ color: "var(--color-text)" }}>{deleteConfirmLead.fullName}</strong> will be removed from the pipeline. You can restore this lead anytime from the Deleted column.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setDeleteConfirmLead(null)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "var(--color-bg3)", color: "var(--color-text2)", fontSize: 12.5, fontWeight: 700, border: "1px solid var(--color-bg4)", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { const lead = deleteConfirmLead; setDeleteConfirmLead(null); deleteLead(lead); }}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff", fontSize: 12.5, fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(223,42,42,0.25)" }}
+              >
+                Move to Deleted
               </button>
             </div>
           </div>
