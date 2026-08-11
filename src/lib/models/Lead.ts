@@ -43,6 +43,7 @@ export interface ILead extends Document {
   outreachAttempts: number;
   /** soft-delete timestamp; null/absent = active, set = in Trash */
   deletedAt?: Date | null;
+  recentAccessedAt?: Date | null;
   whatsappLid?: string;
   website?: string;
   location?: string;
@@ -74,6 +75,7 @@ const LeadSchema = new Schema<ILead>(
     lastContactedAt:   { type: Date },
     outreachAttempts:  { type: Number, default: 0 },
     deletedAt:         { type: Date, default: null },
+    recentAccessedAt:  { type: Date, default: null },
     whatsappLid:   { type: String, trim: true },
     website:       { type: String, trim: true },
     location:      { type: String, trim: true, default: "" },
@@ -104,6 +106,8 @@ LeadSchema.index({ agentId: 1, outreachStatus: 1 });
 LeadSchema.index({ agentId: 1, deletedAt: 1 });
 // Supports the CRM's per-stage, most-recently-updated ordering.
 LeadSchema.index({ agentId: 1, deletedAt: 1, pipelineStage: 1, updatedAt: -1, _id: -1 });
+// Supports the CRM's Recent column without changing the normal updatedAt order.
+LeadSchema.index({ agentId: 1, deletedAt: 1, recentAccessedAt: -1, _id: -1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
 
 // Delete the cached model if it exists to ensure HMR picks up schema changes like the new 'LLM' source enum

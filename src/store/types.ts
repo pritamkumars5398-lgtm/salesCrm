@@ -50,6 +50,7 @@ export interface Lead {
   notes?: LeadNote[];
   history?: LeadHistory[];
   deletedAt?: string | null;
+  recentAccessedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

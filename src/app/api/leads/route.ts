@@ -56,6 +56,7 @@ export async function GET(req: Request) {
   const sort = searchParams.get("sort");
 
   const trashed = searchParams.get("trashed") === "1";
+  const recentOnly = searchParams.get("recent") === "1";
   // Sync-batch days are grouped in the viewer's timezone, matching how the UI labels them.
   // A bad IANA name would make Mongo throw, so fall back to UTC.
   let tz = searchParams.get("tz") || "UTC";
@@ -68,7 +69,8 @@ export async function GET(req: Request) {
   const pageParam = searchParams.get("page");
   const paginated = pageParam !== null;
   const page = Math.max(1, Number(pageParam) || 1);
-  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE));
+  const requestedLimit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE));
+  const limit = recentOnly ? Math.min(40, requestedLimit) : requestedLimit;
 
   // Everything except `status` and the `addedDate` range, so the status tabs and
   // the sync-date dropdown can each count across the axis they filter on.
@@ -76,6 +78,10 @@ export async function GET(req: Request) {
   if (agentId) baseFilter.agentId = new mongoose.Types.ObjectId(agentId);
   // Trash view shows only soft-deleted leads; every other view hides them.
   baseFilter.deletedAt = trashed ? { $ne: null } : null;
+  if (recentOnly) {
+    baseFilter.deletedAt = null;
+    baseFilter.recentAccessedAt = { $ne: null };
+  }
   if (source && source !== "all") baseFilter.source = source;
   if (channel && channel !== "all") baseFilter.channels = channel;
   if (location && location !== "all") baseFilter.location = location;
@@ -126,6 +132,8 @@ export async function GET(req: Request) {
   const filter = { ...baseFilter, ...statusFilter, ...dateFilter };
   const sortOrder: Record<string, 1 | -1> = sort === "updatedAt"
     ? { updatedAt: -1 as const, _id: -1 as const }
+    : sort === "recentAccessedAt"
+      ? { recentAccessedAt: -1 as const, _id: -1 as const }
     : sort === "deletedAt"
       ? { deletedAt: -1 as const, _id: -1 as const }
       : { createdAt: -1 as const, _id: -1 as const };

@@ -9,10 +9,15 @@ import StatusPill from "@/components/ui/Pill";
 import { CRM_STAGES as STAGES } from "@/lib/constants/crm";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import { startLeadOutreach, deleteLeads, restoreLeads } from "@/lib/api/leads.api";
-import type { Lead } from "@/store/types";
+import type { Lead, LeadNote } from "@/store/types";
 import { IconMessageCircle } from "@tabler/icons-react";
 
-const CRM_COLUMNS = [...STAGES, { key: "deleted", label: "Deleted", pillClass: "pill-gray" }] as const;
+const RECENT_LIMIT = 40;
+const CRM_COLUMNS = [
+  { key: "recent", label: "Recently Viewed", pillClass: "pill-blue" },
+  ...STAGES,
+  { key: "deleted", label: "Deleted", pillClass: "pill-gray" },
+] as const;
 
 export default function CRM() {
   const { activeAgent, leads, setLeads, updateLead, updateAgentLeadCount, openDrawer, showToast } = useAppStore();
@@ -92,11 +97,12 @@ export default function CRM() {
       const params = new URLSearchParams({
         agentId: activeAgent._id,
         page: String(pageNum),
-        limit: "50",
-        sort: stageKey === "deleted" ? "deletedAt" : "updatedAt",
+        limit: stageKey === "recent" ? String(RECENT_LIMIT) : "50",
+        sort: stageKey === "deleted" ? "deletedAt" : stageKey === "recent" ? "recentAccessedAt" : "updatedAt",
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
       if (stageKey === "deleted") params.set("trashed", "1");
+      else if (stageKey === "recent") params.set("recent", "1");
       else params.set("pipelineStage", stageKey);
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
@@ -111,6 +117,15 @@ export default function CRM() {
       
       setLeads((prev: Lead[]) => {
         if (isInitial) {
+          if (stageKey === "recent") {
+            const incoming = (data.leads ?? []) as Lead[];
+            const incomingById = new Map(incoming.map((lead) => [lead._id, lead]));
+            const existingIds = new Set(prev.map((lead) => lead._id));
+            return [
+              ...prev.map((lead) => incomingById.get(lead._id) ?? lead),
+              ...incoming.filter((lead) => !existingIds.has(lead._id)),
+            ];
+          }
            const others = prev.filter((l) => stageKey === "deleted"
              ? !l.deletedAt
              : l.pipelineStage !== stageKey);
@@ -122,8 +137,8 @@ export default function CRM() {
         }
       });
       
-      setHasMoreCols(p => ({ ...p, [stageKey]: data.page < data.totalPages }));
-      setTotalCols(p => ({ ...p, [stageKey]: data.total }));
+      setHasMoreCols(p => ({ ...p, [stageKey]: stageKey === "recent" ? false : data.page < data.totalPages }));
+      setTotalCols(p => ({ ...p, [stageKey]: stageKey === "recent" ? Math.min(data.total, RECENT_LIMIT) : data.total }));
     } finally {
       setLoadingCols(p => ({ ...p, [stageKey]: false }));
     }
@@ -192,6 +207,42 @@ export default function CRM() {
     }
   }
 
+  async function markLeadRecent(lead: Lead) {
+    if (!activeAgent || lead.deletedAt) return;
+    const wasRecent = Boolean(lead.recentAccessedAt);
+    const recentAccessedAt = new Date().toISOString();
+    updateLead(lead._id, { recentAccessedAt });
+    setTotalCols((counts) => ({
+      ...counts,
+      recent: wasRecent ? (counts.recent ?? 0) : Math.min(RECENT_LIMIT, (counts.recent ?? 0) + 1),
+    }));
+
+    try {
+      const params = new URLSearchParams({ agentId: activeAgent._id });
+      const res = await fetch(`/api/leads/${lead._id}/recent?${params}`, { method: "POST" });
+      if (!res.ok) throw new Error("Recent update failed");
+      const updated = await res.json();
+      updateLead(lead._id, updated);
+    } catch {
+      updateLead(lead._id, { recentAccessedAt: lead.recentAccessedAt ?? null });
+      if (!wasRecent) {
+        setTotalCols((counts) => ({
+          ...counts,
+          recent: Math.max(0, (counts.recent ?? 1) - 1),
+        }));
+      }
+    }
+  }
+
+  const openLeadDetails = (lead: Lead) => {
+    setSelectedLead(lead);
+    markLeadRecent(lead);
+  };
+
+  const handleColumnWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+  };
+
   const handleDragStart = (e: React.DragEvent, lead: any) => {
     e.dataTransfer.setData("text/plain", lead._id);
     setDraggingId(lead._id);
@@ -241,6 +292,7 @@ export default function CRM() {
     setTotalCols((counts) => ({
       ...counts,
       [lead.pipelineStage ?? "new"]: Math.max(0, (counts[lead.pipelineStage ?? "new"] ?? 1) - 1),
+      recent: lead.recentAccessedAt ? Math.max(0, (counts.recent ?? 1) - 1) : counts.recent,
       deleted: (counts.deleted ?? 0) + 1,
     }));
     updateAgentLeadCount(activeAgent._id, Math.max(0, activeAgent.leadCount - 1));
@@ -254,6 +306,7 @@ export default function CRM() {
       setTotalCols((counts) => ({
         ...counts,
         [lead.pipelineStage ?? "new"]: (counts[lead.pipelineStage ?? "new"] ?? 0) + 1,
+        recent: lead.recentAccessedAt ? Math.min(RECENT_LIMIT, (counts.recent ?? 0) + 1) : counts.recent,
         deleted: Math.max(0, (counts.deleted ?? 1) - 1),
       }));
       showToast("Failed to delete lead", "error");
@@ -266,6 +319,7 @@ export default function CRM() {
     setTotalCols((counts) => ({
       ...counts,
       [lead.pipelineStage ?? "new"]: (counts[lead.pipelineStage ?? "new"] ?? 0) + 1,
+      recent: lead.recentAccessedAt ? Math.min(RECENT_LIMIT, (counts.recent ?? 0) + 1) : counts.recent,
       deleted: Math.max(0, (counts.deleted ?? 1) - 1),
     }));
     updateAgentLeadCount(activeAgent._id, activeAgent.leadCount + 1);
@@ -279,6 +333,7 @@ export default function CRM() {
       setTotalCols((counts) => ({
         ...counts,
         [lead.pipelineStage ?? "new"]: Math.max(0, (counts[lead.pipelineStage ?? "new"] ?? 1) - 1),
+        recent: lead.recentAccessedAt ? Math.max(0, (counts.recent ?? 1) - 1) : counts.recent,
         deleted: (counts.deleted ?? 0) + 1,
       }));
       showToast("Failed to restore lead", "error");
@@ -296,9 +351,9 @@ export default function CRM() {
     }).format(new Date(updatedAt))}`;
   };
 
-  const getLastNote = (lead: Lead) => lead.notes?.reduce((latest, note) =>
+  const getLastNote = (lead: Lead): LeadNote | undefined => lead.notes?.reduce<LeadNote | undefined>((latest, note) =>
     !latest || new Date(note.createdAt).getTime() > new Date(latest.createdAt).getTime() ? note : latest,
-  undefined as Lead["notes"] extends (infer Note)[] | undefined ? Note | undefined : never);
+  undefined);
 
   return (
     <div className="p-6">
@@ -339,33 +394,42 @@ export default function CRM() {
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-4">
-        <div className="grid gap-3 min-w-[1320px]" style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
+      <div className="overflow-x-auto pb-4" style={{ height: "calc(100dvh - 180px)", overscrollBehavior: "contain" }}>
+        <div className="grid h-full gap-3 min-w-[1540px]" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
           {CRM_COLUMNS.map(({ key, label, pillClass }) => {
             // Scope the shared store to the selected agent, then mirror the API's
             // newest-updated order so a just-moved card lands at the top at once.
             const stageLeads = leads
-              .filter((l) => l.agentId === activeAgent?._id && (key === "deleted" ? Boolean(l.deletedAt) : !l.deletedAt && (l.pipelineStage ?? "new") === key))
+              .filter((l) => l.agentId === activeAgent?._id && (
+                key === "deleted"
+                  ? Boolean(l.deletedAt)
+                  : key === "recent"
+                    ? !l.deletedAt && Boolean(l.recentAccessedAt)
+                    : !l.deletedAt && (l.pipelineStage ?? "new") === key
+              ))
               .sort((a, b) => {
-                const aTime = new Date(key === "deleted" ? a.deletedAt || a.updatedAt || a.createdAt : a.updatedAt || a.createdAt).getTime();
-                const bTime = new Date(key === "deleted" ? b.deletedAt || b.updatedAt || b.createdAt : b.updatedAt || b.createdAt).getTime();
+                const aSortValue = key === "deleted" ? a.deletedAt || a.updatedAt || a.createdAt : key === "recent" ? a.recentAccessedAt || a.updatedAt || a.createdAt : a.updatedAt || a.createdAt;
+                const bSortValue = key === "deleted" ? b.deletedAt || b.updatedAt || b.createdAt : key === "recent" ? b.recentAccessedAt || b.updatedAt || b.createdAt : b.updatedAt || b.createdAt;
+                const aTime = new Date(aSortValue).getTime();
+                const bTime = new Date(bSortValue).getTime();
                 return bTime - aTime || b._id.localeCompare(a._id);
-              });
+              })
+              .slice(0, key === "recent" ? RECENT_LIMIT : undefined);
             const isDraggingOver = dragOverStage === key;
 
             return (
               <div
                 key={key}
-                className="rounded-[14px] p-3 border min-w-0 transition-all duration-200"
+                className="rounded-[14px] p-3 border min-w-0 transition-all duration-200 flex flex-col"
                 style={{
                   background: isDraggingOver ? "rgba(223,42,42,0.04)" : "var(--color-bg2)",
                   borderColor: isDraggingOver ? "#df2a2a" : "rgba(0,0,0,0.1)",
-                  minHeight: 450,
+                  minHeight: 0,
                   boxShadow: isDraggingOver ? "0 0 14px rgba(223,42,42,0.12)" : "none",
                 }}
-                onDragOver={key === "deleted" ? undefined : (e) => handleDragOver(e, key)}
-                onDragLeave={key === "deleted" ? undefined : () => setDragOverStage(null)}
-                onDrop={key === "deleted" ? undefined : (e) => handleDrop(e, key)}
+                onDragOver={key === "deleted" || key === "recent" ? undefined : (e) => handleDragOver(e, key)}
+                onDragLeave={key === "deleted" || key === "recent" ? undefined : () => setDragOverStage(null)}
+                onDrop={key === "deleted" || key === "recent" ? undefined : (e) => handleDrop(e, key)}
               >
                 <div className="flex items-center justify-between mb-3 min-w-0">
                   <span className="text-[11px] font-semibold tracking-widest uppercase truncate" style={{ color: "var(--color-text3)" }}>
@@ -376,7 +440,11 @@ export default function CRM() {
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-2" style={{ minHeight: "100%" }}>
+                <div
+                  className="flex flex-col gap-2 overflow-y-auto pr-1"
+                  onWheel={handleColumnWheel}
+                  style={{ flex: 1, minHeight: 0, overscrollBehavior: "contain" }}
+                >
                   {stageLeads.map((lead, index) => {
                     const isDragging = draggingId === lead._id;
                     const isLast = index === stageLeads.length - 1;
@@ -396,7 +464,7 @@ export default function CRM() {
                           transform: isDragging ? "scale(0.96)" : "none",
                           boxShadow: isDragging ? "none" : "0 2px 4px rgba(0,0,0,0.02)",
                         }}
-                        onClick={() => setSelectedLead(lead)}
+                        onClick={() => openLeadDetails(lead)}
                         onMouseEnter={(e) => {
                           if (!isDragging) e.currentTarget.style.borderColor = "rgba(0,0,0,0.2)";
                           if (lastNote) setHoveredNote({ lead, x: e.clientX, y: e.clientY });
@@ -414,6 +482,7 @@ export default function CRM() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              markLeadRecent(lead);
                               openDrawer(lead, lead.channels?.[0] || "whatsapp");
                             }}
                             style={{
@@ -480,7 +549,11 @@ export default function CRM() {
                           {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                         </select>}
                         <div className="mt-1 text-[10px]" style={{ color: "var(--color-text3)" }}>
-                          {key === "deleted" ? `Deleted ${formatUpdatedAt(lead.deletedAt).replace("Updated ", "")}` : formatUpdatedAt(lead.updatedAt)}
+                          {key === "deleted"
+                            ? `Deleted ${formatUpdatedAt(lead.deletedAt).replace("Updated ", "")}`
+                            : key === "recent"
+                              ? `Opened ${formatUpdatedAt(lead.recentAccessedAt).replace("Updated ", "")}`
+                              : formatUpdatedAt(lead.updatedAt)}
                         </div>
                       </div>
                     );
@@ -502,7 +575,7 @@ export default function CRM() {
                       color: "var(--color-text3)",
                       opacity: 0.6,
                     }}>
-                      Drop leads here
+                      {key === "recent" ? "No recently opened leads" : key === "deleted" ? "No deleted leads" : "Drop leads here"}
                     </div>
                   )}
                 </div>
