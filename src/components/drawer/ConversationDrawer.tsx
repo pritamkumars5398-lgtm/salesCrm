@@ -53,6 +53,7 @@ export default function ConversationDrawer() {
   const [syncing, setSyncing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const [callsRefreshKey, setCallsRefreshKey] = useState(0);
   const [agentTyping, setAgentTyping] = useState(false);
   const [leadTyping, setLeadTyping] = useState(false);
 
@@ -153,6 +154,7 @@ export default function ConversationDrawer() {
         const data = JSON.parse(event.data);
         if (data.type === "message") {
           loadData();
+          setCallsRefreshKey((k) => k + 1);
         } else if (data.type === "typing") {
           if (data.by !== "user") {
             if (data.role === "agent") {
@@ -506,10 +508,11 @@ export default function ConversationDrawer() {
             {channel === "whatsapp" && <WAConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
             {channel === "email" && <EmailConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
             {channel === "sms" && <SMSConvo messages={currentConvo?.messages ?? []} lead={lead} agentTyping={agentTyping} leadTyping={leadTyping} />}
-            {channel === "call" && <CallConvo messages={currentConvo?.messages ?? []} lead={lead} />}
+            {channel === "call" && <CallConvo lead={lead} refreshKey={callsRefreshKey} />}
           </div>
 
-          {/* Reply box */}
+          {/* Reply box (calls are driven from the Call tab itself) */}
+          {channel !== "call" && (
           <div
             className="flex-shrink-0 border-t p-2.5"
             style={{ borderColor: "rgba(0,0,0,0.1)", background: "var(--color-bg2)" }}
@@ -588,9 +591,7 @@ export default function ConversationDrawer() {
                 placeholder={
                   sendAs === "lead"
                     ? `Reply as ${lead.fullName.split(" ")[0]}...`
-                    : channel === "call"
-                      ? "Send a follow-up text..."
-                      : "Type a message..."
+                    : "Type a message..."
                 }
                 rows={1}
                 className="flex-1 rounded-[8px] px-3 py-2 text-[12px] outline-none resize-none border transition-colors duration-150 font-[family-name:var(--font-sans)]"
@@ -650,6 +651,7 @@ export default function ConversationDrawer() {
               {hint.label}
             </div>
           </div>
+          )}
         </>
       )}
     </div>

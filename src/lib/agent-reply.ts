@@ -8,7 +8,9 @@ import { currentMonth } from "@/lib/utils/date";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
 import { checkUsageLimit } from "@/lib/usage-check";
-import twilio from "twilio";
+import { getWhatsAppConfig } from "@/server/services/settings.service";
+import { sendWhatsAppMessage } from "@/server/services/whatsapp.service";
+import { sendSms } from "@/server/services/sms.service";
 
 export async function handleAgentReply(
   lead: any,
@@ -25,7 +27,7 @@ export async function handleAgentReply(
       return;
     }
 
-    const usageField = channel === "email" ? "emailsSent" : "messagesSent";
+    const usageField = channel === "email" ? "emailsSent" : channel === "sms" ? "smsSent" : "messagesSent";
     const canReply = await checkUsageLimit(agentId, usageField, 1);
     if (!canReply) {
       console.warn(`[Auto Agent Reply] Skipped because ${usageField} limit is exhausted (agentId=${agentId})`);
@@ -169,15 +171,62 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
       parsed.body = parsed.body.replace(/\\n/g, "\n");
     }
 
-    // 5. Update lead status/pipeline stage
-    const leadDoc = await Lead.findById(lead._id);
-    if (leadDoc) {
-      leadDoc.status = parsed.status || "replied";
-      leadDoc.pipelineStage = parsed.status === "closed" ? "closed" : "replied";
-      await leadDoc.save();
+    if (!parsed.body || typeof parsed.body !== "string") throw new Error("LLM returned no reply body");
+
+    // 5. Deliver first — only record the reply as sent once the provider accepted it.
+    const savedContent = (channel === "email" && parsed.subject)
+      ? `Subject: ${parsed.subject}\n\n${parsed.body}`
+      : parsed.body;
+
+    let deliveryError: string | null = null;
+    try {
+      if (channel === "email") {
+        if (!lead.email) throw new Error("Lead has no email address");
+        const emailConfig = await getEmailConfig(agentId);
+        if (!emailConfig) throw new Error("Email is not configured");
+        await sendEmail(emailConfig, lead.email, parsed.subject || "Follow up", parsed.body);
+        await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { emailsSent: 1 } }, { upsert: true });
+      } else if (channel === "whatsapp") {
+        const waCfg = await getWhatsAppConfig(agentId);
+        if (!waCfg) throw new Error("WhatsApp is not configured");
+        const target = lead.phone || lead.whatsappLid;
+        if (!target) throw new Error("Lead has no WhatsApp number");
+        await sendWhatsAppMessage(waCfg, target, parsed.body);
+        await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { messagesSent: 1 } }, { upsert: true });
+      } else if (channel === "sms") {
+        if (!lead.phone) throw new Error("Lead has no phone number");
+        await sendSms(agentId, lead.phone, parsed.body); // counts usage itself
+      }
+    } catch (err) {
+      deliveryError = err instanceof Error ? err.message : String(err);
     }
 
-    // 6. Save agent message to Conversation history
+    if (deliveryError) {
+      console.error(`[Auto Agent Reply] Delivery failed on ${channel}:`, deliveryError);
+      await Activity.create({
+        agentId,
+        leadId: lead._id,
+        leadName: lead.fullName,
+        channel,
+        event: "AI Auto-Response Failed",
+        detail: `Error: ${deliveryError}\n\n${savedContent}`.slice(0, 2000),
+      });
+      return;
+    }
+
+    // 6. Update lead status/pipeline stage (never downgrade a booked meeting)
+    const VALID_STATUSES = ["replied", "meeting_booked", "closed"];
+    const nextStatus = VALID_STATUSES.includes(parsed.status) ? parsed.status : "replied";
+    const leadDoc = await Lead.findById(lead._id);
+    if (leadDoc) {
+      if (!(leadDoc.status === "meeting_booked" && nextStatus === "replied")) {
+        leadDoc.status = nextStatus;
+        leadDoc.pipelineStage = nextStatus === "closed" ? "closed" : "replied";
+        await leadDoc.save();
+      }
+    }
+
+    // 7. Save agent message to Conversation history
     let convo = await Conversation.findOne({ leadId: lead._id, channel });
     if (!convo) {
       convo = await Conversation.create({
@@ -187,11 +236,6 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
         messages: [],
       });
     }
-
-    const savedContent = (channel === "email" && parsed.subject)
-      ? `Subject: ${parsed.subject}\n\n${parsed.body}`
-      : parsed.body;
-
     convo.messages.push({
       role: "agent",
       content: savedContent,
@@ -202,115 +246,13 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
     // Emit event for new agent message
     eventEmitter.emit("message", { leadId: lead._id.toString() });
 
-    // 7. Send the email if configured
-    if (channel === "email" && lead.email) {
-      const emailConfig = await getEmailConfig(agentId);
-      if (emailConfig) {
-        await sendEmail(emailConfig, lead.email, parsed.subject || "Follow up", parsed.body);
-      }
-    } else if (channel === "whatsapp") {
-      const keys = ["waProvider", "waApiKey", "waSessionId", "twilioPhoneNumber"];
-      const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
-      const m: Record<string, string> = {};
-      rows.forEach((r) => { m[r.key] = r.value; });
-
-      const provider = m.waProvider || "WireWeb";
-
-      if (m.waApiKey && m.waSessionId) {
-        // Clean phone number
-        let phone = lead.phone ? lead.phone.replace(/\D/g, "") : "";
-        if (phone && phone.length === 10) phone = "91" + phone;
-        // Fallback to whatsappLid if we don't have a clean phone
-        const targetNumber = phone || lead.whatsappLid;
-        
-        if (targetNumber) {
-          if (provider === "Twilio") {
-            if (m.twilioPhoneNumber) {
-              const client = twilio(m.waSessionId, m.waApiKey);
-              await client.messages.create({
-                body: parsed.body,
-                from: `whatsapp:${m.twilioPhoneNumber}`,
-                to: `whatsapp:+${phone}`,
-              });
-            } else {
-              console.warn("Twilio sender number not configured for AI reply");
-            }
-          } else if (provider === "Meta Cloud API") {
-            await fetch(`https://graph.facebook.com/v20.0/${m.waSessionId}/messages`, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${m.waApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                recipient_type: "individual",
-                to: targetNumber,
-                type: "text",
-                text: {
-                  preview_url: false,
-                  body: parsed.body,
-                },
-              }),
-            });
-          } else {
-            await fetch("https://app.wireweb.co.in/api/v1/messages", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${m.waApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                sessionId: m.waSessionId,
-                to: targetNumber,
-                text: parsed.body,
-              }),
-            });
-          }
-        }
-      }
-    } else if (channel === "sms") {
-      const { getAppBaseUrl } = await import("@/server/services/settings.service");
-      const baseUrl = getAppBaseUrl();
-      if (lead.phone) {
-        await fetch(`${baseUrl}/api/sms/send`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            to: lead.phone,
-            text: parsed.body,
-          }),
-        });
-      }
-    }
-
-    // 7.5 Increment Usage metrics for AI Auto-Replies
-    try {
-      if (channel === "whatsapp") {
-        await Usage.findOneAndUpdate(
-          { agentId, month: currentMonth() },
-          { $inc: { messagesSent: 1 } },
-          { upsert: true }
-        );
-      } else if (channel === "email") {
-        await Usage.findOneAndUpdate(
-          { agentId, month: currentMonth() },
-          { $inc: { emailsSent: 1 } },
-          { upsert: true }
-        );
-      }
-    } catch (e) {
-      console.error("[Auto Agent Reply] Failed to increment usage", e);
-    }
-
     // 8. Log activity
     await Activity.create({
       agentId,
       leadId: lead._id,
       leadName: lead.fullName,
       channel,
-      event: `AI Auto-Response (${parsed.status})`,
+      event: `AI Auto-Response (${nextStatus})`,
       detail: savedContent.slice(0, 2000),
     });
 

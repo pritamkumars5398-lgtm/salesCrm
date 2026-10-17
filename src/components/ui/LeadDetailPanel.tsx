@@ -104,12 +104,14 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
         throw new Error(errData.error || errData.message || "Failed to place call");
       }
       const data = await res.json();
-      updateLead(lead._id, data.lead);
+      if (data.lead) updateLead(lead._id, data.lead);
 
-      if (data.plivo) {
-        showToast("🤖 Plivo AI Voice Call dispatched to lead!", "success");
+      if (data.mode === "ai_call") {
+        showToast(`📞 Calling ${lead.fullName}… follow it live in the Call tab`, "success");
+        handleClose();
+        openDrawer({ ...lead, ...(data.lead ?? {}) }, "call");
       } else {
-        showToast("Call logged successfully!", "success");
+        showToast("Call logged", "success");
         window.location.href = `tel:${lead.phone}`;
       }
     } catch (err: any) {

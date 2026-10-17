@@ -29,33 +29,53 @@ export interface VoiceConfig {
   callProvider: string;
   plivoAuthId: string;
   plivoAuthToken: string;
+  /** raw configured caller number; validated by the call service */
   callerPhone: string;
   elevenLabsAgentId: string;
-  voiceApiKey: string;
-  voiceId: string;
-  voiceProvider: string;
+  elevenLabsApiKey: string;
+  /** raw values — empty when not configured, so the ElevenLabs agent's own config applies */
   callScript: string;
   callGreeting: string;
+  maxDurationMin: number;
+  /** calling hours in 24h server time; null when not configured */
+  windowStartHour: number | null;
+  windowEndHour: number | null;
+  recordCalls: boolean;
+  hangupOnVoicemail: boolean;
+  /** "Hindi" | "Hinglish" | "English", or "" to keep the ElevenLabs agent's language */
+  callLanguage: string;
+}
+
+function parseHour(v: string | undefined): number | null {
+  if (v === undefined || v === null || String(v).trim() === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 24 ? n : null;
 }
 
 export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
-  const keys = [
+  const m = await getSettingsMap(agentId, [
     "callProvider", "plivoAuthId", "plivoAuthToken", "callApiKey", "callerPhone",
-    "elevenLabsAgentId", "voiceApiKey", "voiceId", "voiceProvider",
-    "callScript", "callGreeting"
-  ];
-  const m = await getSettingsMap(agentId, keys);
+    "elevenLabsAgentId", "voiceApiKey", "callScript", "callGreeting", "callMaxDuration",
+    "callWindowStart", "callWindowEnd", "callRecording", "callVoicemailDetection", "callLanguage",
+  ]);
+  const provider = m.callProvider || "Plivo";
+  const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
-    callProvider: m.callProvider || "Plivo",
+    callProvider: provider,
     plivoAuthId: m.plivoAuthId || process.env.PLIVO_AUTH_ID || "",
-    plivoAuthToken: m.plivoAuthToken || m.callApiKey || process.env.PLIVO_AUTH_TOKEN || "",
-    callerPhone: m.callerPhone || process.env.PLIVO_FROM_NUMBER || "918065535939",
-    elevenLabsAgentId: m.elevenLabsAgentId || process.env.ELEVENLABS_AGENT_ID || "",
-    voiceApiKey: m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "",
-    voiceId: m.voiceId || "Jessica",
-    voiceProvider: m.voiceProvider || "ElevenLabs",
-    callScript: m.callScript || "You are an intelligent sales assistant.",
-    callGreeting: m.callGreeting || "Hi, this is calling from the sales team.",
+    // callApiKey held the Plivo token before plivoAuthToken existed; only trust it for Plivo.
+    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" ? m.callApiKey : "") || process.env.PLIVO_AUTH_TOKEN || "",
+    callerPhone: m.callerPhone || process.env.PLIVO_FROM_NUMBER || "",
+    elevenLabsAgentId: (m.elevenLabsAgentId || process.env.ELEVENLABS_AGENT_ID || "").trim(),
+    elevenLabsApiKey: (m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "").trim(),
+    callScript: (m.callScript || "").trim(),
+    callGreeting: (m.callGreeting || "").trim(),
+    maxDurationMin: Number.isFinite(maxDuration) && maxDuration > 0 ? Math.min(maxDuration, 60) : 5,
+    windowStartHour: parseHour(m.callWindowStart),
+    windowEndHour: parseHour(m.callWindowEnd),
+    recordCalls: (m.callRecording || "On") !== "Off",
+    hangupOnVoicemail: (m.callVoicemailDetection || "Off") !== "Off",
+    callLanguage: ["Hindi", "Hinglish", "English"].includes(m.callLanguage) ? m.callLanguage : "",
   };
 }
 

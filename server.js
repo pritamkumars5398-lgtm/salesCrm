@@ -5,6 +5,9 @@
  */
 
 require("dotenv").config({ path: ".env" });
+// Lets the Next app know the /ws/plivo bridge is being served (set before Next
+// loads so any worker it spawns inherits it). AI calls are refused without it.
+process.env.TELEPHONY_BRIDGE_ACTIVE = "1";
 const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
@@ -16,6 +19,11 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 
+// The custom server builds with webpack (Turbopack's custom-server mode is
+// unstable in Next 15). Build into its own folder so it never mixes output with
+// `npm run dev` (--turbopack) in .next — that breaks client chunk loading.
+// See distDir in next.config.ts.
+if (dev && !process.env.NEXT_DIST_DIR) process.env.NEXT_DIST_DIR = ".next-bridge";
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -43,20 +51,33 @@ app.prepare().then(() => {
   const plivoWss = new WebSocket.Server({ noServer: true });
 
   plivoWss.on("connection", (ws, req) => {
-    handlePlivoStream(ws, req);
+    handlePlivoStream(ws, req).catch((err) => {
+      console.error("[TelephonyBridge] Unhandled stream error:", err);
+      try { ws.close(); } catch {}
+    });
   });
 
-  // Upgrade listener for WebSocket requests
-  server.on("upgrade", (req, socket, head) => {
-    const { pathname } = parse(req.url || "", true);
+  const isPlivoUpgrade = (req) => parse(req.url || "").pathname === "/ws/plivo";
 
-    if (pathname === "/ws/plivo" || pathname?.startsWith("/ws/plivo")) {
-      plivoWss.handleUpgrade(req, socket, head, (ws) => {
-        plivoWss.emit("connection", ws, req);
-      });
-    }
-    // Note: Other WebSockets (such as Next.js HMR) pass through untouched
-  });
+  function handlePlivoUpgrade(req, socket, head) {
+    if (!isPlivoUpgrade(req)) return; // Next.js HMR etc. are handled by Next's own listener
+    plivoWss.handleUpgrade(req, socket, head, (ws) => {
+      plivoWss.emit("connection", ws, req);
+    });
+  }
+
+  // Next.js attaches its own "upgrade" listener to this server on the first
+  // request and ends every socket it doesn't own — including /ws/plivo, which
+  // made calls drop ~300ms after pickup. Keep foreign upgrade listeners off our path.
+  for (const method of ["on", "addListener", "prependListener"]) {
+    const original = server[method].bind(server);
+    server[method] = (event, listener) =>
+      event === "upgrade" && listener !== handlePlivoUpgrade
+        ? original(event, (req, socket, head) => { if (!isPlivoUpgrade(req)) listener(req, socket, head); })
+        : original(event, listener);
+  }
+
+  server.on("upgrade", handlePlivoUpgrade);
 
   server.listen(port, () => {
     console.log(`====================================================`);

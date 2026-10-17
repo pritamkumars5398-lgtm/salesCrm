@@ -5,7 +5,7 @@ import { currentMonth } from "@/lib/utils/date";
 
 export async function checkUsageLimit(
   agentId: string,
-  field: "leadsScraped" | "messagesSent" | "emailsSent" | "smsSent",
+  field: "leadsScraped" | "messagesSent" | "emailsSent" | "smsSent" | "callsMade",
   incrementAmount: number = 1
 ): Promise<boolean> {
   const month = currentMonth();
@@ -32,6 +32,7 @@ export async function checkUsageLimit(
   else if (field === "messagesSent") maxVal = limits.messagesPerMonth;
   else if (field === "emailsSent") maxVal = limits.emailsPerMonth;
   else if (field === "smsSent") maxVal = limits.smsPerMonth;
+  else if (field === "callsMade") maxVal = limits.callsPerMonth;
   else maxVal = -1; // Fallback or unhandled
 
   if (maxVal === -1) return true; // Unlimited

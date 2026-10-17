@@ -1,23 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
-
-function getPublicAppUrl(req?: Request): string {
-  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/$/, "");
-  if (process.env.NGROK_URL) return process.env.NGROK_URL.replace(/\/$/, "");
-  if (req) {
-    const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-    const proto = req.headers.get("x-forwarded-proto") || "https";
-    if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
-      return `${proto}://${host}`;
-    }
-  }
-  const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  if (appUrl && !appUrl.includes("localhost") && !appUrl.includes("127.0.0.1")) {
-    return appUrl;
-  }
-  return "https://pleadingly-nonfortifiable-tyron.ngrok-free.dev";
-}
+import { placeAiCall } from "@/server/services/call.service";
 
 export async function POST(req: Request) {
   try {
@@ -47,35 +31,10 @@ export async function POST(req: Request) {
     const callScript    = m.callScript || "Be a helpful assistant.";
     const maxDuration   = parseInt(m.callMaxDuration || "2", 10) || 2;
 
-    const isPlivoProvider = callProvider === "Plivo" || callProvider.includes("ElevenLabs") || (!callApiKey && process.env.PLIVO_AUTH_ID);
-
-    if (isPlivoProvider) {
-      const plivoAuthId = m.plivoAuthId || process.env.PLIVO_AUTH_ID;
-      const plivoAuthToken = m.plivoAuthToken || process.env.PLIVO_AUTH_TOKEN;
-      const plivoFrom = (callerPhone && (callerPhone.startsWith("9180") || callerPhone.startsWith("+9180") || callerPhone === "918065535939"))
-        ? callerPhone
-        : (process.env.PLIVO_FROM_NUMBER || "918065535939");
-
-      const { makePlivoCall } = await import("@/lib/plivo-service");
-      const appUrl = getPublicAppUrl(req);
-      const answerUrl = `${appUrl}/api/calls/plivo-xml?agentId=${agentId}&test=true`;
-
-      console.log(`[CallTest] Dispatching Plivo test call to ${testNumber} (from ${plivoFrom}) via answerUrl: ${answerUrl}`);
-
-      const result = await makePlivoCall({
-        to: testNumber,
-        answerUrl,
-        from: plivoFrom,
-        authId: plivoAuthId,
-        authToken: plivoAuthToken,
-      });
-
-      if (!result.success) {
-        console.error("[CallTest] Plivo API error:", result);
-        return NextResponse.json({ error: result.message, details: result.error }, { status: 502 });
-      }
-
-      return NextResponse.json({ success: true, call: result, provider: "Plivo" });
+    if (callProvider === "Plivo" || callProvider === "ElevenLabs Conversational AI") {
+      const result = await placeAiCall({ agentId, toNumber: String(testNumber), isTest: true, req });
+      if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json({ success: true, callId: result.call?._id, provider: "Plivo" });
     }
 
     if (!callApiKey) {

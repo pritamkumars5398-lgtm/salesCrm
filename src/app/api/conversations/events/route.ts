@@ -55,9 +55,11 @@ export async function GET(req: Request) {
       const syncUrl = origin.startsWith("https://")
         ? `http://${host}/api/conversations/sync?leadId=${leadId}`
         : `${origin}/api/conversations/sync?leadId=${leadId}`;
+      // Forward the viewer's cookies — the sync route sits behind the auth middleware.
+      const cookie = req.headers.get("cookie") || "";
       intervalId = setInterval(async () => {
         try {
-          await fetch(syncUrl);
+          await fetch(syncUrl, { headers: { cookie } });
         } catch (err) {
           console.error("SSE background sync error:", err);
         }

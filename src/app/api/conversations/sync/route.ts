@@ -9,6 +9,7 @@ import { simpleParser } from "mailparser";
 import { handleAgentReply } from "@/lib/agent-reply";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
+import { getAppBaseUrl } from "@/server/services/settings.service";
 
 function cleanEmailBody(body: string): string {
   if (!body) return "";
@@ -139,27 +140,18 @@ Return ONLY valid JSON format:
     const raw = json.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(raw);
 
-    // Save to conversation
+    if (!parsed.body) throw new Error("LLM returned no follow-up body");
     const savedContent = parsed.subject ? `Subject: ${parsed.subject}\n\n${parsed.body}` : parsed.body;
-    convo.messages.push({
-      role: "agent",
-      content: savedContent,
-      timestamp: new Date(),
-    });
-    await convo.save();
 
-    // Emit event
-    eventEmitter.emit("message", { leadId: lead._id.toString() });
+    // Send first — only record the follow-up once the provider accepted it.
+    if (!lead.email) return;
+    const emailConfig = await getEmailConfig(agentId);
+    if (!emailConfig) return;
+    const baseUrl = getAppBaseUrl();
+    const interestedUrl = `${baseUrl}/api/leads/${lead._id}/response?action=interested`;
+    const notInterestedUrl = `${baseUrl}/api/leads/${lead._id}/response?action=not_interested`;
 
-    // Send email
-    if (lead.email) {
-      const emailConfig = await getEmailConfig(agentId);
-      if (emailConfig) {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        const interestedUrl = `${baseUrl}/api/leads/${lead._id}/response?action=interested`;
-        const notInterestedUrl = `${baseUrl}/api/leads/${lead._id}/response?action=not_interested`;
-
-        const htmlButtons = `
+    const htmlButtons = `
 <br><br>
 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eaeaea; font-family: sans-serif;">
   <p style="font-size: 13px; color: #666;">Are you open to a quick chat?</p>
@@ -169,9 +161,15 @@ Return ONLY valid JSON format:
   </div>
 </div>
 `;
-        await sendEmail(emailConfig, lead.email, parsed.subject || "Following up", parsed.body, htmlButtons);
-      }
-    }
+    await sendEmail(emailConfig, lead.email, parsed.subject || "Following up", parsed.body, htmlButtons);
+
+    convo.messages.push({
+      role: "agent",
+      content: savedContent,
+      timestamp: new Date(),
+    });
+    await convo.save();
+    eventEmitter.emit("message", { leadId: lead._id.toString() });
 
     // Log Activity
     await Activity.create({
@@ -245,8 +243,6 @@ export async function GET(req: Request) {
       logger: false,
     });
 
-    await client.connect();
-
     let newMessagesAdded = 0;
     let convo = await Conversation.findOne({ leadId, channel: "email" });
     if (!convo) {
@@ -258,65 +254,69 @@ export async function GET(req: Request) {
       });
     }
 
-    let lock = await client.getMailboxLock("INBOX");
+    await client.connect();
     try {
-      // Search for emails from the lead
-      const searchResults = await client.search({ from: lead.email });
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        // Search for emails from the lead
+        const searchResults = await client.search({ from: lead.email });
 
-      if (searchResults && Array.isArray(searchResults)) {
-        for (const uid of searchResults) {
-          const raw = await client.fetchOne(String(uid), { source: true });
-          if (!raw || !raw.source) continue;
+        if (searchResults && Array.isArray(searchResults)) {
+          for (const uid of searchResults) {
+            const raw = await client.fetchOne(String(uid), { source: true });
+            if (!raw || !raw.source) continue;
 
-          const parsed = await simpleParser(raw.source);
+            const parsed = await simpleParser(raw.source);
           
-           // Exclude emails sent from the agent's own email address
-          const fromAddress = parsed.from?.value?.[0]?.address;
-          if (fromAddress) {
-            const isAgentAddress = fromAddress.toLowerCase() === user.toLowerCase() ||
-                                   (agentEmailAddr && fromAddress.toLowerCase() === agentEmailAddr.toLowerCase());
+             // Exclude emails sent from the agent's own email address
+            const fromAddress = parsed.from?.value?.[0]?.address;
+            if (fromAddress) {
+              const isAgentAddress = fromAddress.toLowerCase() === user.toLowerCase() ||
+                                     (agentEmailAddr && fromAddress.toLowerCase() === agentEmailAddr.toLowerCase());
             
-            if (isAgentAddress) {
-              // If testing with the same email address for agent and lead, only allow replies (Subject starting with Re:)
-              const isTestingSameEmail = lead.email.toLowerCase() === user.toLowerCase() ||
-                                         (agentEmailAddr && lead.email.toLowerCase() === agentEmailAddr.toLowerCase());
+              if (isAgentAddress) {
+                // If testing with the same email address for agent and lead, only allow replies (Subject starting with Re:)
+                const isTestingSameEmail = lead.email.toLowerCase() === user.toLowerCase() ||
+                                           (agentEmailAddr && lead.email.toLowerCase() === agentEmailAddr.toLowerCase());
               
-              const subject = parsed.subject || "";
-              const isReplySubject = /^re:/i.test(subject);
+                const subject = parsed.subject || "";
+                const isReplySubject = /^re:/i.test(subject);
               
-              if (!isTestingSameEmail || !isReplySubject) {
-                continue;
+                if (!isTestingSameEmail || !isReplySubject) {
+                  continue;
+                }
               }
             }
-          }
 
-          const rawBody = parsed.text || (typeof parsed.html === "string" ? parsed.html.replace(/<[^>]*>/g, "") : "") || "";
-          const emailBody = cleanEmailBody(rawBody);
-          const emailDate = parsed.date || new Date();
-          const messageId = parsed.messageId || String(emailDate.getTime());
+            const rawBody = parsed.text || (typeof parsed.html === "string" ? parsed.html.replace(/<[^>]*>/g, "") : "") || "";
+            const emailBody = cleanEmailBody(rawBody);
+            const emailDate = parsed.date || new Date();
+            const messageId = parsed.messageId || String(emailDate.getTime());
 
-          // Check for duplicates (within 5 minutes for identical text content)
-          const exists = convo.messages.some(
-            (msg) => msg.meta?.messageId === messageId || 
-                     (Math.abs(new Date(msg.timestamp).getTime() - emailDate.getTime()) < 300000 && msg.content.trim() === emailBody.trim())
-          );
+            // Check for duplicates (within 5 minutes for identical text content)
+            const exists = convo.messages.some(
+              (msg) => msg.meta?.messageId === messageId || 
+                       (Math.abs(new Date(msg.timestamp).getTime() - emailDate.getTime()) < 300000 && msg.content.trim() === emailBody.trim())
+            );
 
-          if (!exists) {
-            convo.messages.push({
-              role: "lead",
-              content: emailBody,
-              timestamp: emailDate,
-              meta: { messageId },
-            });
-            newMessagesAdded++;
+            if (!exists) {
+              convo.messages.push({
+                role: "lead",
+                content: emailBody,
+                timestamp: emailDate,
+                meta: { messageId },
+              });
+              newMessagesAdded++;
+            }
           }
         }
+      } finally {
+        lock.release();
       }
     } finally {
-      lock.release();
+      // Always release the IMAP connection — this route runs every 25s while a drawer is open.
+      await client.logout().catch(() => client.close());
     }
-
-    await client.logout();
 
     if (newMessagesAdded > 0) {
       await convo.save();
@@ -325,9 +325,9 @@ export async function GET(req: Request) {
       eventEmitter.emit("message", { leadId });
 
       // Automatically update lead status to "replied" if not already
-      if (lead.status !== "replied" && lead.status !== "meeting_booked") {
+      if (lead.status === "new" || lead.status === "in_outreach") {
         lead.status = "replied";
-        lead.pipelineStage = "replied";
+        if (lead.pipelineStage === "new" || lead.pipelineStage === "contacted") lead.pipelineStage = "replied";
         await lead.save();
 
         await Activity.create({

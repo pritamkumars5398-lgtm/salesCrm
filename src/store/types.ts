@@ -62,6 +62,31 @@ export interface Message {
   meta?: Record<string, unknown>;
 }
 
+export type CallStatus =
+  | "queued" | "ringing" | "in_progress"
+  | "completed" | "no_answer" | "busy" | "failed" | "canceled" | "voicemail" | "logged";
+
+export interface CallRecord {
+  _id: string;
+  leadId?: string | null;
+  mode: "ai" | "manual";
+  to: string;
+  from?: string;
+  status: CallStatus;
+  active: boolean;
+  answeredAt?: string;
+  endedAt?: string;
+  durationSec?: number;
+  hangupCause?: string;
+  recordingUrl?: string;
+  transcript: { role: "agent" | "lead"; content: string; timestamp: string }[];
+  summary?: string;
+  sentiment?: "positive" | "neutral" | "negative";
+  outcome?: string;
+  error?: string;
+  createdAt: string;
+}
+
 export interface Conversation {
   _id: string;
   leadId: string;

@@ -35,7 +35,7 @@ function previewText(msg: Message | null, channel: Channel): string {
   return prefix + (text.length > 64 ? text.slice(0, 64) + "…" : text);
 }
 
-function formatTimestamp(iso?: string): string {
+export function formatTimestamp(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   const now = new Date();

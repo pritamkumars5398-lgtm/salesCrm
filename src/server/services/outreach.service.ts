@@ -6,6 +6,7 @@ import { Sequence } from "@/lib/models/Sequence";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
+import { sendSms } from "./sms.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 import { eventEmitter } from "@/lib/events";
 
@@ -285,31 +286,16 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
           await logOutreach(lead, agentId, "whatsapp", false, message, error);
         }
       } else if (channel === "sms") {
-        const baseUrl = opts.baseUrl || getAppBaseUrl();
+        const target = lead.phone;
+        if (!target) {
+          channelResults.push({ channel, sent: false, error: "Lead has no phone number for SMS." });
+          continue;
+        }
         const message = await generateWhatsAppMessage(agentId, info); // Reuse short-form generator for SMS
         firstBody = firstBody ?? message;
-        const target = lead.phone;
-
-        if (!target) {
-           channelResults.push({ channel, sent: false, error: "Lead has no phone number for SMS." });
-           continue;
-        }
 
         try {
-          await withRetry(async () => {
-            const smsSendRes = await fetch(`${baseUrl}/api/sms/send`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                agentId,
-                to: target,
-                text: message,
-              }),
-            });
-            const data = await smsSendRes.json();
-            if (!smsSendRes.ok) throw new Error(data.error || "SMS dispatch failed");
-          });
-          
+          await withRetry(() => sendSms(agentId, target, message));
           channelResults.push({ channel, sent: true });
           await logOutreach(lead, agentId, "sms", true, message);
         } catch (err) {

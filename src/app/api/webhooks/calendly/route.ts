@@ -38,7 +38,9 @@ async function verifySignature(req: Request, rawBody: string): Promise<boolean> 
 
   const toSign = `${timestamp}.${rawBody}`;
   const expected = crypto.createHmac("sha256", secret).update(toSign).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(v1), Buffer.from(expected));
+  const given = Buffer.from(v1);
+  const want = Buffer.from(expected);
+  return given.length === want.length && crypto.timingSafeEqual(given, want);
 }
 
 export async function POST(req: Request) {
@@ -58,25 +60,29 @@ export async function POST(req: Request) {
   }
 
   const event = payload?.event;
-  const invitee = payload?.payload?.invitee;
-  const eventDetails = payload?.payload?.event;
+  // Calendly v2 puts the invitee directly in `payload` (with `scheduled_event`);
+  // the legacy v1 format nested it under `payload.invitee` / `payload.event`.
+  const invitee = payload?.payload?.invitee ?? payload?.payload;
+  const eventDetails = payload?.payload?.scheduled_event ?? payload?.payload?.event;
 
   console.log(`[Calendly Webhook] Event: ${event}`);
 
   await connectDB();
 
   if (event === "invitee.created") {
-    const email = invitee?.email;
+    const email = String(invitee?.email || "").toLowerCase().trim();
     const name = invitee?.name;
     const scheduledAt = eventDetails?.start_time ? new Date(eventDetails.start_time) : new Date();
-    const durationMins = eventDetails?.duration ?? 30;
+    const endsAt = eventDetails?.end_time ? new Date(eventDetails.end_time) : null;
+    const durationMins = eventDetails?.duration
+      ?? (endsAt ? Math.max(1, Math.round((endsAt.getTime() - scheduledAt.getTime()) / 60000)) : 30);
 
     if (!email) {
       return NextResponse.json({ ok: true, note: "No email in payload, skipping" });
     }
 
-    // Find lead by email
-    const lead = await Lead.findOne({ email }).lean();
+    // Find lead by email (most recently contacted if several agents have this lead)
+    const lead = await Lead.findOne({ email, deletedAt: null }).sort({ lastContactedAt: -1 }).lean();
     if (!lead) {
       console.log(`[Calendly Webhook] No lead found for email: ${email}`);
       return NextResponse.json({ ok: true, note: "Lead not found for this email" });
@@ -108,7 +114,7 @@ export async function POST(req: Request) {
 
     await Lead.findByIdAndUpdate(lead._id, {
       status:        "meeting_booked",
-      pipelineStage: "meeting_booked",
+      pipelineStage: "qualified", // CRM stages have no "meeting_booked" column
     });
 
     await Activity.create({
@@ -125,9 +131,9 @@ export async function POST(req: Request) {
   }
 
   if (event === "invitee.canceled") {
-    const email = invitee?.email;
+    const email = String(invitee?.email || "").toLowerCase().trim();
     if (email) {
-      const lead = await Lead.findOne({ email }).lean();
+      const lead = await Lead.findOne({ email, deletedAt: null }).sort({ lastContactedAt: -1 }).lean();
       if (lead) {
         // Revert status back to replied so they can be re-engaged
         await Lead.findByIdAndUpdate(lead._id, {

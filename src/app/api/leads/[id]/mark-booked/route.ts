@@ -47,7 +47,7 @@ export async function POST(
   // Update lead status to meeting_booked
   await Lead.findByIdAndUpdate(params.id, {
     status: "meeting_booked",
-    pipelineStage: "meeting_booked",
+    pipelineStage: "qualified", // CRM stages have no "meeting_booked" column
   });
 
   // Log activity

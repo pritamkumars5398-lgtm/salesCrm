@@ -6,7 +6,9 @@ declare global {
 
 export const eventEmitter = global._eventEmitter ?? new EventEmitter();
 
-// Ensure the singleton persists across Next.js dev reloads
-if (process.env.NODE_ENV !== "production") {
-  global._eventEmitter = eventEmitter;
-}
+// Keep one emitter per process — it must survive Next.js dev reloads, and the
+// custom server's telephony bridge (plain JS, outside the Next bundle) reaches
+// it through the same global to push live call updates.
+global._eventEmitter = eventEmitter;
+// Every open conversation drawer adds listeners; don't warn at the default 10.
+eventEmitter.setMaxListeners(0);

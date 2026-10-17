@@ -222,3 +222,53 @@ RULES FOR HUMAN-LIKE WRITING:
   // Increased temperature slightly to 0.85 to encourage more varied and creative text structures
   return callGroq(agentId, prompt, { temperature: 0.85, maxTokens: 220 });
 }
+
+export type CallOutcome =
+  | "interested" | "meeting_requested" | "callback_requested"
+  | "not_interested" | "wrong_number" | "no_decision";
+
+export interface CallAnalysis {
+  summary: string;
+  sentiment: "positive" | "neutral" | "negative";
+  outcome: CallOutcome;
+}
+
+const CALL_OUTCOMES: CallOutcome[] = [
+  "interested", "meeting_requested", "callback_requested", "not_interested", "wrong_number", "no_decision",
+];
+
+/** Summarize a finished call and classify how the lead responded. */
+export async function analyzeCallTranscript(
+  agentId: string,
+  transcript: { role: "agent" | "lead"; content: string }[]
+): Promise<CallAnalysis> {
+  const lines = transcript
+    .map((t) => `${t.role === "agent" ? "AGENT" : "LEAD"}: ${t.content}`)
+    .join("\n")
+    .slice(-12000);
+
+  const prompt = `You are reviewing the transcript of an outbound sales phone call made by an AI agent.
+
+TRANSCRIPT:
+${lines}
+
+Judge ONLY from what the LEAD actually said. Do not infer interest the lead did not express.
+- outcome: one of ${CALL_OUTCOMES.map((o) => `"${o}"`).join(", ")}
+  - "meeting_requested" only if the lead agreed to a meeting/demo/visit
+  - "callback_requested" if the lead asked to be called later
+  - "wrong_number" if the lead says they are not the person/business
+  - "no_decision" if the lead barely spoke or nothing was decided
+- sentiment: the lead's overall tone — "positive", "neutral" or "negative"
+- summary: 1–2 plain sentences a salesperson can read at a glance (what was discussed, what's next). Always write the summary in English, even if the call was in Hindi or Hinglish.
+
+Return ONLY valid JSON: {"summary":"...","sentiment":"...","outcome":"..."}`;
+
+  const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.2, maxTokens: 300 });
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  const parsed = JSON.parse(start !== -1 && end > start ? raw.slice(start, end + 1) : raw);
+
+  const sentiment = ["positive", "neutral", "negative"].includes(parsed.sentiment) ? parsed.sentiment : "neutral";
+  const outcome = CALL_OUTCOMES.includes(parsed.outcome) ? parsed.outcome : "no_decision";
+  return { summary: String(parsed.summary || "").slice(0, 600), sentiment, outcome };
+}

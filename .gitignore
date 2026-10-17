@@ -38,3 +38,6 @@ next-env.d.ts
 *.pyc
 __pycache__/
 webhook.log
+
+# custom server (server.js) dev build output
+/.next-bridge/

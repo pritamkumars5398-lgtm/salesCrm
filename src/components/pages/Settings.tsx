@@ -679,8 +679,9 @@ export default function Settings() {
                   const currentCallProvider = values["callProvider"] || "Plivo";
                   const currentVoiceProvider = values["voiceProvider"] || "ElevenLabs";
 
-                  // Conditional visibility based on Call Provider
-                  if (currentCallProvider === "Plivo") {
+                  // Conditional visibility based on Call Provider ("ElevenLabs Conversational AI" also dials through Plivo)
+                  const usesPlivo = currentCallProvider === "Plivo" || currentCallProvider === "ElevenLabs Conversational AI";
+                  if (usesPlivo) {
                     if (f.key === "callApiKey") return null; // plivoAuthToken is used
                   } else {
                     if (f.key === "plivoAuthId" || f.key === "plivoAuthToken") return null;
@@ -691,10 +692,10 @@ export default function Settings() {
                   }
 
                   if (f.key === "voiceApiKey") {
-                    if (currentVoiceProvider === "Deepgram") {
+                    if (currentVoiceProvider === "Deepgram" && !usesPlivo) {
                       // Deepgram Aura uses the STT API Key, no need for a separate Voice API Key
                       return null;
-                    } else if (currentVoiceProvider === "ElevenLabs") {
+                    } else if (currentVoiceProvider === "ElevenLabs" || usesPlivo) {
                       displayLabel = "Voice API Key (ElevenLabs)";
                       displayPlaceholder = "Enter ElevenLabs API key...";
                     } else {

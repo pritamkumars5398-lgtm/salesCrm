@@ -3,7 +3,6 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Conversation } from "@/lib/models/Conversation";
 import { eventEmitter } from "@/lib/events";
-import fs from "fs";
 
 export async function POST(req: Request) {
   try {
@@ -13,30 +12,18 @@ export async function POST(req: Request) {
     let isTwilio = false;
     let isPlivo = false;
 
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const textBody = await req.text();
-      const params = new URLSearchParams(textBody);
-      params.forEach((value, key) => {
-        payload[key] = value;
+    if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+      (await req.formData()).forEach((value, key) => {
+        if (typeof value === "string") payload[key] = value;
       });
-      if (payload.SmsSid || payload.MessageSid) {
-        isTwilio = true;
-      }
     } else {
-      payload = await req.json();
-      if (payload.MessageUUID) {
-        isPlivo = true;
-      }
+      payload = await req.json().catch(() => ({}));
     }
+    // Detect by fields, not content type: Plivo posts form data by default too.
+    if (payload.MessageUUID) isPlivo = true;
+    else if (payload.SmsSid || payload.MessageSid) isTwilio = true;
 
-    console.log("[SMS Webhook] Received payload:", payload);
-
-    // DEBUG: Write payload to file so we can inspect it
-    try {
-      fs.appendFileSync("webhook-sms.log", JSON.stringify(payload) + "\n");
-    } catch (e) {
-      console.error("Failed to write to webhook-sms.log");
-    }
+    console.log("[SMS Webhook] Received message from", payload.From);
 
     const { searchParams } = new URL(req.url);
     const agentIdParam = searchParams.get("agentId");
@@ -86,7 +73,10 @@ export async function POST(req: Request) {
       const { Setting } = await import("@/lib/models/Setting");
       // For SMS, we can check smsFrom, smsAccountSid or even twilioPhoneNumber 
       // but typically we can check smsFrom if it matches the 'To' number.
-      let setting = await Setting.findOne({ key: "smsFrom", value: { $regex: new RegExp(sessionId.replace("+", "") + "$") } });
+      const toDigits = sessionId.replace(/\D/g, "");
+      let setting = toDigits
+        ? await Setting.findOne({ key: "smsFrom", value: { $regex: new RegExp(toDigits.slice(-10) + "$") } })
+        : null;
       
       if (!setting) {
         // Fallback to checking smsAccountSid just in case
@@ -111,6 +101,7 @@ export async function POST(req: Request) {
     // 3. Query the Lead database strictly scoped to this Agent
     const lead = await Lead.findOne({
       agentId: agentId,
+      deletedAt: null,
       phone: new RegExp(last10 + "$")
     });
 
@@ -121,10 +112,10 @@ export async function POST(req: Request) {
 
     console.log(`[SMS Webhook] Lead found: ${lead.fullName} (${lead._id}). Processing message...`);
 
-    // Update Lead status
-    if (lead.status !== "replied") {
+    // A reply moves fresh/outreach leads forward; never downgrade booked or closed leads.
+    if (lead.status === "new" || lead.status === "in_outreach") {
       lead.status = "replied";
-      lead.pipelineStage = "replied";
+      if (lead.pipelineStage === "new" || lead.pipelineStage === "contacted") lead.pipelineStage = "replied";
       await lead.save();
     }
 
@@ -143,6 +134,13 @@ export async function POST(req: Request) {
       });
     }
 
+    // Providers retry webhooks; never store/answer the same message twice.
+    const providerMessageId: string = payload.MessageUUID || payload.MessageSid || payload.SmsSid || "";
+    if (providerMessageId && conversation.messages.some((m) => m.meta?.providerMessageId === providerMessageId)) {
+      console.log(`[SMS Webhook] Duplicate delivery of ${providerMessageId} ignored.`);
+      return NextResponse.json({ ok: true });
+    }
+
     // Emit customer typing start
     eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "lead", isTyping: true });
     // Brief sleep to simulate typing
@@ -155,7 +153,9 @@ export async function POST(req: Request) {
       role: "lead",
       content: text,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
-      meta: payload.MediaUrl0 ? { mediaUrl: payload.MediaUrl0 } : undefined,
+      meta: (payload.MediaUrl0 || providerMessageId)
+        ? { ...(payload.MediaUrl0 ? { mediaUrl: payload.MediaUrl0 } : {}), ...(providerMessageId ? { providerMessageId } : {}) }
+        : undefined,
     });
 
     await conversation.save();

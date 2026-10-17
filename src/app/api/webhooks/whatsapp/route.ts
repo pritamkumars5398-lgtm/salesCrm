@@ -3,7 +3,6 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Conversation } from "@/lib/models/Conversation";
 import { eventEmitter } from "@/lib/events";
-import fs from "fs";
 
 export async function GET(req: Request) {
   try {
@@ -140,13 +139,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // DEBUG: Write payload to file so we can inspect it
-    try {
-      fs.appendFileSync("webhook.log", JSON.stringify(payload) + "\n");
-    } catch (e) {
-      console.error("Failed to write to webhook.log");
-    }
-
     const { searchParams } = new URL(req.url);
     const agentIdParam = searchParams.get("agentId");
 
@@ -158,6 +150,8 @@ export async function POST(req: Request) {
     let chat = "";
     let pushName = "";
     let sender = "";
+    // Provider message id — used to drop webhook retries so a message is never stored/answered twice.
+    let providerMessageId = "";
 
     const isMeta = payload.object === "whatsapp_business_account";
 
@@ -172,6 +166,7 @@ export async function POST(req: Request) {
       isGroup = false;
       chat = from;
       sender = from;
+      providerMessageId = payload.MessageSid || payload.SmsSid || "";
     } else if (isMeta) {
       const entry = payload.entry?.[0];
       const change = entry?.changes?.[0];
@@ -184,6 +179,7 @@ export async function POST(req: Request) {
       }
 
       from = message.from;
+      providerMessageId = message.id || "";
       if (message.type === "text") {
         text = message.text?.body || "";
       } else if (message.type && message[message.type]?.caption) {
@@ -212,6 +208,7 @@ export async function POST(req: Request) {
       chat = payload.chat || "";
       pushName = payload.pushName || "";
       sender = payload.sender || "";
+      providerMessageId = payload.id || payload.messageId || "";
     }
 
     if (payload.MediaUrl0 && !text) {
@@ -259,6 +256,7 @@ export async function POST(req: Request) {
     // 3. Query the Lead database strictly scoped to this Agent
     let lead = await Lead.findOne({
       agentId: agentId,
+      deletedAt: null,
       $or: [
         { phone: new RegExp(last10 + "$") },
         { whatsappLid: from }
@@ -268,10 +266,12 @@ export async function POST(req: Request) {
     // 4. Fallback for WhatsApp Local IDs (@lid) which mask the real phone number
     let matchedByFallback = false;
     if (!lead && (from.length > 12 || (sender && sender.includes("@lid"))) && pushName) {
-      const nameRegex = new RegExp(`^${pushName.split(" ")[0]}`, "i");
+      const firstWord = pushName.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const nameRegex = new RegExp(`^${firstWord}`, "i");
 
       const matchingLeads = await Lead.find({
         agentId: agentId,
+        deletedAt: null,
         $or: [{ firstName: nameRegex }, { fullName: nameRegex }]
       });
 
@@ -304,9 +304,10 @@ export async function POST(req: Request) {
 
     // Update Lead status and save the masked waLid if we used fallback
     let leadUpdated = false;
-    if (lead.status !== "replied") {
+    // A reply moves fresh/outreach leads forward; never downgrade booked or closed leads.
+    if (lead.status === "new" || lead.status === "in_outreach") {
       lead.status = "replied";
-      lead.pipelineStage = "replied";
+      if (lead.pipelineStage === "new" || lead.pipelineStage === "contacted") lead.pipelineStage = "replied";
       leadUpdated = true;
     }
     if (matchedByFallback && !lead.whatsappLid) {
@@ -332,6 +333,11 @@ export async function POST(req: Request) {
       });
     }
 
+    if (providerMessageId && conversation.messages.some((m) => m.meta?.providerMessageId === providerMessageId)) {
+      console.log(`[WhatsApp Webhook] Duplicate delivery of ${providerMessageId} ignored.`);
+      return NextResponse.json({ ok: true });
+    }
+
     // Emit customer typing start
     eventEmitter.emit("typing", { leadId: lead._id.toString(), role: "lead", isTyping: true });
     // Brief sleep to simulate typing
@@ -344,7 +350,9 @@ export async function POST(req: Request) {
       role: "lead",
       content: text,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
-      meta: payload.MediaUrl0 ? { mediaUrl: payload.MediaUrl0 } : undefined,
+      meta: (payload.MediaUrl0 || providerMessageId)
+        ? { ...(payload.MediaUrl0 ? { mediaUrl: payload.MediaUrl0 } : {}), ...(providerMessageId ? { providerMessageId } : {}) }
+        : undefined,
     });
 
     await conversation.save();

@@ -5,7 +5,7 @@ import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX, IconChevronRight, IconMicrophone, IconLock,
+  IconShield, IconX, IconChevronRight, IconMicrophone,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -33,7 +33,7 @@ const OUTREACH_CHANNELS = [
   { key: "email",    label: "Email",    Icon: IconMail,          color: "var(--color-email)",    bg: "var(--color-email-bg)",    enabledKey: "emailEnabled",    valueKey: "smtpFrom"      },
   { key: "whatsapp", label: "WhatsApp", Icon: IconBrandWhatsapp, color: "var(--color-whatsapp)", bg: "var(--color-whatsapp-bg)", enabledKey: "whatsappEnabled", valueKey: "waSessionId"   },
   { key: "sms",      label: "SMS",      Icon: IconMessage,       color: "var(--color-sms)",      bg: "var(--color-sms-bg)",      enabledKey: "smsEnabled",      valueKey: "smsFrom"       },
-  { key: "voice",    label: "Voice",    Icon: IconPhone,         color: "var(--color-voice)",    bg: "var(--color-voice-bg)",    enabledKey: "voiceEnabled",    valueKey: "voiceProvider" },
+  { key: "voice",    label: "Voice",    Icon: IconPhone,         color: "var(--color-voice)",    bg: "var(--color-voice-bg)",    enabledKey: "voiceEnabled",    valueKey: "callerPhone"   },
 ] as const;
 
 function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed?: boolean }) {
@@ -510,8 +510,8 @@ export default function Sidebar() {
               {OUTREACH_CHANNELS.map(({ key, label, Icon, color, bg, enabledKey, valueKey }) => {
                 const enabled = outreach[enabledKey] !== "false";
                 const value   = outreach[valueKey] || "";
-                const isLocked = key === "voice";
-                const isActive = isLocked
+                const isVoice = key === "voice";
+                const isActive = isVoice
                   ? currentPage === "voice-inbox"
                   : currentPage === "inbox" && activeChannel === key;
                 return (
@@ -519,7 +519,7 @@ export default function Sidebar() {
                     key={key}
                     onClick={() => {
                       const agentId = activeAgent?._id || "default";
-                      if (isLocked) navigate(`/voice-inbox/${agentId}`);
+                      if (isVoice) navigate(`/voice-inbox/${agentId}`);
                       else navigate(`/inbox/${agentId}?channel=${key}`);
                     }}
                     style={{
@@ -540,9 +540,7 @@ export default function Sidebar() {
                       color: "inherit",
                     }}
                     title={
-                      isLocked
-                        ? "Voice inbox — coming soon"
-                        : collapsed
+                      collapsed
                           ? `${label}: ${enabled && value ? value : enabled ? "Not configured" : "Disabled"}`
                           : undefined
                     }
@@ -571,22 +569,18 @@ export default function Sidebar() {
                             style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                             title={value}
                           >
-                            {isLocked ? "Coming soon" : enabled && value ? value : enabled ? "Not configured" : "Disabled"}
+                            {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
                           </p>
                         </div>
-                        {isLocked ? (
-                          <IconLock size={12} style={{ color: "var(--color-text4)", flexShrink: 0 }} />
-                        ) : (
-                          <span
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: enabled ? "var(--color-green)" : "var(--color-bg5)",
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: enabled ? "var(--color-green)" : "var(--color-bg5)",
+                            flexShrink: 0,
+                          }}
+                        />
                       </>
                     )}
                   </button>

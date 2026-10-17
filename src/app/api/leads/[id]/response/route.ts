@@ -69,16 +69,50 @@ Return ONLY valid JSON:
   }
 }
 
+const page = (inner: string) => new NextResponse(`
+      <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+      <body style="font-family:sans-serif; text-align:center; padding: 50px 16px; color:#333;">${inner}</body></html>
+    `, { headers: { "Content-Type": "text/html" } });
+
+/**
+ * Email links only show a confirmation page: mail security scanners and link
+ * previewers fetch every URL in a message, so a GET must never change state.
+ */
 export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const { searchParams } = new URL(req.url);
+  const action = searchParams.get("action");
+  if (action !== "interested" && action !== "not_interested") {
+    return new NextResponse("Invalid action", { status: 400 });
+  }
+  const { id } = await props.params;
+  const label = action === "interested" ? "Yes, I'm interested" : "Not right now";
+  const color = action === "interested" ? "#df2a2a" : "#475569";
+  return page(`
+        <h2>${action === "interested" ? "Great — one click to confirm" : "Confirm your choice"}</h2>
+        <form method="POST" action="/api/leads/${encodeURIComponent(id)}/response?action=${action}">
+          <button type="submit" style="margin-top:16px; padding:12px 22px; border:0; border-radius:6px; background:${color}; color:#fff; font-size:15px; cursor:pointer;">${label}</button>
+        </form>`);
+}
+
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { searchParams } = new URL(req.url);
   const action = searchParams.get("action");
 
   await connectDB();
   const lead = await Lead.findById(params.id);
-  if (!lead) return new NextResponse("Lead not found", { status: 404 });
+  if (!lead || lead.deletedAt) return new NextResponse("Lead not found", { status: 404 });
 
   const agentId = String(lead.agentId);
+
+  // Repeat clicks (double submit, revisiting the page) must not re-send the AI email.
+  const emailConvo = await Conversation.findOne({ leadId: lead._id, channel: "email" }).lean();
+  const lastLeadMsg = [...(emailConvo?.messages ?? [])].reverse().find((m) => m.role === "lead");
+  if (lastLeadMsg?.meta?.responseAction === action) {
+    return page(action === "interested"
+      ? "<h2>Thanks!</h2><p>We already have your response — check your inbox for the scheduling email.</p>"
+      : "<h2>Thank you for your time.</h2><p>We've updated our records and won't reach out again.</p>");
+  }
 
   if (action === "not_interested") {
     lead.status = "closed";
@@ -104,6 +138,7 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       role: "lead",
       content: "No, I'm not interested in this. Please unsubscribe me.",
       timestamp: new Date(),
+      meta: { responseAction: "not_interested" },
     });
     await convo.save();
     eventEmitter.emit("message", { leadId: lead._id.toString() });
@@ -117,9 +152,11 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
   }
 
   if (action === "interested") {
-    lead.status = "replied";
-    lead.pipelineStage = "replied";
-    await lead.save();
+    if (lead.status !== "meeting_booked") {
+      lead.status = "replied";
+      lead.pipelineStage = "replied";
+      await lead.save();
+    }
 
     await Activity.create({
       agentId, leadId: lead._id, leadName: lead.fullName, channel: "email",
@@ -140,6 +177,7 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       role: "lead",
       content: "I'm interested! Please send me the details and calendar link.",
       timestamp: new Date(),
+      meta: { responseAction: "interested" },
     });
     await convo.save();
     eventEmitter.emit("message", { leadId: lead._id.toString() });
