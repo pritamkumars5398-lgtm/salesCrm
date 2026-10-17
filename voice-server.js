@@ -3,6 +3,7 @@ const WebSocket = require("ws");
 const OpenAI = require("openai");
 const mongoose = require("mongoose");
 const url = require("url");
+const { handlePlivoStream } = require("./src/server/telephony-bridge");
 
 // --- MongoDB Setup ---
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -27,10 +28,17 @@ const wss = new WebSocket.Server({ port: 8080 });
 console.log("🚀 Real-Time Voice Server running on ws://localhost:8080");
 
 wss.on("connection", async (clientWs, req) => {
-  console.log("✅ New client connected to Voice Server");
+  const parsedUrl = url.parse(req.url, true);
+
+  // Check if connection is from Plivo telephony stream
+  if (parsedUrl.pathname === "/ws/plivo" || parsedUrl.query.provider === "plivo" || req.headers["user-agent"]?.includes("Plivo")) {
+    console.log("📞 Routing to Plivo Telephony Bridge");
+    return handlePlivoStream(clientWs, req);
+  }
+
+  console.log("✅ New browser client connected to Voice Server");
 
   // 1. Extract agentId from URL query string (e.g. ?agentId=xyz)
-  const parsedUrl = url.parse(req.url, true);
   const agentId = parsedUrl.query.agentId;
 
   if (!agentId || !mongoose.Types.ObjectId.isValid(agentId)) {

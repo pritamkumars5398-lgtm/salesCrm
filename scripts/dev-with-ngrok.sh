@@ -55,7 +55,7 @@ else
 fi
 echo -e "============================================================\n"
 
-echo "Starting Next.js dev server on port 3000..."
+echo "Starting Sales CRM & Telephony Bridge on port $PORT..."
 
-# Start Next.js in foreground so Ctrl+C interrupts it directly!
-npx next dev --turbopack --port "$PORT"
+# Start unified Next.js + Plivo Telephony Bridge server in foreground
+node server.js

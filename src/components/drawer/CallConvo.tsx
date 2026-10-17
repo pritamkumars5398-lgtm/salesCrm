@@ -47,8 +47,8 @@ export default function CallConvo({ messages, lead }: Props) {
       {/* Providers */}
       <div className="flex gap-2.5 mb-3">
         {[
-          { Icon: IconPhone,       bg: "rgba(245,166,35,0.1)",  color: "#f5a623", name: "Vapi.ai",     sub: "Call provider" },
-          { Icon: IconMicrophone,  bg: "rgba(204,153,255,0.1)", color: "#cc99ff", name: "ElevenLabs",  sub: "Voice provider" },
+          { Icon: IconPhone,       bg: "rgba(59,130,246,0.1)",  color: "#3b82f6", name: "Plivo",       sub: "Telephony provider" },
+          { Icon: IconMicrophone,  bg: "rgba(204,153,255,0.1)", color: "#cc99ff", name: "ElevenLabs",  sub: "Conversational AI" },
         ].map(({ Icon, bg, color, name, sub }) => (
           <div key={name} className="flex-1 flex items-center gap-2 p-2.5 rounded-[10px] border" style={{ background: "var(--color-bg3)", borderColor: "rgba(0,0,0,0.1)" }}>
             <div className="w-7 h-7 rounded-[7px] flex items-center justify-center flex-shrink-0" style={{ background: bg, color }}>

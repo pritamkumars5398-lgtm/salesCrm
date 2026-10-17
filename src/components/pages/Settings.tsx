@@ -150,14 +150,26 @@ export default function Settings() {
 
   async function triggerRealTestCall() {
     if (!testPhoneNumber.trim() || callingReal) return;
-    if (!values["callApiKey"]) {
-      showToast("Vapi Call API Key is missing in settings", "error");
-      return;
+    const provider = values["callProvider"] || "Plivo";
+
+    if (provider === "Vapi.ai") {
+      if (!values["callApiKey"]) {
+        showToast("Vapi Call API Key is missing in settings", "error");
+        return;
+      }
+      if (!values["callerPhone"]) {
+        showToast("Caller Phone Number (Vapi Phone ID) is missing", "error");
+        return;
+      }
+    } else if (provider === "Plivo") {
+      // Plivo uses plivoAuthId & plivoAuthToken, with system .env fallbacks
+      const caller = values["callerPhone"] || "918065535939";
+      if (!caller) {
+        showToast("Caller Phone Number (Outbound DID) is required", "error");
+        return;
+      }
     }
-    if (!values["callerPhone"]) {
-      showToast("Caller Phone Number (Vapi Phone ID) is missing", "error");
-      return;
-    }
+
     setCallingReal(true);
     try {
       const res = await fetch("/api/voice/call-test", {
@@ -626,9 +638,58 @@ export default function Settings() {
                   }
                 }
 
+                if (activeCard.key === "llm") {
+                  const currentLlmProvider = values["llmProvider"] || "Groq (Llama 3)";
+                  if (f.key === "llmApiKey") {
+                    if (currentLlmProvider.includes("Groq")) {
+                      displayLabel = "Groq API Key (starts with gsk_)";
+                      displayPlaceholder = "gsk_...";
+                      displayHint = "From console.groq.com";
+                    } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
+                      displayLabel = "OpenAI API Key (starts with sk-)";
+                      displayPlaceholder = "sk-...";
+                      displayHint = "From platform.openai.com";
+                    } else if (currentLlmProvider.includes("Claude") || currentLlmProvider.includes("Anthropic")) {
+                      displayLabel = "Anthropic API Key (starts with sk-ant-)";
+                      displayPlaceholder = "sk-ant-...";
+                      displayHint = "From console.anthropic.com";
+                    } else if (currentLlmProvider.includes("Gemini")) {
+                      displayLabel = "Google Gemini API Key";
+                      displayPlaceholder = "AIzaSy...";
+                      displayHint = "From aistudio.google.com";
+                    }
+                  } else if (f.key === "llmModel") {
+                    if (currentLlmProvider.includes("Groq")) {
+                      displayPlaceholder = "llama-3.3-70b-versatile";
+                      displayHint = "e.g. llama-3.3-70b-versatile, llama-3.1-8b-instant";
+                    } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
+                      displayPlaceholder = "gpt-4o-mini";
+                      displayHint = "e.g. gpt-4o-mini, gpt-4o";
+                    } else if (currentLlmProvider.includes("Claude")) {
+                      displayPlaceholder = "claude-3-5-sonnet-20241022";
+                      displayHint = "e.g. claude-3-5-sonnet-20241022, claude-3-haiku-20240307";
+                    } else if (currentLlmProvider.includes("Gemini")) {
+                      displayPlaceholder = "gemini-1.5-pro";
+                      displayHint = "e.g. gemini-1.5-pro, gemini-1.5-flash";
+                    }
+                  }
+                }
+
                 if (activeCard.key === "voice") {
+                  const currentCallProvider = values["callProvider"] || "Plivo";
                   const currentVoiceProvider = values["voiceProvider"] || "ElevenLabs";
-                  
+
+                  // Conditional visibility based on Call Provider
+                  if (currentCallProvider === "Plivo") {
+                    if (f.key === "callApiKey") return null; // plivoAuthToken is used
+                  } else {
+                    if (f.key === "plivoAuthId" || f.key === "plivoAuthToken") return null;
+                  }
+
+                  if (currentCallProvider !== "Vapi.ai" && currentCallProvider !== "Bland.ai" && f.key === "callApiKey") {
+                    return null;
+                  }
+
                   if (f.key === "voiceApiKey") {
                     if (currentVoiceProvider === "Deepgram") {
                       // Deepgram Aura uses the STT API Key, no need for a separate Voice API Key
@@ -653,9 +714,10 @@ export default function Settings() {
                     } else if (currentVoiceProvider === "ElevenLabs") {
                       displayHint = "Select a standard ElevenLabs voice";
                       displayOptions = [
-                        { label: "Adam (Deep, Professional)", value: "pNInz6obpgDQGcFmaJgB" },
+                        { label: "Jessica (Expressive, Friendly)", value: "cgSgspJ2msm6clMCkdW9" },
                         { label: "Rachel (Calm, Professional)", value: "21m00Tcm4TlvDq8ikWAM" },
                         { label: "Bella (Soft, Warm)", value: "EXAVITQu4vr4xnSDxMaL" },
+                        { label: "Adam (Deep, Professional)", value: "pNInz6obpgDQGcFmaJgB" },
                         { label: "Antoni (Well-rounded)", value: "ErXwobaYiN019PkySvjV" },
                         { label: "Josh (Deep, Authoritative)", value: "TxGEqnHWrfWFTfGW9XjX" }
                       ];
@@ -1129,10 +1191,10 @@ export default function Settings() {
                 <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
                   <div className="text-[12.5px] font-bold text-text2 dark:text-text4 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Real Outbound Call Tester (2 min test)
+                    Real Outbound Call Tester ({values["callProvider"] || "Plivo"} Telephony)
                   </div>
                   <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
-                    Enter your phone number to test a real phone call from the AI agent (requires Vapi settings saved above).
+                    Enter your phone number to test a real phone call from the AI agent using {values["callProvider"] || "Plivo"}.
                   </p>
                   
                   <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">

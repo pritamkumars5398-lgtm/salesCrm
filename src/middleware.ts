@@ -11,6 +11,7 @@ import type { NextRequest } from "next/server";
 const PUBLIC_API = [
   /^\/api\/auth\//,
   /^\/api\/webhooks\//,
+  /^\/api\/calls\//,
   /^\/api\/sms\/status$/,
   /^\/api\/leads\/[^/]+\/response$/,
   /^\/api\/crons\/execute$/,

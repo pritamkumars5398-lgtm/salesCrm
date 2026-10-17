@@ -66,14 +66,20 @@ async function callGroq(
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const isOpenAi = (llm.provider.includes("OpenAI") || llm.provider.includes("GPT")) && !llm.apiKey.startsWith("gsk_");
+    const endpoint = isOpenAi 
+      ? "https://api.openai.com/v1/chat/completions" 
+      : "https://api.groq.com/openai/v1/chat/completions";
+    const selectedModel = llm.model || (isOpenAi ? "gpt-4o-mini" : "llama-3.3-70b-versatile");
+
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${llm.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: llm.model,
+        model: selectedModel,
         messages: [{ role: "user", content: prompt }],
         temperature: opts.temperature ?? 0.4,
         max_tokens: opts.maxTokens ?? 512,
@@ -82,7 +88,7 @@ async function callGroq(
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`Groq error: ${await res.text()}`);
+    if (!res.ok) throw new Error(`${isOpenAi ? "OpenAI" : "Groq"} error: ${await res.text()}`);
     const json = await res.json();
     return (json.choices?.[0]?.message?.content ?? "").trim();
   } catch (err: unknown) {

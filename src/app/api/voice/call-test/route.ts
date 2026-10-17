@@ -2,6 +2,23 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 
+function getPublicAppUrl(req?: Request): string {
+  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/$/, "");
+  if (process.env.NGROK_URL) return process.env.NGROK_URL.replace(/\/$/, "");
+  if (req) {
+    const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+    const proto = req.headers.get("x-forwarded-proto") || "https";
+    if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+      return `${proto}://${host}`;
+    }
+  }
+  const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  if (appUrl && !appUrl.includes("localhost") && !appUrl.includes("127.0.0.1")) {
+    return appUrl;
+  }
+  return "https://pleadingly-nonfortifiable-tyron.ngrok-free.dev";
+}
+
 export async function POST(req: Request) {
   try {
     const { agentId, testNumber } = await req.json();
@@ -13,22 +30,53 @@ export async function POST(req: Request) {
     
     // Fetch all voice/call settings for the agent
     const keys = [
-      "callProvider", "callApiKey", "callerPhone",
-      "voiceProvider", "voiceApiKey", "voiceId",
+      "callProvider", "callApiKey", "callerPhone", "plivoAuthId", "plivoAuthToken",
+      "voiceProvider", "voiceApiKey", "voiceId", "elevenLabsAgentId",
       "callGreeting", "callScript", "callMaxDuration"
     ];
     const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const callProvider = m.callProvider || "Vapi.ai";
+    const callProvider = m.callProvider || "Plivo";
     const callApiKey   = m.callApiKey || "";
     const callerPhone  = m.callerPhone || "";
     const voiceProvider = m.voiceProvider || "ElevenLabs";
-    const voiceId       = m.voiceId || "Rachel";
+    const voiceId       = m.voiceId || "Jessica";
     const callGreeting  = m.callGreeting || "Hi, this is a test call.";
     const callScript    = m.callScript || "Be a helpful assistant.";
     const maxDuration   = parseInt(m.callMaxDuration || "2", 10) || 2;
+
+    const isPlivoProvider = callProvider === "Plivo" || callProvider.includes("ElevenLabs") || (!callApiKey && process.env.PLIVO_AUTH_ID);
+
+    if (isPlivoProvider) {
+      const plivoAuthId = m.plivoAuthId || process.env.PLIVO_AUTH_ID;
+      const plivoAuthToken = m.plivoAuthToken || process.env.PLIVO_AUTH_TOKEN;
+      const plivoFrom = (callerPhone && (callerPhone.startsWith("9180") || callerPhone.startsWith("+9180") || callerPhone === "918065535939"))
+        ? callerPhone
+        : (process.env.PLIVO_FROM_NUMBER || "918065535939");
+
+      const { makePlivoCall } = await import("@/lib/plivo-service");
+      const appUrl = getPublicAppUrl(req);
+      const answerUrl = `${appUrl}/api/calls/plivo-xml?agentId=${agentId}&test=true`;
+
+      console.log(`[CallTest] Dispatching Plivo test call to ${testNumber} (from ${plivoFrom}) via answerUrl: ${answerUrl}`);
+
+      const result = await makePlivoCall({
+        to: testNumber,
+        answerUrl,
+        from: plivoFrom,
+        authId: plivoAuthId,
+        authToken: plivoAuthToken,
+      });
+
+      if (!result.success) {
+        console.error("[CallTest] Plivo API error:", result);
+        return NextResponse.json({ error: result.message, details: result.error }, { status: 502 });
+      }
+
+      return NextResponse.json({ success: true, call: result, provider: "Plivo" });
+    }
 
     if (!callApiKey) {
       return NextResponse.json({ error: "Call API key (Vapi) is not configured in settings." }, { status: 400 });

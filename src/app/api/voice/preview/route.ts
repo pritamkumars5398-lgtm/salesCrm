@@ -14,8 +14,8 @@ export async function POST(req: Request) {
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const apiKey = m.voiceApiKey || "";
-    const voiceId = reqVoiceId || m.voiceId || "Bella";
+    const apiKey = m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "";
+    const voiceId = reqVoiceId || m.voiceId || "Jessica";
     const provider = m.voiceProvider || "ElevenLabs";
 
     if (!apiKey) {

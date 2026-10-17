@@ -89,25 +89,31 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
       .catch((err) => console.error("Error loading sequence in LeadDetailPanel", err));
   }, [activeAgent?._id]);
 
-  async function handleCall() {
+  async function handleCall(mode: "ai_call" | "manual" = "ai_call") {
     if (!lead.phone || calling) return;
     setCalling(true);
 
     try {
       const res = await fetch(`/api/leads/${lead._id}/call`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
       });
       if (!res.ok) {
-        throw new Error(await res.text());
+        const errData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(errData.error || errData.message || "Failed to place call");
       }
       const data = await res.json();
       updateLead(lead._id, data.lead);
-      showToast("Call logged successfully!", "success");
 
-      // Open native dialer now that the call is successfully tracked
-      window.location.href = `tel:${lead.phone}`;
+      if (data.plivo) {
+        showToast("🤖 Plivo AI Voice Call dispatched to lead!", "success");
+      } else {
+        showToast("Call logged successfully!", "success");
+        window.location.href = `tel:${lead.phone}`;
+      }
     } catch (err: any) {
-      showToast(err.message || "Failed to log call", "error");
+      showToast(err.message || "Failed to place call", "error");
     } finally {
       setCalling(false);
     }
@@ -309,26 +315,50 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {!isEditing && lead.phone && (
-              <button
-                onClick={handleCall}
-                disabled={calling}
-                style={{
-                  background: calling ? "var(--color-bg3)" : "rgba(16,185,129,0.1)",
-                  border: "1px solid rgba(16,185,129,0.2)",
-                  cursor: calling ? "wait" : "pointer",
-                  padding: "4px 8px",
-                  color: "#059669",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  borderRadius: 6,
-                }}
-              >
-                <IconPhone size={14} className={calling ? "animate-pulse" : ""} />
-                {calling ? "Calling..." : "Call"}
-              </button>
+              <>
+                <button
+                  onClick={() => handleCall("ai_call")}
+                  disabled={calling}
+                  title="Dispatch real-time AI Voice Agent (Plivo + ElevenLabs)"
+                  style={{
+                    background: calling ? "var(--color-bg3)" : "rgba(223,42,42,0.1)",
+                    border: "1px solid rgba(223,42,42,0.25)",
+                    cursor: calling ? "wait" : "pointer",
+                    padding: "4px 10px",
+                    color: "#df2a2a",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    borderRadius: 6,
+                  }}
+                >
+                  <IconPhone size={14} className={calling ? "animate-pulse" : ""} />
+                  {calling ? "Dialing..." : "AI Call (Plivo)"}
+                </button>
+                <button
+                  onClick={() => handleCall("manual")}
+                  disabled={calling}
+                  title="Manual phone call"
+                  style={{
+                    background: calling ? "var(--color-bg3)" : "rgba(16,185,129,0.1)",
+                    border: "1px solid rgba(16,185,129,0.2)",
+                    cursor: calling ? "wait" : "pointer",
+                    padding: "4px 8px",
+                    color: "#059669",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                  }}
+                >
+                  <IconPhone size={14} />
+                  Dial
+                </button>
+              </>
             )}
             {!isEditing && (
               <button

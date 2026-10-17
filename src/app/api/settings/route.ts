@@ -7,9 +7,39 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agentId");
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
+
+  const defaults: Record<string, string> = {
+    llmProvider: "Groq (Llama 3)",
+    llmApiKey: process.env.GROQ_API_KEY || "",
+    llmModel: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    callProvider: "Plivo",
+    plivoAuthId: process.env.PLIVO_AUTH_ID || "",
+    plivoAuthToken: process.env.PLIVO_AUTH_TOKEN || "",
+    callApiKey: process.env.PLIVO_AUTH_TOKEN || "",
+    callerPhone: process.env.PLIVO_FROM_NUMBER || "918065535939",
+    voiceProvider: "ElevenLabs",
+    voiceApiKey: process.env.ELEVENLABS_API_KEY || "",
+    elevenLabsAgentId: process.env.ELEVENLABS_AGENT_ID || "",
+    voiceId: "cgSgspJ2msm6clMCkdW9",
+    sttProvider: "Deepgram",
+    emailProvider: "SMTP",
+    smtpHost: process.env.SMTP_HOST || "smtp.gmail.com",
+    smtpPort: process.env.SMTP_PORT || "465",
+    smtpUser: process.env.SMTP_USER || "",
+    smtpPass: process.env.SMTP_PASS || "",
+    smtpFrom: process.env.SMTP_USER || "",
+    smtpFromName: process.env.SMTP_FROM_NAME || "Sales Team",
+    calendlyApiToken: process.env.CALENDLY_API_TOKEN || "",
+    calendlyWebhookSecret: process.env.CALENDLY_WEBHOOK_SECRET || "",
+  };
+
   const settings = await Setting.find({ agentId }).lean();
-  const map: Record<string, string> = {};
-  settings.forEach((s) => { map[s.key] = s.value; });
+  const map: Record<string, string> = { ...defaults };
+  settings.forEach((s) => { 
+    if (s.value !== undefined && s.value !== null && s.value !== "") {
+      map[s.key] = s.value; 
+    }
+  });
   return NextResponse.json(map);
 }
 

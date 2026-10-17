@@ -28,13 +28,13 @@ export async function POST(req: Request) {
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const provider = m.smsProvider || "Twilio SMS";
-    const apiKey = m.smsApiKey || "";
-    const accountSid = m.smsAccountSid || "";
-    const from = m.smsFrom || "";
+    const provider = m.smsProvider || "Plivo";
+    const apiKey = m.smsApiKey || (provider === "Plivo" ? process.env.PLIVO_AUTH_TOKEN : "");
+    const accountSid = m.smsAccountSid || (provider === "Plivo" ? process.env.PLIVO_AUTH_ID : "");
+    const from = m.smsFrom || (provider === "Plivo" ? process.env.PLIVO_FROM_NUMBER : "");
 
     if (!apiKey) {
-      return NextResponse.json({ error: "SMS API Key not configured for this agent." }, { status: 400 });
+      return NextResponse.json({ error: "SMS API Key / Auth Token not configured for this agent." }, { status: 400 });
     }
     if (!from) {
       return NextResponse.json({ error: "SMS From Number not configured for this agent." }, { status: 400 });
