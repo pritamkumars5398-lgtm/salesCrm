@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 export interface IUsage extends Document {
   agentId: Types.ObjectId;
@@ -22,5 +23,4 @@ const UsageSchema = new Schema<IUsage>({
 
 UsageSchema.index({ agentId: 1, month: 1 }, { unique: true });
 
-export const Usage: Model<IUsage> =
-  mongoose.models.Usage ?? mongoose.model<IUsage>("Usage", UsageSchema);
+export const Usage: Model<IUsage> = defineModel<IUsage>("Usage", UsageSchema);

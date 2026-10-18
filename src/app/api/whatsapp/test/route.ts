@@ -4,15 +4,18 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Lead } from "@/lib/models/Lead";
 import { getWhatsAppConfig } from "@/server/services/settings.service";
 import { sendWhatsAppMessage } from "@/server/services/whatsapp.service";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
-    const { agentId, to } = await req.json();
-    if (!agentId || !to) {
-      return NextResponse.json({ error: "agentId and to (phone number) are required" }, { status: 400 });
-    }
-
+    const { agentId: requestedAgentId, to } = await req.json();
     await connectDB();
+    const access = await authorizeWorkspace(req, requestedAgentId, { minRole: "admin" });
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
+    if (!to) {
+      return NextResponse.json({ error: "to (phone number) is required" }, { status: 400 });
+    }
     const config = await getWhatsAppConfig(agentId);
     
     if (!config || !config.apiKey || !config.sessionId) {
@@ -30,13 +33,10 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const agentId = searchParams.get("agentId");
-    
-    if (!agentId) {
-      return NextResponse.json({ error: "agentId is required" }, { status: 400 });
-    }
-
     await connectDB();
+    const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
     
     const conversations = await Conversation.find({ agentId, channel: "whatsapp" })
       .sort({ updatedAt: -1 })

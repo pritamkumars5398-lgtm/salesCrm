@@ -5,6 +5,7 @@ import {
   createCampaign,
   processCampaignSlice,
   findResumableCampaigns,
+  preflightCheck,
   BATCH_SLICE,
 } from "./campaign.service";
 import { runFullSync } from "./apify.service";
@@ -29,7 +30,10 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
   const agentId = String(job.agentId);
   const agent = await Agent.findById(agentId).lean();
 
-  if (agent && agent.status === "inactive" && job.action !== "resume_agent") {
+  if (!agent || agent.deletedAt) {
+    return { ok: false, detail: "Workspace no longer exists. Skipping." };
+  }
+  if (agent.status === "inactive" && job.action !== "resume_agent") {
     return { ok: true, detail: "Agent is inactive (unpublished). Skipping cron execution." };
   }
 
@@ -78,6 +82,12 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
   }
 
   if (job.action === "resume_agent") {
+    // Resuming goes live just like Publish, so it must pass the same checks —
+    // settings may have broken while the agent was paused.
+    const preflight = await preflightCheck(agentId);
+    if (!preflight.ok) {
+      return { ok: false, detail: `Not resumed — fix first: ${preflight.issues.join(" ")}` };
+    }
     await Agent.findByIdAndUpdate(agentId, { status: "active" });
     return { ok: true, detail: "Agent resumed" };
   }
@@ -86,22 +96,30 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
 }
 
 /**
- * Re-enable all of an agent's schedules with fresh nextRunAt values.
- * Called when the agent is published — unpublishing disables schedules, and
- * without this they would silently stay off forever (looks like "schedules
- * don't persist" to the user).
+ * Turn back on the schedules that Unpublish paused, and give every enabled
+ * schedule a fresh nextRunAt (a stale one would fire immediately).
+ * Schedules the user switched off themselves stay off. Schedules disabled
+ * before `pausedByUnpublish` existed were turned off by the old Unpublish,
+ * which re-enabled everything on Publish — so those come back too.
+ * Returns how many schedules are armed.
  */
 export async function armSchedules(agentId: string): Promise<number> {
-  const jobs = await CronJob.find({ agentId }).lean();
+  await CronJob.updateMany(
+    { agentId, enabled: false, $or: [{ pausedByUnpublish: true }, { pausedByUnpublish: { $exists: false } }] },
+    { $set: { enabled: true } },
+  );
+  await CronJob.updateMany({ agentId }, { $set: { pausedByUnpublish: false } });
+  const jobs = await CronJob.find({ agentId, enabled: true }).lean();
   await Promise.all(
-    jobs.map((j) =>
-      CronJob.findByIdAndUpdate(j._id, {
-        enabled: true,
-        nextRunAt: computeNextRun(j.cronExpression),
-      })
-    )
+    jobs.map((j) => CronJob.findByIdAndUpdate(j._id, { nextRunAt: computeNextRun(j.cronExpression) }))
   );
   return jobs.length;
+}
+
+/** Take a workspace out of live mode; its enabled schedules are paused (not forgotten). */
+export async function unpublishAgent(agentId: string): Promise<void> {
+  await Agent.findByIdAndUpdate(agentId, { status: "inactive" });
+  await CronJob.updateMany({ agentId, enabled: true }, { $set: { enabled: false, pausedByUnpublish: true } });
 }
 
 /**

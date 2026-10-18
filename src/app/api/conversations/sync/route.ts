@@ -10,7 +10,11 @@ import { handleAgentReply } from "@/lib/agent-reply";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
 import { getAppBaseUrl } from "@/server/services/settings.service";
-import { resolveGroqModel, groqModelParams } from "@/lib/llm";
+import { Agent } from "@/lib/models/Agent";
+import { authorizeLead } from "@/server/auth/access";
+import { platformEnv } from "@/server/services/platform-credentials";
+import { generateFollowUpEmail } from "@/server/services/ai.service";
+import { leadAiContext } from "@/server/services/playbook.service";
 
 function cleanEmailBody(body: string): string {
   if (!body) return "";
@@ -55,94 +59,43 @@ if (process.env.NODE_ENV !== "production") {
   global._syncingLeads = syncingLeads;
 }
 
+/**
+ * Two workspaces of one organization may read the same inbox. When the same
+ * person is a lead in both, only the workspace that emailed them most recently
+ * imports their replies — otherwise both AIs would answer the same email.
+ */
+async function anotherWorkspaceOwnsThread(lead: { _id: unknown; agentId: unknown; email: string }, imapUser: string): Promise<boolean> {
+  const agent = await Agent.findById(lead.agentId).select("organizationId").lean();
+  if (!agent?.organizationId) return false;
+  const siblings = await Agent.find({ organizationId: agent.organizationId, deletedAt: null, _id: { $ne: lead.agentId } }).select("_id").lean();
+  if (siblings.length === 0) return false;
+  const sharing = await Setting.find({ agentId: { $in: siblings.map((a) => a._id) }, key: "imapUser", value: new RegExp(`^${imapUser.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("agentId").lean();
+  if (sharing.length === 0) return false;
+  const twins = await Lead.find({ agentId: { $in: sharing.map((r) => r.agentId) }, email: lead.email.toLowerCase(), deletedAt: null }).select("_id").lean();
+  if (twins.length === 0) return false;
+
+  const lastOutbound = async (leadIds: unknown[]) => {
+    const convos = await Conversation.find({ leadId: { $in: leadIds }, channel: "email" }).select("messages.role messages.timestamp").lean();
+    let latest = 0;
+    for (const c of convos) for (const m of c.messages) if (m.role === "agent") latest = Math.max(latest, new Date(m.timestamp).getTime());
+    return latest;
+  };
+  const [mine, theirs] = await Promise.all([lastOutbound([lead._id]), lastOutbound(twins.map((t) => t._id))]);
+  return theirs > mine;
+}
+
 async function sendAutomatedFollowUp(lead: any, agentId: string, followUpNum: number, convo: any) {
   try {
-    // 1. Fetch LLM config and business settings
-    const configKeys = [
-      "llmProvider",
-      "llmApiKey",
-      "businessWebsite",
-      "businessPhone",
-      "businessServices",
-      "docLink",
-      "customPrompt"
-    ];
-    const settingsRows = await Setting.find({ agentId, key: { $in: configKeys } }).lean();
-    const settingsMap: Record<string, string> = {};
-    settingsRows.forEach((r) => { settingsMap[r.key] = r.value; });
-
-    const apiKey = settingsMap.llmApiKey || process.env.GROQ_API_KEY || "";
-    const model = resolveGroqModel(process.env.GROQ_MODEL);
-    
-    if (!apiKey) {
-      console.warn("Automated Follow-up: LLM API key not configured");
-      return;
-    }
-
-    const businessWebsite = settingsMap.businessWebsite || "";
-    const businessPhone = settingsMap.businessPhone || "";
-    const businessServices = settingsMap.businessServices || "";
-    const docLink = settingsMap.docLink || "";
-    const customPrompt = settingsMap.customPrompt || "";
-
-    let businessContext = "";
-    if (businessServices) {
-      businessContext += `Our Business Services: ${businessServices}\n`;
-    }
-    if (businessWebsite) {
-      businessContext += `Our Website: ${businessWebsite}\n`;
-    }
-    if (businessPhone) {
-      businessContext += `Our Phone Number: ${businessPhone}\n`;
-    }
-    if (docLink) {
-      businessContext += `Our Resource Document Link: ${docLink} (You can share/include this link if helpful)\n`;
-    }
-    if (customPrompt) {
-      businessContext += `Important Custom Guidelines/Instructions you must follow:\n${customPrompt}\n`;
-    }
-
     const conversationHistory = convo.messages.map((m: any) => `${m.role === "agent" ? "Agent" : "Lead"}: ${m.content}`).join("\n\n");
-
-    const prompt = `You are an expert sales representative. You are sending a daily follow-up email to a lead who hasn't replied to your previous message. This is follow-up #${followUpNum}.
-${businessContext ? `Business context and instructions:\n${businessContext}\n` : ""}
-Lead Details:
-- Name: ${lead.fullName}
-- Company: ${lead.company || "N/A"}
-
-Conversation History (most recent at the end):
-${conversationHistory}
-
-Instructions:
-1. Write a brief, friendly follow-up email. Do not sound pushy, demanding, or repetitive. Keep it very conversational and short (2-3 sentences max).
-2. If the lead is interested, we want to invite them to book a slot. If you haven't shared the Resource Document Link: ${docLink} yet and it fits the context, you can include it.
-3. For email channels, you must return a valid JSON containing "subject" and "body". The subject line can be a reply subject (like "Re: <original subject>" or similar simple subject) or a new friendly subject.
-4. Keep total body under 100 words. Best sign-off: "Best,\\n<Your Name or Team Name>".
-
-Return ONLY valid JSON format:
-{"subject": "...", "body": "..."}`;
-
-    // Query LLM
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        ...groqModelParams(model),
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.4,
-        max_tokens: 300,
-        response_format: { type: "json_object" },
-      }),
+    const leadCtx = await leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" }));
+    const parsed = await generateFollowUpEmail(agentId, {
+      leadName: lead.fullName,
+      company: lead.company,
+      history: conversationHistory,
+      followUpNum,
+      facts: leadCtx.facts,
+      groupGuidance: leadCtx.groupGuidance,
     });
-
-    if (!response.ok) throw new Error(`LLM follow-up generation failed: ${response.status}`);
-
-    const json = await response.json();
-    const raw = json.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(raw);
-
-    if (!parsed.body) throw new Error("LLM returned no follow-up body");
     const savedContent = parsed.subject ? `Subject: ${parsed.subject}\n\n${parsed.body}` : parsed.body;
 
     // Send first — only record the follow-up once the provider accepted it.
@@ -195,6 +148,8 @@ export async function GET(req: Request) {
   if (!leadId) {
     return NextResponse.json({ error: "leadId is required" }, { status: 400 });
   }
+  const access = await authorizeLead(req, leadId);
+  if (!access.ok) return access.response;
 
   // Prevent multiple simultaneous syncs for the same lead
   if (syncingLeads.has(leadId)) {
@@ -223,13 +178,19 @@ export async function GET(req: Request) {
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const host = m.imapHost || process.env.IMAP_HOST;
-    const port = parseInt(m.imapPort || process.env.IMAP_PORT || "993", 10);
-    const user = m.imapUser || process.env.IMAP_USER;
-    const pass = m.imapPass || process.env.IMAP_PASS;
+    const env = await platformEnv(String(agentId));
+    const host = m.imapHost || env("IMAP_HOST");
+    const port = parseInt(m.imapPort || env("IMAP_PORT") || "993", 10);
+    const user = m.imapUser || env("IMAP_USER");
+    const pass = m.imapPass || env("IMAP_PASS");
 
     if (!host || !user || !pass) {
       return NextResponse.json({ error: "IMAP settings are not configured. Please go to Settings -> Email and configure IMAP Host, Username, and Password." }, { status: 400 });
+    }
+
+    if (await anotherWorkspaceOwnsThread(lead, user)) {
+      const existing = await Conversation.findOne({ leadId, channel: "email" }).lean();
+      return NextResponse.json({ success: true, count: 0, messages: existing?.messages ?? [], status: "handled_by_other_workspace" });
     }
 
     // Load email config to find the agent's sender address

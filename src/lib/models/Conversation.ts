@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 import type { Channel } from "./Lead";
 
 export interface IMessage {
@@ -39,6 +40,4 @@ const ConversationSchema = new Schema<IConversation>(
 
 ConversationSchema.index({ leadId: 1, channel: 1 });
 
-export const Conversation: Model<IConversation> =
-  mongoose.models.Conversation ??
-  mongoose.model<IConversation>("Conversation", ConversationSchema);
+export const Conversation: Model<IConversation> = defineModel<IConversation>("Conversation", ConversationSchema);

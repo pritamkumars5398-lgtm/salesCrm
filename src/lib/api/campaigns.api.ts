@@ -34,6 +34,6 @@ export interface ManualRunResult {
   alreadyRunning: boolean;
 }
 
-/** Start a manual outreach run for the first `limit` eligible leads (works in Draft). */
-export const startManualRun = (agentId: string, limit?: number) =>
-  apiPost<ManualRunResult>(`/api/campaigns`, { agentId, limit });
+/** Start a manual outreach run for the first `limit` eligible leads, optionally one group's (works in Draft). */
+export const startManualRun = (agentId: string, limit?: number, groupId?: string) =>
+  apiPost<ManualRunResult>(`/api/campaigns`, { agentId, limit, ...(groupId ? { groupId } : {}) });

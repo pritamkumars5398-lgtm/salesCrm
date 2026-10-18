@@ -1,10 +1,13 @@
 import type { StateCreator } from "zustand";
 import type { SyncRun } from "@/components/ui/SyncPanel";
 import type { AppState } from "../useAppStore";
+import { queryClient } from "@/lib/queryClient";
 
 export interface SyncSlice {
   syncing: boolean;
   syncRuns: SyncRun[];
+  /** why a sync produced no runs (nothing enabled, Apify refused to start…) — shown in the panel */
+  syncNote: string | null;
   syncPanelOpen: boolean;
   setSyncPanelOpen: (open: boolean) => void;
   /**
@@ -23,25 +26,33 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
   return {
     syncing: false,
     syncRuns: [],
+    syncNote: null,
     syncPanelOpen: false,
     setSyncPanelOpen: (syncPanelOpen) => set({ syncPanelOpen }),
 
     runApifySync: async (agentId, opts = {}) => {
       if (!agentId || get().syncing) return;
       const { showToast } = get();
-      set({ syncing: true, syncRuns: [], syncPanelOpen: true });
+      set({ syncing: true, syncRuns: [], syncNote: null, syncPanelOpen: true });
+      const note = (syncNote: string) => set({ syncNote });
 
       try {
         // Fetch agent settings to see what is enabled
         const settingsRes = await fetch(`/api/settings?agentId=${agentId}`);
+        if (!settingsRes.ok) throw new Error("Could not load this workspace's settings");
         const settings = await settingsRes.json();
-        
+
         const isApifyEnabled = settings.apifyScraperEnabled !== "false";
         const providers = [
           { type: "openai", enabled: settings.openaiEnabled === "true", label: "OpenAI ChatGPT" },
           { type: "anthropic", enabled: settings.anthropicEnabled === "true", label: "Anthropic Claude" },
           { type: "gemini", enabled: settings.geminiEnabled === "true", label: "Google Gemini" }
         ];
+
+        if (!isApifyEnabled && !providers.some((p) => p.enabled)) {
+          note("No lead source is turned on. Enable Apify scrapers or an LLM source in Settings → Sources.");
+          return;
+        }
 
         // 1. Kick off LLM requests (if any)
         const llmPromises = providers
@@ -68,6 +79,13 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               patchRun(runId, { status: "done", itemCount: json.imported, imported: json.imported });
               const toastMsg = json.message || `${provider.label} generated ${json.imported} leads!`;
               showToast(toastMsg, json.imported === 0 ? "error" : "success");
+              if ((json.imported ?? 0) > 0) {
+                queryClient.invalidateQueries({ queryKey: ["leads"] });
+                queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("crm:leads-synced", { detail: { agentId } }));
+                }
+              }
             } catch (err: any) {
               patchRun(runId, { status: "failed", error: err.message });
               showToast(`${provider.label} Failed: ${err.message}`, "error");
@@ -83,18 +101,22 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ agentId }),
             });
-            const start = await startRes.json();
+            const start = await startRes.json().catch(() => ({}));
             if (!startRes.ok) {
               if (start.limitReached) {
-                showToast("Lead limit reached — upgrade your plan", "error");
+                note("This month's lead limit is used up — upgrade the plan to sync more.");
                 opts.onLimitReached?.();
               } else {
-                showToast(start.error ?? "Apify start failed", "error");
+                note(`Apify couldn't start: ${start.error ?? `request failed (${startRes.status})`}`);
               }
               return;
             }
 
-            const runs = start.runs as { runId: string; datasetId: string; search: string; scraperType: string }[];
+            const runs = (start.runs ?? []) as { runId: string; datasetId: string; search: string; scraperType: string }[];
+            if (runs.length === 0) {
+              note("Apify didn't start any scraper run — check the scrapers in Settings → Apify Scrapers.");
+              return;
+            }
             if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w, "error"));
 
             set((s) => ({
@@ -111,10 +133,14 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               ],
             }));
 
-            const deadline = Date.now() + 3 * 60 * 1000;
+            // Google Maps runs usually take 1–5 minutes; give up waiting (the run keeps going on Apify) after 10.
+            const deadline = Date.now() + 10 * 60 * 1000;
+            const MAX_POLL_ERRORS = 5;
             const completed = await Promise.all(
               runs.map(async ({ runId, datasetId, scraperType }) => {
                 let finalStatus = "";
+                let pollError = "";
+                let errors = 0;
                 while (Date.now() < deadline) {
                   await new Promise((res) => setTimeout(res, 6000));
                   const currentRun = get().syncRuns.find((r) => r.runId === runId);
@@ -122,10 +148,20 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
                     finalStatus = "ABORTED";
                     break;
                   }
-                  const poll = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).then((r) => r.json());
+                  const res = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).catch(() => null);
+                  const poll = res ? await res.json().catch(() => ({})) : {};
+                  if (!res?.ok) {
+                    pollError = poll.error || "Lost contact with Apify";
+                    if (++errors >= MAX_POLL_ERRORS) break;
+                    continue;
+                  }
+                  errors = 0;
                   finalStatus = poll.status as string;
                   patchRun(runId, { itemCount: poll.itemCount ?? 0 });
                   if (finalStatus === "SUCCEEDED" || ["FAILED", "ABORTED", "TIMED-OUT"].includes(finalStatus)) break;
+                }
+                if (!finalStatus || finalStatus === "RUNNING" || finalStatus === "READY") {
+                  finalStatus = errors >= MAX_POLL_ERRORS ? `ERROR: ${pollError}` : "STILL_RUNNING";
                 }
                 return { runId, datasetId, scraperType, finalStatus };
               })
@@ -135,17 +171,34 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               const currentRun = get().syncRuns.find((r) => r.runId === runId);
               if (currentRun?.error === "Cancelled by user") continue;
               if (finalStatus !== "SUCCEEDED") {
-                patchRun(runId, { status: "failed", error: `Run ended: ${finalStatus}` });
+                const error = finalStatus === "STILL_RUNNING"
+                  ? "Still running on Apify after 10 min — press Sync again later to import it"
+                  : finalStatus.startsWith("ERROR: ") ? finalStatus.slice(7)
+                    : `Apify run ended: ${finalStatus.toLowerCase()}`;
+                patchRun(runId, { status: "failed", error });
                 continue;
               }
               patchRun(runId, { status: "importing" });
-              const imp = await fetch("/api/apify", {
+              const res = await fetch("/api/apify", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ agentId, datasetId, scraperType }),
-              }).then((r) => r.json());
-              patchRun(runId, { status: "done", imported: imp.imported ?? 0, error: imp.warning });
+              }).catch(() => null);
+              const imp = res ? await res.json().catch(() => ({})) : {};
+              if (!res?.ok) {
+                patchRun(runId, { status: "failed", error: imp.error || "Import failed" });
+                if (imp.limitReached) opts.onLimitReached?.();
+                continue;
+              }
+              patchRun(runId, { status: "done", imported: imp.imported ?? 0, error: imp.warning || imp.message });
               if (imp.warning) showToast(imp.warning, "error");
+              if ((imp.imported ?? 0) > 0) {
+                queryClient.invalidateQueries({ queryKey: ["leads"] });
+                queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("crm:leads-synced", { detail: { agentId } }));
+                }
+              }
             }
           })();
         }
@@ -153,26 +206,45 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
         // Wait for all to finish
         await Promise.all([...llmPromises, apifyPromise]);
 
-
         // Refresh agent lead counts.
-        const { userEmail, setAgents, setActiveAgent } = get();
-        fetch(`/api/agents?email=${encodeURIComponent(userEmail)}`)
-          .then((r) => r.json())
-          .then((agentsList) => {
-            setAgents(agentsList);
-            const match = agentsList.find((a: { _id: string }) => a._id === agentId);
-            if (match) setActiveAgent(match);
-          })
-          .catch(() => {});
+        const { setAgents, setActiveAgent } = get();
+        try {
+          const agentsRes = await fetch("/api/agents");
+          if (agentsRes.ok) {
+            const agentsList = await agentsRes.json();
+            if (Array.isArray(agentsList)) {
+              setAgents(agentsList);
+              const match = agentsList.find((a: { _id: string }) => a._id === agentId);
+              if (match) setActiveAgent(match);
+            }
+          }
+        } catch (e) {
+          console.error("[Sync] Failed to refresh agents", e);
+        }
+
+        // Invalidate leads, dashboard, and lead-groups across React Query cache
+        queryClient.invalidateQueries({ queryKey: ["leads"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["lead-groups"] });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("crm:leads-synced", { detail: { agentId } }));
+          window.dispatchEvent(new CustomEvent("crm:data-changed", { detail: { type: "leads", agentId } }));
+        }
 
       } catch (err) {
-        showToast("Sync failed — check console", "error");
         console.error("[Sync]", err);
+        note(`Sync failed: ${err instanceof Error ? err.message : "unexpected error"}`);
         set((s) => ({
           syncRuns: s.syncRuns.map((r) => (r.status !== "done" ? { ...r, status: "failed", error: "Unexpected error" } : r)),
         }));
       } finally {
         set({ syncing: false });
+        queryClient.invalidateQueries({ queryKey: ["leads"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("crm:leads-synced", { detail: { agentId } }));
+        }
       }
     },
 

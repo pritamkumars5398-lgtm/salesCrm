@@ -6,49 +6,35 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
-import { resolveGroqModel, groqModelParams } from "@/lib/llm";
+import { callGroq } from "@/server/services/ai.service";
+import { getPlaybook } from "@/server/services/playbook.service";
 
 async function handleInterested(lead: any, agentId: string) {
   const calendlySetting = await Setting.findOne({ agentId, key: "calendlyLink" }).lean();
-  const calendlyLink = calendlySetting?.value || "https://calendly.com/your-calendar-link";
+  const calendlyLink = (calendlySetting?.value || "").trim();
 
   const cfg = await getEmailConfig(agentId);
-  const senderName = cfg?.fromName || "Our Team";
+  const playbook = await getPlaybook(agentId);
+  const senderName = cfg?.fromName || playbook.brandName;
 
-  const prompt = `You are a sales expert following up with a lead who just clicked "I'm interested" in your previous email.
+  const prompt = `You are a sales rep at ${playbook.brandName} following up with a lead who just clicked "I'm interested" in your previous email.
+What we offer: ${playbook.offerSummary || playbook.businessServices.slice(0, 400) || "see previous email"}
+Our goal: ${playbook.callGoal || "a short call with our team"}
 Lead Name: ${lead.fullName}
 Sender Name: ${senderName}
-Calendly Link: ${calendlyLink}
+${calendlyLink ? `Booking link: ${calendlyLink}` : "We have NO booking link — never invent one; ask which day and time suits them instead."}
 
-Write a very short (2-3 sentences max) email thanking them for their interest and asking them to pick a time on your calendar to chat. 
+Write a very short (2-3 sentences max) email thanking them for their interest and moving them to our goal${calendlyLink ? " with the booking link" : ""}.
 Return ONLY valid JSON:
 {"subject": "...", "body": "..."}`;
 
-  const llmKeys = ["llmProvider", "llmApiKey"];
-  const llmRows = await Setting.find({ agentId, key: { $in: llmKeys } }).lean();
-  const llmMap: Record<string, string> = {};
-  llmRows.forEach((r) => { llmMap[r.key] = r.value; });
-
-  const apiKey = llmMap.llmApiKey || process.env.GROQ_API_KEY || "";
-  const model = resolveGroqModel(process.env.GROQ_MODEL);
-
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        ...groqModelParams(model),
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.4,
-        max_tokens: 256,
-        response_format: { type: "json_object" },
-      }),
-    });
-    const json = await res.json();
-    let raw = json.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(raw);
-    parsed.body = parsed.body.replace(/\\n/g, "\n");
+    const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.4, maxTokens: 256 });
+    const jsonStart = raw.indexOf("{");
+    const jsonEnd = raw.lastIndexOf("}");
+    const parsed = JSON.parse(jsonStart !== -1 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw);
+    parsed.body = String(parsed.body || "").replace(/\\n/g, "\n");
+    if (!parsed.body) throw new Error("AI returned no body");
 
     if (lead.email && cfg) {
       await sendEmail(cfg, lead.email, parsed.subject, parsed.body);

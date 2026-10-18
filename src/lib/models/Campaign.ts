@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 export type CampaignStatus = "pending" | "running" | "completed" | "failed";
 
@@ -50,5 +51,4 @@ const CampaignSchema = new Schema<ICampaign>(
 
 CampaignSchema.index({ agentId: 1, status: 1, createdAt: -1 });
 
-export const Campaign: Model<ICampaign> =
-  mongoose.models.Campaign ?? mongoose.model<ICampaign>("Campaign", CampaignSchema);
+export const Campaign: Model<ICampaign> = defineModel<ICampaign>("Campaign", CampaignSchema);

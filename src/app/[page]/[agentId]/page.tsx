@@ -33,7 +33,7 @@ export default function Home({ params }: PageProps) {
 
   const setPage = useAppStore((s) => s.setPage);
   const currentPage = useAppStore((s) => s.currentPage);
-  const userEmail = useAppStore((s) => s.userEmail);
+  const isSuperadmin = useAppStore((s) => s.isSuperadmin);
   const setAddLeadOpen = useAppStore((s) => s.setAddLeadOpen);
 
   // Mirror the route into the store — Sidebar highlights off `currentPage`.
@@ -71,7 +71,7 @@ export default function Home({ params }: PageProps) {
     case "voice-inbox":
       return <VoiceInbox />;
     case "superadmin":
-      return userEmail?.toLowerCase() === "admin@salesagent.ai" ? (
+      return isSuperadmin ? (
         <Superadmin />
       ) : (
         <div style={{ padding: 40, fontFamily: "var(--font-sans)", color: "var(--color-text)" }}>

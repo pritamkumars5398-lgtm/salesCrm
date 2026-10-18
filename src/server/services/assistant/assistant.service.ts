@@ -225,6 +225,8 @@ async function runPendingToolCalls(
 
     if (!tool) {
       result = { error: `Unknown tool ${call.function.name}` };
+    } else if (tool.adminOnly && !ctx.canManage) {
+      result = { error: "Only workspace admins can change this. Ask an admin of this organization." };
     } else if (tool.confirm && confirm?.toolCallId !== call.id) {
       const summary = tool.summarize ? await tool.summarize(args, ctx) : `Run ${tool.name}`;
       return { toolCallId: call.id, name: tool.name, summary };
@@ -276,13 +278,14 @@ function redact(messages: ChatMessage[]): ChatMessage[] {
 export async function runAssistant(opts: {
   agentId: string;
   req: Request;
+  canManage: boolean;
   messages: unknown;
   page?: string;
   confirm?: { toolCallId: string; approved: boolean };
   onEvent?: Emit;
 }): Promise<AssistantResult> {
   const emit: Emit = opts.onEvent ?? (() => {});
-  const ctx: ToolContext = { agentId: opts.agentId, req: opts.req };
+  const ctx: ToolContext = { agentId: opts.agentId, req: opts.req, canManage: opts.canManage };
   const messages = trimHistory(closeDanglingToolCalls(sanitize(opts.messages)));
   const changes = new Set<string>();
   const agent = await Agent.findById(opts.agentId).select("name").lean();

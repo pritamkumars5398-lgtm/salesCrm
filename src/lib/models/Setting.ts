@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 export interface ISetting extends Document {
   agentId: Types.ObjectId;
@@ -18,5 +19,4 @@ const SettingSchema = new Schema<ISetting>(
 
 SettingSchema.index({ agentId: 1, key: 1 }, { unique: true });
 
-export const Setting: Model<ISetting> =
-  mongoose.models.Setting ?? mongoose.model<ISetting>("Setting", SettingSchema);
+export const Setting: Model<ISetting> = defineModel<ISetting>("Setting", SettingSchema);

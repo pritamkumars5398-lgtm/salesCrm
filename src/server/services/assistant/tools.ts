@@ -16,7 +16,9 @@ import { checkElevenLabs, createElevenLabsAgent, fixElevenLabsAgent } from "../e
 import { placeAiCall, getVoiceSetupError } from "../call.service";
 import { normalizeDialableNumber } from "@/lib/plivo-service";
 import { countEligibleLeads, createCampaign, preflightCheck, processCampaign } from "../campaign.service";
-import { armSchedules } from "../cron.service";
+import { armSchedules, unpublishAgent } from "../cron.service";
+import { renameWorkspace } from "../workspace.service";
+import { platformEnv } from "../platform-credentials";
 
 /**
  * Tools the AI assistant panel can use. Each wraps an existing service so the
@@ -28,6 +30,8 @@ import { armSchedules } from "../cron.service";
 export interface ToolContext {
   agentId: string;
   req: Request;
+  /** owner/admin — members can't change settings, schedules or publishing */
+  canManage: boolean;
 }
 
 export interface AssistantTool {
@@ -40,6 +44,8 @@ export interface AssistantTool {
   summarize?: (args: any, ctx: ToolContext) => Promise<string> | string;
   /** areas of the app whose data this tool can change (UI refreshes them) */
   changes?: string[];
+  /** changes workspace configuration — owner/admin only */
+  adminOnly?: boolean;
   run: (args: any, ctx: ToolContext) => Promise<unknown>;
 }
 
@@ -105,7 +111,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     description: "Overview of how this CRM agent is set up: published status, which channels (AI, email, WhatsApp, SMS, voice calls, Calendly) are configured and working, the active sequence, schedules and lead counts. Call this first when the user asks what's set up, what's missing, or why something doesn't work.",
     parameters: { type: "object", properties: {} },
     run: async (_args, { agentId }) => {
-      const [agent, llm, email, wa, voiceError, voiceCfg, m, seq, schedules, counts] = await Promise.all([
+      const [agent, llm, email, wa, voiceError, voiceCfg, m, seq, schedules, counts, env] = await Promise.all([
         Agent.findById(agentId).lean(),
         getLLMConfig(agentId),
         getEmailConfig(agentId),
@@ -116,6 +122,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         activeSequence(agentId),
         CronJob.find({ agentId }).lean(),
         leadCounts(agentId),
+        platformEnv(agentId),
       ]);
       let voice: Record<string, unknown> = { configured: !voiceError, problem: voiceError ?? undefined };
       if (!voiceError) {
@@ -138,7 +145,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         ai: llm ? { configured: true, provider: llm.provider, model: llm.apiKey.startsWith("gsk_") ? resolveGroqModel(llm.model) : llm.model || "gpt-4o-mini" } : { configured: false },
         email: email ? { configured: true, provider: email.provider, from: email.fromAddress, enabled: m.emailEnabled !== "false" } : { configured: false },
         whatsapp: wa ? { configured: true, provider: wa.provider, enabled: m.whatsappEnabled !== "false" } : { configured: false },
-        sms: m.smsApiKey || process.env.PLIVO_AUTH_TOKEN ? { configured: true, provider: m.smsProvider || "Plivo", from: m.smsFrom || process.env.PLIVO_FROM_NUMBER, enabled: m.smsEnabled !== "false" } : { configured: false },
+        sms: m.smsApiKey || env("PLIVO_AUTH_TOKEN") ? { configured: true, provider: m.smsProvider || "Plivo", from: m.smsFrom || env("PLIVO_FROM_NUMBER"), enabled: m.smsEnabled !== "false" } : { configured: false },
         voice: { ...voice, enabled: m.voiceEnabled !== "false" },
         calendly: { link: m.calendlyLink || null },
         sequence: seq ? { name: seq.name, steps: describeSteps(seq.steps), note: "Only the first step currently runs automatically." } : null,
@@ -178,6 +185,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "update_settings",
+    adminOnly: true,
     description: "Change one or more settings, e.g. {\"callLanguage\":\"Hindi\",\"voiceApiKey\":\"sk_…\"}. Use exact keys from get_settings. Values with fixed options must be one of the options. Section on/off switches use keys like voiceEnabled / emailEnabled = \"true\"|\"false\". Pasted API keys are saved securely and never repeated back.",
     parameters: {
       type: "object",
@@ -206,7 +214,15 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         }
       }
       if (saved.agentName) {
-        await Agent.findByIdAndUpdate(agentId, { name: saved.agentName });
+        const agent = await Agent.findById(agentId);
+        if (agent) {
+          try {
+            saved.agentName = await renameWorkspace(agent, saved.agentName);
+          } catch (err) {
+            rejected.agentName = err instanceof Error ? err.message : "invalid name";
+            delete saved.agentName;
+          }
+        }
       }
       // Keep scraper keywords in step with the industry, like the Settings page does.
       if (saved.industry !== undefined) {
@@ -221,6 +237,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "voice_setup",
+    adminOnly: true,
     description: "Check or repair the ElevenLabs side of AI phone calls using the saved Voice API Key. action: \"check\" (permissions, agent, call settings), \"create_agent\" (make a phone-ready agent on the key's account and save its ID), \"fix_agent\" (turn on phone audio, overrides, hang-up tools, language on the current agent), \"use_agent\" (save an existing agent ID from the check's agent list). To change the key, call update_settings with voiceApiKey first.",
     parameters: {
       type: "object",
@@ -269,6 +286,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "set_sequence",
+    adminOnly: true,
     description: "Replace the steps of the active outreach sequence. channel: email | whatsapp | sms | call (AI voice call). dayOffset ≥ 1, sendTime \"HH:MM\" 24h. Steps on the same day+time fire together. Only the first step currently runs automatically.",
     parameters: {
       type: "object",
@@ -391,6 +409,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "create_schedule",
+    adminOnly: true,
     description: "Create an automation schedule. action: start_outreach (contact new leads via the sequence), sync_apify (scrape new leads then contact them), pause_agent, resume_agent. cronExpression is standard 5-field cron in server time, e.g. \"0 10 * * 1-5\" = weekdays 10:00.",
     parameters: {
       type: "object",
@@ -413,6 +432,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "toggle_schedule",
+    adminOnly: true,
     description: "Turn a schedule on or off by id (from list_schedules).",
     parameters: {
       type: "object",
@@ -439,6 +459,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   },
   {
     name: "set_agent_status",
+    adminOnly: true,
     description: "Publish (active) or unpublish (inactive) this agent. Publishing runs a pre-flight check and arms its schedules so automated outreach can run; unpublishing stops automation.",
     parameters: {
       type: "object",
@@ -450,7 +471,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     summarize: (a) => (a.status === "active" ? "Publish the agent — schedules start running automated outreach" : "Unpublish the agent — automated outreach stops"),
     run: async (args: { status: "active" | "inactive" }, { agentId }) => {
       if (args.status === "inactive") {
-        await Agent.findByIdAndUpdate(agentId, { status: "inactive" });
+        await unpublishAgent(agentId);
         return { published: false };
       }
       const preflight = await preflightCheck(agentId);

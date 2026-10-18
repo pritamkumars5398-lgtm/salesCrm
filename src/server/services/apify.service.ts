@@ -8,8 +8,11 @@ import { Agent } from "@/lib/models/Agent";
 import { Usage } from "@/lib/models/Usage";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
+import { getOrganizationLimits, getOrganizationUsage } from "./workspace.service";
 
 const DEFAULT_GM_ACTOR = "nwua9Gu5YrADL7ZDj";
+/** Older workspaces were seeded with this id, which is missing its last character and doesn't exist on Apify. */
+const TRUNCATED_GM_ACTOR = "nwua9Gu5YrADL7ZD";
 const DEFAULT_LI_ACTOR = "M2FMdjRVeF1HPGFcc";
 const BASE_URL = "https://api.apify.com/v2";
 
@@ -69,7 +72,8 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
   if (m["google-mapsEnabled"] !== "false") {
     const keyword  = m.gmKeyword  || m.industry    || "Carpenter";
     const max      = parseInt(m.gmMaxResults ?? "25", 10) || 25;
-    const actorId  = m.gmActorId  || m.apifyActorId || DEFAULT_GM_ACTOR;
+    const configured = m.gmActorId || m.apifyActorId;
+    const actorId  = !configured || configured === TRUNCATED_GM_ACTOR ? DEFAULT_GM_ACTOR : configured;
     
     let gmLocs = m.gmLocation ? m.gmLocation.split(",").map(s => s.trim()).filter(Boolean) : [];
     if (gmLocs.length === 0) gmLocs = activeLocations;
@@ -154,6 +158,9 @@ export async function startApifyRuns(agentId: string): Promise<{
   if (!configs.length) {
     throw new Error("No enabled scrapers configured. Go to Settings → Apify Scrapers.");
   }
+  if (configs.every((c) => !c.token)) {
+    throw new Error("Add your Apify API token in Settings → Apify Scrapers to sync leads.");
+  }
 
   const results = await Promise.all(configs.map(async (cfg) => {
     const runRes = await fetch(`${BASE_URL}/acts/${cfg.actorId}/runs`, {
@@ -236,14 +243,25 @@ export async function importDataset(
   scraperType: ScraperType
 ): Promise<ImportResult> {
   const month = currentMonth();
+  const agent = await Agent.findById(agentId).select("organizationId").lean();
   const [planRow, usageDoc, locationsRow] = await Promise.all([
     Setting.findOne({ agentId, key: "plan" }).lean(),
     Usage.findOne({ agentId, month }).lean(),
     Setting.findOne({ agentId, key: "leadLocations" }).lean(),
   ]);
-  const planId = (planRow?.value ?? "free") as PlanId;
-  const limit  = PLANS[planId].limits.leadsPerMonth;
-  const used   = usageDoc?.leadsScraped ?? 0;
+  // The lead quota is shared by all of an organization's workspaces.
+  let limit: number;
+  let used: number;
+  if (agent?.organizationId) {
+    const orgId = String(agent.organizationId);
+    const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId, month)]);
+    limit = limits.leadsPerMonth;
+    used = usage.leadsScraped;
+  } else {
+    const planId = (planRow?.value && PLANS[planRow.value as PlanId] ? planRow.value : "free") as PlanId;
+    limit = PLANS[planId].limits.leadsPerMonth;
+    used = usageDoc?.leadsScraped ?? 0;
+  }
 
   let activeLocations: string[] = [];
   if (locationsRow?.value) {

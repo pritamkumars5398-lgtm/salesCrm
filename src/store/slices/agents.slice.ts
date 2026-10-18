@@ -1,9 +1,12 @@
 import type { StateCreator } from "zustand";
-import type { Agent } from "../types";
+import type { Agent, OrganizationSummary } from "../types";
 import type { AppState } from "../useAppStore";
 
 export interface AgentsSlice {
   agents: Agent[];
+  organizations: OrganizationSummary[];
+  setOrganizations: (organizations: OrganizationSummary[]) => void;
+  removeAgent: (id: string) => void;
   activeAgent: Agent | null;
   /** Set once the agent list has been loaded, so the shell bootstraps a single time. */
   agentsLoaded: boolean;
@@ -17,6 +20,12 @@ export interface AgentsSlice {
 
 export const createAgentsSlice: StateCreator<AppState, [], [], AgentsSlice> = (set) => ({
   agents: [],
+  organizations: [],
+  setOrganizations: (organizations) => set({ organizations }),
+  removeAgent: (id) => set((s) => {
+    const agents = s.agents.filter((a) => a._id !== id);
+    return { agents, activeAgent: s.activeAgent?._id === id ? agents[0] ?? null : s.activeAgent };
+  }),
   activeAgent: null,
   agentsLoaded: false,
   setAgentsLoaded: (agentsLoaded) => set({ agentsLoaded }),

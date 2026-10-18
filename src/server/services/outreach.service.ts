@@ -9,6 +9,7 @@ import { sendWhatsAppMessage } from "./whatsapp.service";
 import { sendSms } from "./sms.service";
 import { placeAiCall, waitForCallSlot } from "./call.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
+import { leadAiContext } from "./playbook.service";
 import { eventEmitter } from "@/lib/events";
 
 export type OutreachChannel = "email" | "whatsapp" | "sms" | "call";
@@ -232,7 +233,9 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
     return { sent: false, skipped: true, channel: null, error: "Outreach already in progress for this lead." };
   }
 
-  const info = leadInfo(lead, opts.senderName);
+  // Extra context only sharpens the message — never let it block a claimed send.
+  const extra = await leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" }));
+  const info = { ...leadInfo(lead, opts.senderName), facts: extra.facts, groupGuidance: extra.groupGuidance };
   const { channels, error: channelError } = await channelsForLead(lead);
 
   if (channels.length === 0) {

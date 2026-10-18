@@ -2,7 +2,12 @@
 import { useEffect, useState } from "react";
 import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
-import { GENERAL_CARDS, INTEGRATION_CARDS, type SettingsCard } from "@/lib/constants/settings";
+import { GENERAL_CARDS, INTEGRATION_CARDS, WORKSPACE_CARDS, type SettingsCard } from "@/lib/constants/settings";
+import LeadFieldsPanel from "@/components/settings/LeadFieldsPanel";
+import LeadGroupsPanel from "@/components/settings/LeadGroupsPanel";
+import KnowledgePanel from "@/components/settings/KnowledgePanel";
+import TeamPanel from "@/components/settings/TeamPanel";
+import IntegrationsPanel from "@/components/settings/IntegrationsPanel";
 import SettingsNavItem from "@/components/settings/SettingsNavItem";
 import SettingsToggle from "@/components/settings/SettingsToggle";
 import SavedBadge from "@/components/settings/SavedBadge";
@@ -438,23 +443,30 @@ export default function Settings() {
     if (card.key === "profile") {
       patch["leadLocations"] = values["leadLocations"] ?? "";
       if (patch.agentName && patch.agentName !== activeAgent.name) {
-        try {
-          await fetch(`/api/agents/${activeAgent._id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: patch.agentName }),
-          });
-          updateAgent(activeAgent._id, { name: patch.agentName });
-        } catch (err) {
-          console.error("Failed to rename agent", err);
+        const res = await fetch(`/api/agents/${activeAgent._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: patch.agentName }),
+        }).catch(() => null);
+        if (res?.ok) {
+          updateAgent(activeAgent._id, { name: patch.agentName.trim() });
+        } else {
+          const { error } = res ? await res.json().catch(() => ({ error: "" })) : { error: "" };
+          showToast(error || "Could not rename the workspace", "error");
+          return;
         }
       }
     }
-    await fetch("/api/settings", {
+    const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentId: activeAgent._id, settings: patch }),
-    });
+    }).catch(() => null);
+    if (!res?.ok) {
+      const { error } = res ? await res.json().catch(() => ({ error: "" })) : { error: "" };
+      showToast(error || "Could not save settings", "error");
+      return;
+    }
     setSaved((p) => ({ ...p, [card.key]: true }));
     setTimeout(() => setSaved((p) => ({ ...p, [card.key]: false })), 2500);
     showToast(`${card.title} settings saved`);
@@ -465,6 +477,9 @@ export default function Settings() {
   const isApifySourcesPage = active === "apify";
   const isLlmSourcesPage = active === "llm-scraper";
   const isIntegration = INTEGRATION_CARDS.some((c) => c.key === active);
+  const workspacePage = WORKSPACE_CARDS.find((c) => c.key === active);
+  // Members can look but not change: the API refuses their writes, so don't offer them.
+  const readOnly = activeAgent?.role === "member";
 
   return (
     <div className="flex h-full" style={{ background: "var(--color-bg)" }}>
@@ -472,6 +487,11 @@ export default function Settings() {
       <div className="flex flex-col gap-1 p-3 shrink-0" style={{ width: 220, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)", paddingTop: 20 }}>
         <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>General</p>
         {GENERAL_CARDS.map((card) => (
+          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
+        ))}
+
+        <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Workspace</p>
+        {WORKSPACE_CARDS.map((card) => (
           <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
         ))}
 
@@ -511,11 +531,32 @@ export default function Settings() {
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 overflow-y-auto" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { maxWidth: 560, padding: "2rem" }}>
+      <div className="flex-1 overflow-y-auto" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { maxWidth: active === "keys" ? 960 : 560, padding: "2rem" }}>
+        {readOnly && (
+          <p className="mb-4 rounded-lg border border-bg4 bg-bg2 px-3 py-2 text-[12px] text-text3">
+            You&apos;re a member of this workspace — only admins can change its settings.
+          </p>
+        )}
         {isApifySourcesPage ? (
           <ApifySources />
         ) : isLlmSourcesPage ? (
           <LlmSources />
+        ) : workspacePage ? (
+          workspacePage.key === "fields" ? <LeadFieldsPanel readOnly={readOnly} />
+            : workspacePage.key === "groups" ? <LeadGroupsPanel readOnly={readOnly} />
+              : workspacePage.key === "knowledge" ? <KnowledgePanel readOnly={readOnly} />
+                : workspacePage.key === "keys" ? (
+                  readOnly || !activeAgent ? null : (
+                    <IntegrationsPanel
+                      key={activeAgent._id}
+                      endpoint={`/api/integrations/status?agentId=${activeAgent._id}`}
+                      title="API keys & usage"
+                      subtitle="Every service this workspace is connected to — whose key it uses, whether it works right now, and how much is left. Checked live with each provider."
+                      onOpenTab={handleTabChange}
+                    />
+                  )
+                )
+                : <TeamPanel />
         ) : activeCard ? (
           <>
             {/* Card header */}
@@ -1399,7 +1440,7 @@ export default function Settings() {
             )}
 
             {/* Save row */}
-            <div className="flex items-center justify-between mt-8 pt-5" style={{ borderTop: "1px solid var(--color-bg4)" }}>
+            {!readOnly && <div className="flex items-center justify-between mt-8 pt-5" style={{ borderTop: "1px solid var(--color-bg4)" }}>
               {saved[activeCard.key] ? <SavedBadge /> : <span />}
               <button
                 onClick={() => saveCard(activeCard)}
@@ -1408,7 +1449,7 @@ export default function Settings() {
               >
                 Save changes
               </button>
-            </div>
+            </div>}
           </>
         ) : null}
       </div>

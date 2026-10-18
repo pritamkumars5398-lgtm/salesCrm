@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 import type { Channel } from "./Lead";
 
 export interface ISequenceStep {
@@ -37,5 +38,4 @@ const SequenceSchema = new Schema<ISequence>(
   { timestamps: true }
 );
 
-export const Sequence: Model<ISequence> =
-  mongoose.models.Sequence ?? mongoose.model<ISequence>("Sequence", SequenceSchema);
+export const Sequence: Model<ISequence> = defineModel<ISequence>("Sequence", SequenceSchema);

@@ -45,3 +45,30 @@ export function getStoredUser(): { name: string; email: string } | null {
     return null;
   }
 }
+
+/** Ends the server session (HttpOnly cookie) and forgets the cached profile. */
+export async function authLogout(): Promise<void> {
+  localStorage.removeItem(STORAGE_KEY);
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (err) {
+    console.error("[auth] logout request failed", err);
+  }
+}
+
+/**
+ * Whether the server still has a valid session. The cached profile in
+ * localStorage alone is not enough — it outlives expired or pre-upgrade
+ * sessions, and trusting it sends the user into a redirect loop.
+ * Clears the cached profile when the session is gone.
+ */
+export async function hasServerSession(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.ok) return true;
+    if (res.status === 401) localStorage.removeItem(STORAGE_KEY);
+    return false;
+  } catch {
+    return false;
+  }
+}

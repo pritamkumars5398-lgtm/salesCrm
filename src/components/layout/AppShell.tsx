@@ -11,7 +11,9 @@ import ToastContainer from "@/components/ui/Toast";
 import AddLeadModal from "@/components/ui/AddLeadModal";
 import SyncPanel from "@/components/ui/SyncPanel";
 import AssistantPanel from "@/components/assistant/AssistantPanel";
+import type { Agent, OrganizationSummary } from "@/store/types";
 import "@/lib/devFetchLogger";
+import "@/lib/session-guard";
 
 /**
  * The app chrome (sidebar, topbar, drawer, modals) plus the session bootstrap.
@@ -40,7 +42,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const {
     agents, activeAgent, agentsLoaded, setAgents, setAgentsLoaded, setActiveAgent,
-    showToast, login, syncing, syncRuns, syncPanelOpen, setSyncPanelOpen,
+    showToast, login, setIsSuperadmin, setOrganizations, logout, syncing, syncRuns, syncNote, syncPanelOpen, setSyncPanelOpen,
     runApifySync, cancelSyncRun, addLeadOpen, setAddLeadOpen,
   } = useAppStore();
   const [mounted, setMounted] = useState(false);
@@ -64,114 +66,88 @@ function Shell({ children }: { children: React.ReactNode }) {
   }, [agentIdParam, agents, activeAgent?._id, pageParam, setActiveAgent, router]);
 
   // Session bootstrap. Runs once for the whole session, not once per navigation.
+  // The server decides who is signed in and which workspaces they may open.
   useEffect(() => {
-    const stored = localStorage.getItem("sa_user");
-    if (!stored) {
-      router.replace("/");
-      return;
-    }
-    let user: { name: string; email: string };
-    try {
-      user = JSON.parse(stored);
-      login(user.name, user.email);
-    } catch {
-      localStorage.removeItem("sa_user");
-      router.replace("/");
-      return;
-    }
-    setMounted(true);
-
-    const store = useAppStore.getState();
-    if (
-      store.agentsLoaded &&
-      store.agents.length > 0 &&
-      store.agents[0]?.userEmail?.toLowerCase() === user.email.toLowerCase()
-    ) {
-      return;
-    }
-
-    fetch(`/api/agents?email=${encodeURIComponent(user.email)}`)
-      .then((r) => r.json())
-      .then(async (agentsList) => {
-        let finalAgents = agentsList;
-        if (agentsList.length === 0) {
-          const onboardingRaw = localStorage.getItem("sa_onboarding");
-          let onboarding: any = null;
-          if (onboardingRaw) {
-            try {
-              onboarding = JSON.parse(onboardingRaw);
-            } catch (e) {
-              console.error("[onboarding parse error]", e);
-            }
-          }
-
-          const agentName = onboarding?.businessName || "Carpenter Agent";
-
-          const a = await fetch("/api/agents", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: agentName, userEmail: user.email }),
-          }).then((r) => r.json());
-
-          // Seed settings + demo leads
-          await Promise.all([
-            fetch("/api/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                agentId: a._id,
-                settings: {
-                  businessType: "Other",
-                  industry: agentName.toLowerCase(),
-                  gmKeyword: agentName.toLowerCase(),
-                  gmLocation: "Lucknow",
-                  gmMaxResults: "25",
-                  gmActorId: "nwua9Gu5YrADL7ZD",
-                  activeScraperType: "google-maps",
-                  "google-mapsEnabled": "true",
-                  leadLocation: "Lucknow",
-                  targetCompanySize: "Any",
-                  apifyToken: process.env.NEXT_PUBLIC_APIFY_TOKEN || "",
-                  apifyScraper: "Google Maps businesses",
-                  apifyActorId: "nwua9Gu5YrADL7ZD",
-                  llmProvider: "Claude (Anthropic)",
-                  whatsappEnabled: "true",
-                  emailEnabled: "true",
-                  smsEnabled: "true",
-                  voiceEnabled: "true",
-                  // Seeded onboarding values
-                  businessWebsite: onboarding?.businessWebsite || "",
-                  businessPhone: onboarding?.businessPhone || "",
-                  businessServices: onboarding?.businessServices || "",
-                  docLink: onboarding?.docLink || "",
-                  customPrompt: onboarding?.customPrompt || "",
-                  followUpDays: onboarding?.followUpDays || "3",
-                },
-              }),
-            }),
-            fetch("/api/seed", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ agentId: a._id }),
-            }),
-          ]);
-
-          localStorage.removeItem("sa_onboarding");
-          finalAgents = [{ ...a, leadCount: 10 }];
+    let cancelled = false;
+    (async () => {
+      let me: {
+        user: { name: string; email: string; isSuperadmin: boolean };
+        organizations: OrganizationSummary[];
+        workspaces: Agent[];
+      };
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.status === 401) {
+          localStorage.removeItem("sa_user");
+          router.replace("/");
+          return;
         }
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        me = await res.json();
+      } catch {
+        showToast("Could not connect to the server", "error");
+        return;
+      }
+      if (cancelled) return;
 
-        setAgents(finalAgents);
-        setAgentsLoaded(true);
+      login(me.user.name, me.user.email);
+      setIsSuperadmin(me.user.isSuperadmin);
+      setOrganizations(me.organizations);
 
-        const match = finalAgents.find((a: any) => a._id === agentIdParam);
-        if (match) {
-          setActiveAgent(match);
-        } else if (finalAgents.length > 0) {
-          setActiveAgent(finalAgents[0]);
-          router.replace(`/${pageParam || "dashboard"}/${finalAgents[0]._id}`);
+      let workspaces = me.workspaces;
+      const canCreate = me.organizations.some((o) => o.role !== "member");
+      if (workspaces.length === 0 && canCreate) {
+        // First visit after signup: create the first workspace from what the signup form collected.
+        let onboarding: Record<string, string> = {};
+        try {
+          onboarding = JSON.parse(localStorage.getItem("sa_onboarding") || "{}");
+        } catch (e) {
+          console.error("[onboarding parse error]", e);
         }
-      })
-      .catch(() => showToast("Could not connect to database", "error"));
+        const res = await fetch("/api/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: onboarding.businessName || `${me.user.name.split(" ")[0]}'s business`,
+            templateId: "blank",
+            onlyIfNone: true,
+            settings: {
+              brandName: onboarding.businessName || "",
+              businessWebsite: onboarding.businessWebsite || "",
+              businessPhone: onboarding.businessPhone || "",
+              businessServices: onboarding.businessServices || "",
+              docLink: onboarding.docLink || "",
+              customPrompt: onboarding.customPrompt || "",
+              followUpDays: onboarding.followUpDays || "3",
+            },
+          }),
+        });
+        if (res.ok) {
+          workspaces = [await res.json()];
+        } else if (res.status === 409) {
+          // A workspace exists but wasn't listed (e.g. migrated just now) — ask again.
+          const again = await fetch("/api/auth/me").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+          workspaces = again?.workspaces ?? [];
+        } else {
+          showToast((await res.json().catch(() => ({}))).error || "Could not create your workspace", "error");
+        }
+      }
+      localStorage.removeItem("sa_onboarding");
+      if (cancelled) return;
+
+      setAgents(workspaces);
+      setAgentsLoaded(true);
+      setMounted(true);
+
+      const match = workspaces.find((a) => a._id === agentIdParam);
+      if (match) {
+        setActiveAgent(match);
+      } else if (workspaces.length > 0) {
+        setActiveAgent(workspaces[0]);
+        router.replace(`/${pageParam || "dashboard"}/${workspaces[0]._id}`);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   if (!mounted) {
@@ -197,6 +173,23 @@ function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (agents.length === 0) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-bg px-4 text-center">
+        <p className="text-[15px] font-semibold text-text">You don&apos;t have access to a workspace yet</p>
+        <p className="max-w-sm text-[13px] text-text3">
+          Ask an admin of your organization to give you access to a workspace, then reload this page.
+        </p>
+        <button
+          onClick={() => { logout(); router.replace("/"); }}
+          className="mt-2 rounded-lg border border-bg4 bg-bg2 px-4 py-2 text-[13px] font-semibold text-text2"
+        >
+          Log out
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
@@ -215,6 +208,8 @@ function Shell({ children }: { children: React.ReactNode }) {
       <AddLeadModal open={addLeadOpen} onClose={() => setAddLeadOpen(false)} />
       <SyncPanel
         runs={syncRuns}
+        syncing={syncing}
+        note={syncNote}
         open={syncPanelOpen}
         onClose={() => setSyncPanelOpen(false)}
         onCancel={(runId) => {

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 export type CronAction = "start_outreach" | "sync_apify" | "send_report" | "pause_agent" | "resume_agent";
 
@@ -11,6 +12,8 @@ export interface ICronJob extends Document {
   lastRunAt?: Date;
   nextRunAt?: Date;
   runCount: number;
+  /** turned off by Unpublish (not by the user) — Publish turns these back on */
+  pausedByUnpublish?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,11 +32,11 @@ const CronJobSchema = new Schema<ICronJob>(
     lastRunAt: { type: Date },
     nextRunAt: { type: Date },
     runCount:  { type: Number, default: 0 },
+    pausedByUnpublish: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 CronJobSchema.index({ agentId: 1 });
 
-export const CronJob: Model<ICronJob> =
-  mongoose.models.CronJob ?? mongoose.model<ICronJob>("CronJob", CronJobSchema);
+export const CronJob: Model<ICronJob> = defineModel<ICronJob>("CronJob", CronJobSchema);

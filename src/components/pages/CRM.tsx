@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/useAppStore";
 import Avatar from "@/components/ui/Avatar";
 import StatusPill from "@/components/ui/Pill";
 import { CRM_STAGES as STAGES } from "@/lib/constants/crm";
+import { usePipelineLabels } from "@/hooks/usePipelineLabels";
 import LeadDetailPanel from "@/components/ui/LeadDetailPanel";
 import { startLeadOutreach, deleteLeads, restoreLeads } from "@/lib/api/leads.api";
 import type { Lead, LeadNote } from "@/store/types";
@@ -21,6 +22,7 @@ const CRM_COLUMNS = [
 
 export default function CRM() {
   const { activeAgent, leads, setLeads, updateLead, updateAgentLeadCount, openDrawer, showToast } = useAppStore();
+  const stageLabels = usePipelineLabels(activeAgent?._id);
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -423,7 +425,8 @@ export default function CRM() {
 
       <div className="overflow-x-auto pb-4" style={{ height: "calc(100dvh - 180px)", overscrollBehavior: "contain" }}>
         <div className="grid h-full gap-3 min-w-[1540px]" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
-          {CRM_COLUMNS.map(({ key, label, pillClass }) => {
+          {CRM_COLUMNS.map(({ key, label: defaultLabel, pillClass }) => {
+            const label = stageLabels[key] ?? defaultLabel;
             // Scope the shared store to the selected agent, then mirror the API's
             // newest-updated order so a just-moved card lands at the top at once.
             const stageLeads = leads
@@ -581,7 +584,7 @@ export default function CRM() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          {STAGES.map((s) => <option key={s.key} value={s.key}>{stageLabels[s.key] ?? s.label}</option>)}
                         </select>}
                         <div className="mt-1 text-[10px]" style={{ color: "var(--color-text3)" }}>
                           {key === "deleted"
@@ -682,7 +685,7 @@ export default function CRM() {
             <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "0 0 20px 0", lineHeight: 1.4 }}>
               Move <strong>{moveModal.lead.fullName}</strong> to{" "}
               <strong style={{ color: "#df2a2a" }}>
-                {STAGES.find((s) => s.key === moveModal.targetStage)?.label}
+                {stageLabels[moveModal.targetStage] ?? STAGES.find((s) => s.key === moveModal.targetStage)?.label}
               </strong>
             </p>
 

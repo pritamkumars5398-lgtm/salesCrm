@@ -2,15 +2,19 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { placeAiCall } from "@/server/services/call.service";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
-    const { agentId, testNumber } = await req.json();
-    if (!agentId || !testNumber) {
-      return NextResponse.json({ error: "agentId and testNumber are required" }, { status: 400 });
-    }
-
+    const body = await req.json().catch(() => ({}));
+    const testNumber = body.testNumber;
     await connectDB();
+    const access = await authorizeWorkspace(req, body.agentId, { minRole: "admin" });
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
+    if (!testNumber) {
+      return NextResponse.json({ error: "testNumber is required" }, { status: 400 });
+    }
     
     // Fetch all voice/call settings for the agent
     const keys = [

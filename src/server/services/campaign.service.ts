@@ -1,10 +1,15 @@
 import { Types } from "mongoose";
 import { Campaign, ICampaign } from "@/lib/models/Campaign";
 import { Lead } from "@/lib/models/Lead";
+import { Agent } from "@/lib/models/Agent";
+import { Setting } from "@/lib/models/Setting";
 import { getEmailConfig } from "@/lib/email-service";
-import { getLLMConfig, getWhatsAppConfig } from "./settings.service";
+import { getLLMConfig, getVoiceConfig, getWhatsAppConfig } from "./settings.service";
 import { sendOutreachToLead, OutreachOptions } from "./outreach.service";
 import { getVoiceSetupError } from "./call.service";
+import { getPlaybook, hasOffer } from "./playbook.service";
+import { groupFilterById } from "./lead-groups.service";
+import { getOrganizationLimits, getOrganizationUsage } from "./workspace.service";
 
 /** How many leads are sent in parallel inside one batch. */
 const CONCURRENCY = 3;
@@ -29,15 +34,19 @@ export async function preflightCheck(agentId: string): Promise<PreflightResult> 
   const issues: string[] = [];
   const warnings: string[] = [];
 
-  const [llm, emailCfg, waCfg, voiceError] = await Promise.all([
+  const [llm, emailCfg, waCfg, voiceError, playbook] = await Promise.all([
     getLLMConfig(agentId),
     getEmailConfig(agentId),
     getWhatsAppConfig(agentId),
     getVoiceSetupError(agentId),
+    getPlaybook(agentId),
   ]);
   const callReady = !voiceError;
 
   if (!llm) issues.push("AI (LLM) API key is not configured — set it in Settings → AI.");
+  if (!hasOffer(playbook)) {
+    issues.push("Tell the AI what this workspace sells — fill in \"What we offer\" in Settings → AI Sales Playbook. Without it the AI can only pitch something generic.");
+  }
   if (!emailCfg && !waCfg && !callReady) {
     issues.push("No outreach channel configured — set up Email (SMTP/API), WhatsApp or Voice Calls in Settings.");
   } else {
@@ -45,6 +54,10 @@ export async function preflightCheck(agentId: string): Promise<PreflightResult> 
     if (!waCfg) warnings.push("WhatsApp is not configured — leads without an email cannot be contacted.");
     if (!callReady) warnings.push(`Voice calls are not ready — sequence call steps will fail. ${voiceError}`);
   }
+  if (!playbook.callGoal) warnings.push("No conversation goal set (Settings → AI Sales Playbook) — the AI will default to offering a short call.");
+
+  warnings.push(...(await limitWarnings(agentId)));
+  warnings.push(...(await sharedChannelWarnings(agentId)));
 
   const eligibleLeads = await countEligibleLeads(agentId);
   if (eligibleLeads === 0) warnings.push("No new leads to contact right now — outreach will start when leads are added.");
@@ -56,6 +69,63 @@ export async function preflightCheck(agentId: string): Promise<PreflightResult> 
     eligibleLeads,
     channels: { email: !!emailCfg, whatsapp: !!waCfg, call: callReady },
   };
+}
+
+async function limitWarnings(agentId: string): Promise<string[]> {
+  const agent = await Agent.findById(agentId).select("organizationId").lean();
+  if (!agent?.organizationId) return [];
+  const orgId = String(agent.organizationId);
+  const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId)]);
+  const checks: [number, number, string][] = [
+    [usage.emailsSent, limits.emailsPerMonth, "email"],
+    [usage.messagesSent, limits.messagesPerMonth, "WhatsApp message"],
+    [usage.callsMade, limits.callsPerMonth, "AI call"],
+    [usage.smsSent, limits.smsPerMonth, "SMS"],
+  ];
+  return checks
+    .filter(([used, max]) => max !== -1 && used >= max)
+    .map(([, max, what]) => `This month's ${what} limit (${max}, shared by all your workspaces) is used up — those sends will be skipped until next month or a plan upgrade.`);
+}
+
+/**
+ * Two business lines answering on the same number or inbox is a common setup
+ * mistake: a callback or reply can't tell which business it was meant for.
+ */
+async function sharedChannelWarnings(agentId: string): Promise<string[]> {
+  const agent = await Agent.findById(agentId).select("organizationId").lean();
+  if (!agent?.organizationId) return [];
+  const siblings = await Agent.find({ organizationId: agent.organizationId, deletedAt: null, _id: { $ne: agentId } })
+    .select("_id name").lean();
+  if (siblings.length === 0) return [];
+
+  const keys = ["waSessionId", "imapUser", "smsFrom"] as const;
+  const rows = await Setting.find({ agentId: { $in: [agentId, ...siblings.map((a) => a._id)] }, key: { $in: [...keys] } }).lean();
+  const valueOf = (id: unknown, key: string) =>
+    (rows.find((r) => String(r.agentId) === String(id) && r.key === key)?.value || "").trim().toLowerCase();
+
+  const label: Record<string, string> = {
+    waSessionId: "WhatsApp number",
+    imapUser: "email inbox",
+    smsFrom: "SMS number",
+    callerPhone: "calling number",
+  };
+  const shared = new Map<string, string[]>();
+  for (const key of keys) {
+    const mine = valueOf(agentId, key);
+    if (!mine) continue;
+    for (const s of siblings) if (valueOf(s._id, key) === mine) shared.set(key, [...(shared.get(key) ?? []), s.name]);
+  }
+  // Effective caller numbers include the platform default, so compare resolved configs.
+  const myCaller = (await getVoiceConfig(agentId)).callerPhone.replace(/\D/g, "");
+  if (myCaller) {
+    for (const s of siblings) {
+      const theirs = (await getVoiceConfig(String(s._id))).callerPhone.replace(/\D/g, "");
+      if (theirs && theirs === myCaller) shared.set("callerPhone", [...(shared.get("callerPhone") ?? []), s.name]);
+    }
+  }
+
+  return [...shared.entries()].map(([key, names]) =>
+    `The ${label[key]} is also used by ${names.join(", ")}. Replies are matched to the workspace that has that lead, but if the same person is a lead in both, it goes to the one that contacted them last — use a separate ${label[key]} per business if you can.`);
 }
 
 function eligibleLeadFilter(agentId: string) {
@@ -73,8 +143,17 @@ function eligibleLeadFilter(agentId: string) {
   };
 }
 
-export async function countEligibleLeads(agentId: string): Promise<number> {
-  return Lead.countDocuments(eligibleLeadFilter(agentId));
+/** Eligible leads, optionally limited to one group. Null when the group isn't in this workspace. */
+async function eligibleFilterFor(agentId: string, groupId?: string | null): Promise<Record<string, unknown> | null> {
+  const base = eligibleLeadFilter(agentId);
+  if (!groupId) return base;
+  const group = await groupFilterById(agentId, groupId);
+  return group ? { $and: [base, group] } : null;
+}
+
+export async function countEligibleLeads(agentId: string, groupId?: string | null): Promise<number> {
+  const filter = await eligibleFilterFor(agentId, groupId);
+  return filter ? Lead.countDocuments(filter) : 0;
 }
 
 /**
@@ -84,7 +163,7 @@ export async function countEligibleLeads(agentId: string): Promise<number> {
 export async function createCampaign(
   agentId: string,
   trigger: ICampaign["trigger"],
-  opts: { leadIds?: string[]; limit?: number } = {}
+  opts: { leadIds?: string[]; limit?: number; groupId?: string | null } = {}
 ): Promise<ICampaign | null> {
   // One active campaign per agent — don't stack duplicates.
   const active = await Campaign.findOne({ agentId, status: { $in: ["pending", "running"] } });
@@ -92,9 +171,13 @@ export async function createCampaign(
 
   let ids: Types.ObjectId[];
   if (opts.leadIds) {
-    ids = opts.leadIds.map((id) => new Types.ObjectId(id));
+    // Never trust ids from a request: only this workspace's own, live leads.
+    const valid = opts.leadIds.filter((id) => Types.ObjectId.isValid(id));
+    ids = (await Lead.find({ _id: { $in: valid }, agentId, deletedAt: null }).select("_id").lean()).map((l) => l._id);
   } else {
-    let q = Lead.find(eligibleLeadFilter(agentId)).select("_id").sort({ createdAt: -1 });
+    const filter = await eligibleFilterFor(agentId, opts.groupId);
+    if (!filter) return null;
+    let q = Lead.find(filter).select("_id").sort({ createdAt: -1 });
     if (opts.limit && opts.limit > 0) q = q.limit(opts.limit);
     ids = (await q.lean()).map((l) => l._id);
   }

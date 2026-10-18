@@ -1,12 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { IconCheck, IconBolt, IconTrendingUp, IconCrown, IconRocket } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
-import { PLANS, type PlanId, type Plan } from "@/lib/plans";
+import { PLANS, type PlanId, type Plan, type PlanLimits } from "@/lib/plans";
+import { apiFetch, apiGet, apiPost } from "@/lib/api/client";
+import { openRazorpayCheckout, type CheckoutOrder } from "@/lib/razorpay-checkout";
+import PlanStatusBanner, { type BillingPlan } from "@/components/billing/PlanStatusBanner";
+import PaymentHistory, { type PaymentRow } from "@/components/billing/PaymentHistory";
+
+interface BillingData {
+  enabled: boolean;
+  canPay: boolean;
+  plan: BillingPlan | null;
+  payments: PaymentRow[];
+}
 
 interface UsageData {
   planId: PlanId;
-  plan: Plan;
+  plan: Plan & { limits: PlanLimits };
   usage: { leadsScraped: number; messagesSent: number; callsMade: number; emailsSent: number; smsSent: number };
   month: string;
 }
@@ -26,13 +37,14 @@ function UsageMeter({ label, used, limit, color }: { label: string; used: number
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 12, color: "var(--color-text2)", fontWeight: 600 }}>{label}</span>
         <span style={{ fontSize: 11, color: isNear ? "#ef4444" : "var(--color-text3)", fontWeight: 600 }}>
-          {used.toLocaleString()} / {limit === -1 ? "∞" : limit.toLocaleString()}
+          {limit === -1 ? `${used.toLocaleString()} used · Unlimited` : `${used.toLocaleString()} / ${limit.toLocaleString()}`}
         </span>
       </div>
       <div style={{ height: 6, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
+        {/* Unlimited: nothing to fill up, so no bar */}
         <div style={{
           height: "100%",
-          width: limit === -1 ? "5%" : `${pct}%`,
+          width: limit === -1 ? "0%" : `${pct}%`,
           borderRadius: 99,
           background: isNear ? "#ef4444" : color,
           transition: "width 0.5s ease",
@@ -43,17 +55,24 @@ function UsageMeter({ label, used, limit, color }: { label: string; used: number
 }
 
 function PlanCard({
-  planId, currentPlanId, onUpgrade, upgrading,
+  planId, currentPlanId, onSelect, busy, canPay, paymentsEnabled,
 }: {
   planId: PlanId;
   currentPlanId: PlanId;
-  onUpgrade: (id: PlanId) => void;
-  upgrading: boolean;
+  onSelect: (id: PlanId) => void;
+  busy: boolean;
+  canPay: boolean;
+  paymentsEnabled: boolean;
 }) {
   const plan = PLANS[planId];
   const Icon = PLAN_ICONS[planId];
   const isCurrent = planId === currentPlanId;
   const isDowngrade = Object.keys(PLANS).indexOf(planId) < Object.keys(PLANS).indexOf(currentPlanId);
+  const blocked = !canPay || (planId !== "free" && !paymentsEnabled);
+  const label = busy ? "Opening…"
+    : planId === "free" ? "Switch to Free"
+      : isCurrent ? `Extend 30 days · ₹${plan.priceINR.toLocaleString("en-IN")}`
+        : `${isDowngrade ? "Switch" : "Upgrade"} · Pay ₹${plan.priceINR.toLocaleString("en-IN")}`;
 
   return (
     <div style={{
@@ -111,22 +130,23 @@ function PlanCard({
         ))}
       </div>
 
-      {!isCurrent && (
+      {!(isCurrent && planId === "free") && (
         <button
-          disabled={upgrading || isDowngrade}
-          onClick={() => onUpgrade(planId)}
+          disabled={busy || blocked}
+          title={!canPay ? "Only the organization owner can change the plan" : blocked ? "Online payments aren't set up yet" : undefined}
+          onClick={() => onSelect(planId)}
           style={{
             marginTop: "auto",
             padding: "9px 0",
             borderRadius: 10,
             background: isDowngrade ? "var(--color-bg3)" : `linear-gradient(135deg, ${plan.color}, ${plan.color}cc)`,
-            color: isDowngrade ? "var(--color-text3)" : "#fff",
+            color: isDowngrade ? "var(--color-text2)" : "#fff",
             fontSize: 13, fontWeight: 700,
-            border: "none", cursor: isDowngrade ? "not-allowed" : "pointer",
-            opacity: upgrading ? 0.6 : 1,
+            border: "none", cursor: busy ? "wait" : blocked ? "not-allowed" : "pointer",
+            opacity: busy || blocked ? 0.6 : 1,
           }}
         >
-          {isDowngrade ? "Downgrade" : upgrading ? "Upgrading…" : `Upgrade to ${plan.name}`}
+          {label}
         </button>
       )}
     </div>
@@ -134,33 +154,96 @@ function PlanCard({
 }
 
 export default function Plans() {
-  const { activeAgent, showToast } = useAppStore();
+  const { activeAgent, agents, showToast, isSuperadmin } = useAppStore();
   const [data, setData] = useState<UsageData | null>(null);
-  const [upgrading, setUpgrading] = useState(false);
+  const [billing, setBilling] = useState<BillingData | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!activeAgent) return;
-    fetch(`/api/usage?agentId=${activeAgent._id}`)
-      .then((r) => r.json())
-      .then(setData);
+    apiGet<UsageData>(`/api/usage?agentId=${activeAgent._id}`).then(setData).catch(() => {});
+    apiGet<BillingData>(`/api/billing?agentId=${activeAgent._id}`).then(setBilling).catch(() => {});
   }, [activeAgent?._id]);
 
-  async function handleUpgrade(planId: PlanId) {
-    if (!activeAgent || upgrading) return;
-    setUpgrading(true);
+  useEffect(() => { load(); }, [load]);
+
+  /** What the new plan's limits mean for this month's usage and workspace count. */
+  function limitWarnings(planId: PlanId): string {
+    if (!data || !activeAgent) return "";
+    const next = PLANS[planId].limits;
+    const over: string[] = [];
+    const check = (label: string, used: number, max: number) => {
+      if (max !== -1 && used >= max) over.push(`${label}: ${used} used this month, new limit ${max}`);
+    };
+    check("Leads", data.usage.leadsScraped, next.leadsPerMonth);
+    check("WhatsApp messages", data.usage.messagesSent, next.messagesPerMonth);
+    check("Emails", data.usage.emailsSent, next.emailsPerMonth);
+    check("SMS", data.usage.smsSent, next.smsPerMonth);
+    check("AI calls", data.usage.callsMade, next.callsPerMonth);
+    const orgWorkspaces = agents.filter((a) => a.organizationId === activeAgent.organizationId).length;
+    const workspaceNote = next.workspaces !== -1 && orgWorkspaces > next.workspaces
+      ? `\n\nYou have ${orgWorkspaces} workspaces; ${PLANS[planId].name} allows ${next.workspaces}. None are deleted, but you can't add new ones.`
+      : "";
+    const overNote = over.length ? `\n\nAlready over the new limits — these stop until next month:\n• ${over.join("\n• ")}` : "";
+    return overNote + workspaceNote;
+  }
+
+  async function switchToFree() {
+    if (!activeAgent) return;
+    const days = billing?.plan && !billing.plan.expired ? billing.plan.daysLeft : null;
+    const lose = days && billing?.plan?.purchased !== "free"
+      ? `\n\nYou still have ${days} paid day${days === 1 ? "" : "s"} of ${PLANS[billing!.plan!.purchased].name} — they're lost (no refund).`
+      : "";
+    if (!window.confirm(`Switch to Free now?${lose}${limitWarnings("free")}`)) return;
+    setBusy(true);
     try {
-      const res = await fetch("/api/usage", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: activeAgent._id, planId }),
-      });
-      if (res.ok) {
-        setData((prev) => prev ? { ...prev, planId, plan: { ...prev.plan, ...PLANS[planId] } } : prev);
-        showToast(`Upgraded to ${PLANS[planId].name}!`, "success");
-      }
+      await apiFetch("/api/usage", { method: "PATCH", body: JSON.stringify({ agentId: activeAgent._id, planId: "free" }) });
+      showToast("You're on the Free plan now.", "success");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not change the plan.", "error");
     } finally {
-      setUpgrading(false);
+      setBusy(false);
     }
+  }
+
+  async function pay(planId: PlanId) {
+    if (!activeAgent || !billing) return;
+    const current = billing.plan;
+    const order = Object.keys(PLANS) as PlanId[];
+    if (current && !current.expired && current.purchased !== "free" && current.purchased !== planId && current.daysLeft) {
+      const credit = Math.floor(current.daysLeft * PLANS[current.purchased].priceINR / PLANS[planId].priceINR);
+      const downgrade = order.indexOf(planId) < order.indexOf(current.purchased);
+      const msg = `Switch from ${PLANS[current.purchased].name} to ${PLANS[planId].name}?\n\n`
+        + `${PLANS[planId].name} starts as soon as you pay, for 30 days`
+        + (credit > 0 ? ` + about ${credit} extra day${credit === 1 ? "" : "s"} from your unused ${PLANS[current.purchased].name} time.` : ".")
+        + (downgrade ? limitWarnings(planId) : "");
+      if (!window.confirm(msg)) return;
+    }
+    setBusy(true);
+    try {
+      const checkout = await apiPost<CheckoutOrder>("/api/billing/order", { agentId: activeAgent._id, planId });
+      const result = await openRazorpayCheckout(checkout, (reason) => showToast(`Payment failed: ${reason} — you can try again in the same window.`, "error"));
+      if (!result) {
+        showToast("Payment window closed — nothing was charged.");
+        return;
+      }
+      const done = await apiPost<{ planId: PlanId; periodEnd: string }>("/api/billing/verify", { agentId: activeAgent._id, ...result });
+      showToast(`Payment received — ${PLANS[done.planId].name} is active until ${new Date(done.periodEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}.`, "success");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Payment couldn't be completed.", "error");
+      // If money was taken but confirmation failed here, Razorpay's webhook still applies it.
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSelect(planId: PlanId) {
+    if (busy) return;
+    if (planId === "free") switchToFree();
+    else pay(planId);
   }
 
   if (!data) {
@@ -169,6 +252,7 @@ export default function Plans() {
 
   const { planId, usage } = data;
   const plan = PLANS[planId];
+  const limits = data.plan.limits;
 
   return (
     <div style={{ maxWidth: 900, padding: "28px 28px 60px" }}>
@@ -181,6 +265,19 @@ export default function Plans() {
           {new Date().toLocaleString("en-IN", { month: "long", year: "numeric" })} usage · BYOK — bring your own Apify, Twilio and Vapi keys.
         </p>
       </div>
+
+      {billing?.plan && (
+        <PlanStatusBanner
+          plan={billing.plan}
+          canPay={billing.canPay}
+          paymentsEnabled={billing.enabled}
+          busy={busy}
+          onRenew={(id) => pay(id)}
+        />
+      )}
+      {billing && !billing.enabled && (
+        <p className="mb-4 text-[12px] text-text3">Online payments aren&apos;t set up yet — add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the server&apos;s .env.</p>
+      )}
 
       {/* Usage meters */}
       <div style={{
@@ -204,11 +301,11 @@ export default function Plans() {
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 28px" }}>
-          <UsageMeter label="Monthly leads quota" used={usage.leadsScraped} limit={plan.limits.leadsPerMonth} color={plan.color} />
-          <UsageMeter label="WhatsApp messages" used={usage.messagesSent} limit={plan.limits.messagesPerMonth} color={plan.color} />
-          <UsageMeter label="AI calls" used={usage.callsMade} limit={plan.limits.callsPerMonth} color={plan.color} />
-          <UsageMeter label="Emails sent" used={usage.emailsSent} limit={plan.limits.emailsPerMonth} color={plan.color} />
-          <UsageMeter label="SMS sent" used={usage.smsSent} limit={plan.limits.smsPerMonth} color={plan.color} />
+          <UsageMeter label="Monthly leads quota" used={usage.leadsScraped} limit={limits.leadsPerMonth} color={plan.color} />
+          <UsageMeter label="WhatsApp messages" used={usage.messagesSent} limit={limits.messagesPerMonth} color={plan.color} />
+          <UsageMeter label="AI calls" used={usage.callsMade} limit={limits.callsPerMonth} color={plan.color} />
+          <UsageMeter label="Emails sent" used={usage.emailsSent} limit={limits.emailsPerMonth} color={plan.color} />
+          <UsageMeter label="SMS sent" used={usage.smsSent} limit={limits.smsPerMonth} color={plan.color} />
         </div>
       </div>
 
@@ -218,12 +315,22 @@ export default function Plans() {
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         {(Object.keys(PLANS) as PlanId[]).map((id) => (
-          <PlanCard key={id} planId={id} currentPlanId={planId} onUpgrade={handleUpgrade} upgrading={upgrading} />
+          <PlanCard
+            key={id}
+            planId={id}
+            currentPlanId={planId}
+            onSelect={handleSelect}
+            busy={busy}
+            canPay={billing?.canPay ?? false}
+            paymentsEnabled={billing?.enabled ?? false}
+          />
         ))}
       </div>
 
-      {/* Revenue context */}
-      <div style={{
+      <PaymentHistory payments={billing?.payments ?? []} />
+
+      {/* Revenue context — the platform's own numbers, not for customers */}
+      {isSuperadmin && <div style={{
         marginTop: 32, padding: "18px 20px",
         background: "rgba(223,42,42,0.05)",
         border: "1px solid rgba(223,42,42,0.15)",
@@ -244,7 +351,8 @@ export default function Plans() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
+

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import AuthModal from "@/components/ui/AuthModal";
+import { hasServerSession } from "@/lib/auth";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -10,11 +11,10 @@ export default function SignupPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem("sa_user")) {
-      router.replace("/dashboard/default");
-    } else {
-      setReady(true);
-    }
+    hasServerSession().then((signedIn) => {
+      if (signedIn) router.replace("/dashboard/default");
+      else setReady(true);
+    });
   }, [router]);
 
   if (!ready) return null;

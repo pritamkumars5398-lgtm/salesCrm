@@ -1,35 +1,41 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 /**
  * API routes that must stay reachable without a session cookie:
- * - auth: login/signup happen before a session exists
- * - webhooks + sms status: called by Twilio/Calendly/WhatsApp providers
+ * - auth: login/signup happen before a session exists (each route checks itself)
+ * - webhooks: called by Twilio/Calendly/WhatsApp providers
+ * - calls: Plivo callbacks, guarded by a per-call token
  * - leads/[id]/response: interest buttons clicked from outreach emails
  * - crons/execute: external scheduler, protected by CRON_SECRET in the route
+ *
+ * Middleware only proves the cookie is genuine and unexpired; each route
+ * still checks that the user may access the workspace it touches.
  */
 const PUBLIC_API = [
   /^\/api\/auth\//,
   /^\/api\/webhooks\//,
   /^\/api\/calls\//,
-  /^\/api\/sms\/status$/,
   /^\/api\/leads\/[^/]+\/response$/,
   /^\/api\/crons\/execute$/,
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isAuthed = request.cookies.has("sa_auth");
 
-  if (pathname.startsWith("/api/")) {
-    if (PUBLIC_API.some((re) => re.test(pathname))) return NextResponse.next();
-    if (!isAuthed) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (pathname.startsWith("/api/") && PUBLIC_API.some((re) => re.test(pathname))) {
     return NextResponse.next();
   }
 
-  if (!isAuthed) {
+  const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
+
+  if (pathname.startsWith("/api/")) {
+    if (!session) return NextResponse.json({ error: "Your session has expired. Please log in again." }, { status: 401 });
+    return NextResponse.next();
+  }
+
+  if (!session) {
     return NextResponse.redirect(new URL("/", request.url));
   }
   return NextResponse.next();
@@ -37,7 +43,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/(dashboard|leads|sequence|settings|crons|apify|profile)/:agentId*",
+    "/(dashboard|leads|sequence|crm|calendar|activity|settings|crons|profile|plans|superadmin|voice|inbox|voice-inbox|apify)/:path*",
     "/api/:path*",
   ],
 };

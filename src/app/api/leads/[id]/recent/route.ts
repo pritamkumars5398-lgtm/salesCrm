@@ -1,20 +1,17 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
+import { authorizeLead } from "@/server/auth/access";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
   const { id } = await params;
-  const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
-  const recentAccessedAt = new Date();
-
-  const filter: Record<string, unknown> = { _id: id, deletedAt: null };
-  if (agentId) filter.agentId = agentId;
+  const access = await authorizeLead(req, id);
+  if (!access.ok) return access.response;
 
   const lead = await Lead.findOneAndUpdate(
-    filter,
-    { $set: { recentAccessedAt } },
+    { _id: access.lead._id, deletedAt: null },
+    { $set: { recentAccessedAt: new Date() } },
     { new: true, timestamps: false }
   ).lean();
 

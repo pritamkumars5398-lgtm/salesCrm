@@ -51,7 +51,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
     // Sign up flow
     if (signupStep === 1) {
       if (!name || !email || !password) { setError("Name, Email, and Password are required."); return; }
-      if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+      if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
       setSignupStep(2);
     } else if (signupStep === 2) {
       if (!businessName) { setError("Please specify your Business Name."); return; }
@@ -303,7 +303,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                           disabled={loading}
                           className="form-input" style={{ paddingRight: 40 }}
                           type={showPassword ? "text" : "password"}
-                          placeholder="Min. 6 characters"
+                          placeholder="Min. 8 characters"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                         />

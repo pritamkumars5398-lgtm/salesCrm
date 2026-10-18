@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Types, PipelineStage } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Call } from "@/lib/models/Call";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 const STATUS_FILTERS: Record<string, string[]> = {
   live: ["queued", "ringing", "in_progress"],
@@ -21,10 +22,10 @@ function escapeRegex(s: string) {
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
-  if (!agentId || !Types.ObjectId.isValid(agentId)) {
-    return NextResponse.json({ error: "agentId required" }, { status: 400 });
-  }
+  await connectDB();
+  const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
   const q = (searchParams.get("q") || "").trim();
   const status = searchParams.get("status") || "all";
 

@@ -1,5 +1,6 @@
 import {
   IconBrain, IconBrandWhatsapp, IconPhone, IconMail, IconMessage, IconBuilding, IconCalendar,
+  IconTarget, IconListDetails, IconUsersGroup, IconBook, IconUsers, IconKey,
 } from "@tabler/icons-react";
 
 export interface SettingsField {
@@ -38,12 +39,39 @@ export const GENERAL_CARDS: SettingsCard[] = [
       { label: "Target Company Size", key: "targetCompanySize", placeholder: "", options: ["Any", "1–10 (Micro)", "11–50 (Small)", "51–200 (Mid-market)", "201–1000 (Growth)", "1000+ (Enterprise)"] },
       { label: "Business Website", key: "businessWebsite", placeholder: "https://yourwebsite.com", hint: "Used by AI in responses" },
       { label: "Business Phone", key: "businessPhone", placeholder: "+91 xxxxx xxxxx", hint: "Used by AI in responses" },
-      { label: "Services Offered", key: "businessServices", type: "textarea", placeholder: "Explain your products, services or business offerings in detail...", hint: "Used as context for generating replies" },
-      { label: "Resource Doc Link", key: "docLink", placeholder: "https://yourwebsite.com/brochure.pdf", hint: "Shared with interested leads" },
-      { label: "Custom AI Instructions", key: "customPrompt", type: "textarea", placeholder: "e.g. Talk with pirate slang! Be extremely concise. Highlight our Bogo offer.", hint: "Additional rules the AI will follow when drafting replies" },
       { label: "Follow-up Limit (Days/Messages)", key: "followUpDays", options: ["3", "Disabled", "1", "2", "4", "5", "6", "7"], hint: "Automatically follow up daily if lead doesn't reply" },
     ],
   },
+  {
+    key: "playbook",
+    title: "AI Sales Playbook",
+    description: "What this business sells & how the AI pitches it",
+    Icon: IconTarget,
+    iconBg: "rgba(139,92,246,0.1)",
+    iconColor: "#8b5cf6",
+    fields: [
+      { label: "Brand name the AI uses", key: "brandName", placeholder: "e.g. Difmo, HotelEase, SchoolDesk", hint: "How the AI introduces your company. Each workspace can sell under its own brand." },
+      { label: "AI agent's name", key: "aiPersonaName", placeholder: "Priya", hint: "Used on calls and in messages" },
+      { label: "What you sell", key: "offerType", placeholder: "", options: ["Services", "Software product", "Physical product", "Other"] },
+      { label: "What we offer (one or two lines)", key: "offerSummary", type: "textarea", placeholder: "e.g. Cloud hotel management software — bookings, room status, OTA sync and billing in one place.", hint: "Required to publish. The AI only ever pitches what's written here and below — never another workspace's offer." },
+      { label: "Who we sell to", key: "targetCustomer", placeholder: "e.g. Owners and managers of 10–100 room hotels", hint: "Helps the AI talk the customer's language" },
+      { label: "Products / services / features in detail", key: "businessServices", type: "textarea", placeholder: "List what you offer, key features and benefits...", hint: "The AI picks the 2–3 points that matter most to each lead" },
+      { label: "Pricing the AI may share", key: "pricingInfo", type: "textarea", placeholder: "e.g. Plans start at ₹2,999/month. Free 14-day trial. Leave empty to never quote prices.", hint: "Empty = the AI never quotes a price and offers to have the team share it" },
+      { label: "Goal of every conversation", key: "callGoal", placeholder: "e.g. Book a 20-minute product demo", hint: "What the AI steers calls, emails and replies towards" },
+      { label: "Common objections & answers", key: "objectionHandling", type: "textarea", placeholder: "\"Too expensive\" → it pays for itself by... \n\"We use Excel\" → ...", hint: "How to answer pushback" },
+      { label: "Brochure / details link", key: "docLink", placeholder: "https://yourwebsite.com/brochure.pdf", hint: "Shared with leads who ask for details" },
+      { label: "Extra AI rules", key: "customPrompt", type: "textarea", placeholder: "e.g. Never promise delivery dates. Always mention the free trial.", hint: "Rules the AI follows in every message and call" },
+    ],
+  },
+];
+
+/** Workspace setup pages with their own editors (no simple form fields). */
+export const WORKSPACE_CARDS: SettingsCard[] = [
+  { key: "fields", title: "Lead fields & pipeline", description: "What you track about each lead", Icon: IconListDetails, iconBg: "rgba(14,165,233,0.1)", iconColor: "#0ea5e9", fields: [] },
+  { key: "groups", title: "Lead groups", description: "Segments, manual or by rules", Icon: IconUsersGroup, iconBg: "rgba(236,72,153,0.1)", iconColor: "#ec4899", fields: [] },
+  { key: "knowledge", title: "Knowledge base", description: "Docs & FAQs the AI answers from", Icon: IconBook, iconBg: "rgba(245,158,11,0.1)", iconColor: "#f59e0b", fields: [] },
+  { key: "keys", title: "API keys & usage", description: "Is every connection working?", Icon: IconKey, iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366f1", fields: [] },
+  { key: "team", title: "Team & workspaces", description: "Members, roles, business lines", Icon: IconUsers, iconBg: "rgba(16,185,129,0.1)", iconColor: "#10b981", fields: [] },
 ];
 
 export const INTEGRATION_CARDS: SettingsCard[] = [

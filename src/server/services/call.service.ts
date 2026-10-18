@@ -13,6 +13,8 @@ import { makePlivoCall, normalizeDialableNumber, hangupPlivoCall, cancelPlivoReq
 import { getVoiceConfig, VoiceConfig, getSettingsMap, getWhatsAppConfig } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { analyzeCallTranscript, generateCallFollowUpWhatsApp } from "./ai.service";
+import { buildCallInstructions } from "./call-prompt";
+import { applyAiFieldValues } from "./playbook.service";
 
 /** Providers whose lead calls run through Plivo + the ElevenLabs bridge. */
 const PLIVO_PROVIDERS = ["Plivo", "ElevenLabs Conversational AI"];
@@ -110,7 +112,8 @@ export async function placeAiCall(opts: {
   const to = normalizeDialableNumber(opts.toNumber ?? lead?.phone);
   if (!to) return { ok: false, status: 400, error: `"${opts.toNumber ?? lead?.phone ?? ""}" is not a valid phone number. Use the full number with country code.` };
 
-  const from = normalizeDialableNumber(cfg.callerPhone) ?? normalizeDialableNumber(process.env.PLIVO_FROM_NUMBER);
+  // cfg.callerPhone already includes the platform number when this workspace may use it.
+  const from = normalizeDialableNumber(cfg.callerPhone);
   if (!from) return { ok: false, status: 400, error: "Caller Phone Number (your Plivo number) is missing or invalid (Settings → Voice Calls)." };
   if (from === to) return { ok: false, status: 400, error: "The number being called is the same as your caller number." };
 
@@ -137,10 +140,18 @@ export async function placeAiCall(opts: {
     return { ok: false, status: 409, error: `+${to} is already on a call (possibly a duplicate lead with the same number).` };
   }
 
+  // If building the instructions fails the bridge falls back to its own generic prompt.
+  const instructions = await buildCallInstructions(agentId, cfg, lead, to).catch((err) => {
+    console.error("[Call] could not build call instructions:", err);
+    return null;
+  });
+
   const token = crypto.randomBytes(24).toString("hex");
   let call: ICall;
   try {
     call = await Call.create({
+      aiPrompt: instructions?.prompt,
+      aiFirstMessage: instructions?.firstMessage,
       agentId,
       leadId: lead?._id ?? null,
       mode: "ai",
@@ -525,6 +536,9 @@ export async function finalizeCall(callId: string) {
   if (call.status === "completed" && leadSpoke) {
     try {
       const analysis = await analyzeCallTranscript(agentId, call.transcript);
+      if (call.leadId && !call.isTest) {
+        await applyAiFieldValues(agentId, call.leadId, analysis.fields, "AI call").catch((e) => console.error("[Call] field update failed:", e));
+      }
       call.summary = analysis.summary;
       call.sentiment = analysis.sentiment;
       call.outcome = analysis.outcome;

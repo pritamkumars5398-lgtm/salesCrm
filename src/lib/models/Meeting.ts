@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 export interface IMeeting extends Document {
   agentId: Types.ObjectId;
@@ -31,5 +32,4 @@ const MeetingSchema = new Schema<IMeeting>(
   { timestamps: true }
 );
 
-export const Meeting: Model<IMeeting> =
-  mongoose.models.Meeting ?? mongoose.model<IMeeting>("Meeting", MeetingSchema);
+export const Meeting: Model<IMeeting> = defineModel<IMeeting>("Meeting", MeetingSchema);

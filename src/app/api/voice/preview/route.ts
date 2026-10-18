@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { authorizeWorkspace } from "@/server/auth/access";
+import { platformEnv } from "@/server/services/platform-credentials";
 
 export async function POST(req: Request) {
   try {
-    const { agentId, text, voiceId: reqVoiceId } = await req.json();
-    if (!agentId || !text) {
-      return NextResponse.json({ error: "agentId and text are required" }, { status: 400 });
-    }
-
+    const { agentId: requestedAgentId, text, voiceId: reqVoiceId } = await req.json();
     await connectDB();
+    const access = await authorizeWorkspace(req, requestedAgentId);
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
+    if (typeof text !== "string" || !text.trim() || text.length > 1000) {
+      return NextResponse.json({ error: "text (up to 1000 characters) is required" }, { status: 400 });
+    }
+    const env = await platformEnv(agentId);
     const rows = await Setting.find({ agentId, key: { $in: ["voiceApiKey", "voiceId", "voiceProvider"] } }).lean();
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const apiKey = m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "";
+    const apiKey = m.voiceApiKey || env("ELEVENLABS_API_KEY");
     const voiceId = reqVoiceId || m.voiceId || "Jessica";
     const provider = m.voiceProvider || "ElevenLabs";
 

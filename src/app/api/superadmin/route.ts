@@ -6,17 +6,24 @@ import { Usage } from "@/lib/models/Usage";
 import { Setting } from "@/lib/models/Setting";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
+import { Organization } from "@/lib/models/Organization";
+import { authorizeSuperadmin } from "@/server/auth/access";
+import { clearPlatformCredentialCache } from "@/server/services/platform-credentials";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await connectDB();
+    const auth = await authorizeSuperadmin(req);
+    if (!auth.ok) return auth.response;
 
-    const [dbUsers, dbAgents, dbUsages, dbSettings] = await Promise.all([
-      User.find().lean(),
-      Agent.find().lean(),
-      Usage.find().lean(),
-      Setting.find().lean(),
+    const [dbUsers, dbAgents, dbUsages, dbSettings, dbOrgs] = await Promise.all([
+      User.find().select("name email").lean(),
+      Agent.find({ deletedAt: null }).lean(),
+      Usage.find({ month: currentMonth() }).lean(),
+      Setting.find({ key: { $in: ["plan", "custom_limits", "voiceEnabled"] } }).lean(),
+      Organization.find().lean(),
     ]);
+    const orgByOwner = new Map(dbOrgs.map((o) => [String(o.ownerUserId), o]));
 
     // Helper maps
     const settingsMap = new Map<string, string>(); // key = `${agentId}:${settingKey}`
@@ -32,8 +39,11 @@ export async function GET() {
     // 1. Compile live database users
     const liveUsers = dbUsers.map((user) => {
       const email = user.email.toLowerCase();
-      // Find all agents of this user
-      const userAgents = dbAgents.filter((a) => a.userEmail?.toLowerCase() === email);
+      const org = orgByOwner.get(String(user._id));
+      // Workspaces of the organization they own, plus any not yet migrated into one
+      const userAgents = dbAgents.filter((a) =>
+        (org && String(a.organizationId) === String(org._id)) ||
+        (!a.organizationId && a.userEmail?.toLowerCase() === email));
       
       let leadsScraped = 0;
       let messagesSent = 0;
@@ -68,6 +78,11 @@ export async function GET() {
         }
       });
 
+      if (org) {
+        activePlan = org.plan;
+        hasCustomLimits = !!org.customLimits;
+      }
+
       // Calculate cost & revenue
       const infraCost = (leadsScraped * 0.8) + (messagesSent * 0.65) + (callsMade * 12.0) + (emailsSent * 0.08);
       const planPrice = PLANS[activePlan]?.priceINR ?? 0;
@@ -78,6 +93,8 @@ export async function GET() {
         email: user.email,
         agentsCount: userAgents.length,
         agents: userAgents.map(a => ({ id: a._id.toString(), name: a.name })),
+        organizationId: org ? String(org._id) : null,
+        usesPlatformCredentials: org?.usesPlatformCredentials ?? false,
         plan: activePlan,
         hasCustomLimits,
         callsSupport: voiceEnabled ? "Supported" : "Disabled",
@@ -249,14 +266,35 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { agentId, planId, customLimits } = await req.json() as {
+    const auth = await authorizeSuperadmin(req);
+    if (!auth.ok) return auth.response;
+    const { agentId, planId, customLimits, usesPlatformCredentials } = await req.json() as {
       agentId: string;
       planId?: PlanId;
-      customLimits?: any;
+      customLimits?: Record<string, number> | null;
+      usesPlatformCredentials?: boolean;
     };
 
     if (!agentId) {
       return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+    }
+
+    // Plans and limits belong to the organization the workspace is in.
+    const agent = await Agent.findById(agentId).select("organizationId").lean();
+    if (agent?.organizationId) {
+      const set: Record<string, unknown> = {};
+      if (planId) {
+        if (!PLANS[planId]) return NextResponse.json({ error: "Invalid planId" }, { status: 400 });
+        set.plan = planId;
+        set.planExpiresAt = null; // assigned by hand: no prepaid period
+      }
+      if (customLimits !== undefined) {
+        set.customLimits = customLimits && Object.keys(customLimits).length ? JSON.stringify(customLimits) : "";
+      }
+      if (typeof usesPlatformCredentials === "boolean") set.usesPlatformCredentials = usesPlatformCredentials;
+      await Organization.updateOne({ _id: agent.organizationId }, { $set: set });
+      clearPlatformCredentialCache();
+      return NextResponse.json({ ok: true, message: "Organization updated" });
     }
 
     const updates = [];

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Campaign } from "@/lib/models/Campaign";
-import { Agent } from "@/lib/models/Agent";
 import {
   createCampaign,
   processCampaign,
   countEligibleLeads,
 } from "@/server/services/campaign.service";
 import { getAppBaseUrl } from "@/server/services/settings.service";
+import { LeadGroup } from "@/lib/models/LeadGroup";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 /**
  * GET /api/campaigns?agentId=...&active=1
@@ -18,9 +19,10 @@ export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agentId");
-  if (!agentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+  const access = await authorizeWorkspace(req, agentId);
+  if (!access.ok) return access.response;
 
-  const filter: Record<string, unknown> = { agentId };
+  const filter: Record<string, unknown> = { agentId: access.agentId };
   if (searchParams.get("active") === "1") {
     filter.status = { $in: ["pending", "running"] };
   }
@@ -31,27 +33,36 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/campaigns — manual "Run" from the Leads page.
- * Body: { agentId, limit? } — outreach the first `limit` eligible leads
- * (newest first). Works even while the agent is in Draft.
+ * Body: { agentId, limit?, groupId? } — outreach the first `limit` eligible
+ * leads (newest first), optionally only those in one group. Works even while
+ * the agent is in Draft.
  */
 export async function POST(req: Request) {
   await connectDB();
   const body = await req.json().catch(() => ({}));
-  const { agentId, limit } = body as { agentId?: string; limit?: number };
-  if (!agentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
+  const { agentId, groupId } = body as { agentId?: string; groupId?: string };
+  const limit = Number.isInteger(body.limit) && body.limit > 0 ? Math.min(body.limit, 5000) : undefined;
+  const access = await authorizeWorkspace(req, agentId);
+  if (!access.ok) return access.response;
+  const agent = access.agent;
 
-  const agent = await Agent.findById(agentId).lean();
-  if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  if (groupId) {
+    if (!(await LeadGroup.exists({ _id: groupId, agentId: access.agentId }))) {
+      return NextResponse.json({ error: "That group doesn't exist in this workspace." }, { status: 404 });
+    }
+  }
 
-  const eligible = await countEligibleLeads(agentId);
+  const eligible = await countEligibleLeads(access.agentId, groupId);
   if (eligible === 0) {
     return NextResponse.json(
-      { error: "No leads left to contact — every lead with contact info has already been outreached." },
+      { error: groupId
+        ? "No leads in this group are ready to contact — they have no contact info, AI is off for them, or they were already outreached."
+        : "No leads left to contact — every lead with contact info has already been outreached." },
       { status: 422 }
     );
   }
 
-  const campaign = await createCampaign(agentId, "manual", { limit });
+  const campaign = await createCampaign(access.agentId, "manual", { limit, groupId });
   if (!campaign) {
     return NextResponse.json({ error: "Could not start a run — no eligible leads." }, { status: 422 });
   }

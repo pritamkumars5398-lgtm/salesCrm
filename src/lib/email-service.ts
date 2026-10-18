@@ -1,5 +1,6 @@
 import { Setting } from "@/lib/models/Setting";
 import nodemailer from "nodemailer";
+import { platformEnv } from "@/server/services/platform-credentials";
 
 export interface EmailConfig {
   provider: string;
@@ -18,18 +19,18 @@ export async function getEmailConfig(agentId: string): Promise<EmailConfig | nul
     "smtpHost", "smtpPort", "smtpUser", "smtpPass",
     "smtpFromName", "smtpFrom",
   ];
-  const rows = await Setting.find({ agentId, key: { $in: keys } }).lean();
+  const [rows, env] = await Promise.all([Setting.find({ agentId, key: { $in: keys } }).lean(), platformEnv(agentId)]);
   const m: Record<string, string> = {};
   rows.forEach((r) => { m[r.key] = r.value; });
 
   const provider = m.emailProvider || "SMTP";
 
   if (provider === "SMTP") {
-    const host = m.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
-    const port = parseInt(m.smtpPort || process.env.SMTP_PORT || "587", 10);
-    const fromAddr = m.smtpFrom || process.env.SMTP_FROM || m.smtpUser || process.env.SMTP_USER || "";
-    const user = m.smtpUser || process.env.SMTP_USER || fromAddr;
-    const pass = m.smtpPass || process.env.SMTP_PASS || "";
+    const host = m.smtpHost || env("SMTP_HOST") || "smtp.gmail.com";
+    const port = parseInt(m.smtpPort || env("SMTP_PORT") || "587", 10);
+    const fromAddr = m.smtpFrom || env("SMTP_FROM") || m.smtpUser || env("SMTP_USER");
+    const user = m.smtpUser || env("SMTP_USER") || fromAddr;
+    const pass = m.smtpPass || env("SMTP_PASS");
     if (!user || !pass) return null;
     return {
       provider,
@@ -38,7 +39,7 @@ export async function getEmailConfig(agentId: string): Promise<EmailConfig | nul
       smtpPort: port,
       smtpUser: user,
       smtpPass: pass,
-      fromName: m.smtpFromName || process.env.SMTP_FROM_NAME || user,
+      fromName: m.smtpFromName || env("SMTP_FROM_NAME") || user,
       fromAddress: fromAddr,
     };
   }

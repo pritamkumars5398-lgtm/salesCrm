@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Conversation } from "@/lib/models/Conversation";
 import { eventEmitter } from "@/lib/events";
+import { inboundCandidateWorkspaces, findInboundLead } from "@/server/services/inbound-routing.service";
 
 export async function POST(req: Request) {
   try {
@@ -61,55 +62,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let agentId = agentIdParam;
-
-    // 1. Fallback to session ID mapping if dynamic webhook URL is not used
-    if (!agentId) {
-      if (!sessionId) {
-        console.log("[SMS Webhook] Missing 'agentId' in URL and 'sessionId' in payload.");
-        return NextResponse.json({ error: "Missing routing identifier" }, { status: 400 });
-      }
-
-      const { Setting } = await import("@/lib/models/Setting");
-      // For SMS, we can check smsFrom, smsAccountSid or even twilioPhoneNumber 
-      // but typically we can check smsFrom if it matches the 'To' number.
-      const toDigits = sessionId.replace(/\D/g, "");
-      let setting = toDigits
-        ? await Setting.findOne({ key: "smsFrom", value: { $regex: new RegExp(toDigits.slice(-10) + "$") } })
-        : null;
-      
-      if (!setting) {
-        // Fallback to checking smsAccountSid just in case
-        setting = await Setting.findOne({ key: "smsAccountSid", value: payload.AccountSid || "" });
-      }
-
-      if (!setting) {
-        console.log(`[SMS Webhook] No agent found configured with receiving number: ${sessionId}. Ignoring.`);
-        return NextResponse.json({ ok: true });
-      }
-      agentId = setting.agentId.toString();
+    if (!agentIdParam && !sessionId) {
+      console.log("[SMS Webhook] Missing 'agentId' in URL and 'sessionId' in payload.");
+      return NextResponse.json({ error: "Missing routing identifier" }, { status: 400 });
+    }
+    // 1. Every workspace this number serves (several business lines can share one number)
+    let candidates = await inboundCandidateWorkspaces(agentIdParam, "smsFrom", sessionId, "last10");
+    if (candidates.length === 0 && !agentIdParam && payload.AccountSid) {
+      candidates = await inboundCandidateWorkspaces(null, "smsAccountSid", payload.AccountSid, "exact");
+    }
+    if (candidates.length === 0) {
+      console.log(`[SMS Webhook] No workspace found for receiving number: ${sessionId}. Ignoring.`);
+      return NextResponse.json({ ok: true });
     }
 
-    // 2. Clean the incoming phone number to get the last 10 digits
+    // 2. Clean the incoming phone number
     const cleanFrom = from.replace(/\D/g, "");
     if (cleanFrom.length < 10) {
       console.log(`[SMS Webhook] Phone number too short: ${from}. Ignoring.`);
       return NextResponse.json({ ok: true });
     }
-    const last10 = cleanFrom.slice(-10);
 
-    // 3. Query the Lead database strictly scoped to this Agent
-    const lead = await Lead.findOne({
-      agentId: agentId,
-      deletedAt: null,
-      phone: new RegExp(last10 + "$")
-    });
+    // 3. The lead, in whichever of those workspaces has them (most recent conversation wins)
+    const lead = await findInboundLead(candidates, from, "sms");
 
     if (!lead) {
       console.log(`[SMS Webhook] No matching lead found for from=${from}. Message ignored (filtered).`);
       return NextResponse.json({ ok: true });
     }
 
+    const agentId = String(lead.agentId);
     console.log(`[SMS Webhook] Lead found: ${lead.fullName} (${lead._id}). Processing message...`);
 
     // A reply moves fresh/outreach leads forward; never downgrade booked or closed leads.

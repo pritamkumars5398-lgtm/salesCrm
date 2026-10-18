@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import Landing from "@/components/pages/Landing";
 import ToastContainer from "@/components/ui/Toast";
+import { hasServerSession } from "@/lib/auth";
 
 export default function Root() {
   const router = useRouter();
@@ -12,19 +13,20 @@ export default function Root() {
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("sa_user");
-    if (stored) {
-      try {
-        const user = JSON.parse(stored);
-        login(user.name, user.email);
+    if (!localStorage.getItem("sa_user")) {
+      setReady(true); // never logged in on this browser — show landing
+      return;
+    }
+    // Only go to the dashboard if the server agrees the session is valid;
+    // otherwise the middleware bounces us straight back here, forever.
+    hasServerSession().then((signedIn) => {
+      if (signedIn) {
         setAuthed(true);
         router.replace("/dashboard/default");
-        return;
-      } catch {
-        localStorage.removeItem("sa_user");
+      } else {
+        setReady(true);
       }
-    }
-    setReady(true); // not logged in — show landing
+    });
   }, []);
 
   // Show a loader while the localStorage check runs, and keep it up while the

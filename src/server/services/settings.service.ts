@@ -1,5 +1,5 @@
 import { Setting } from "@/lib/models/Setting";
-import { resolveGroqModel, groqModelParams } from "@/lib/llm";
+import { platformEnv } from "./platform-credentials";
 
 /** Load a set of settings keys for an agent as a plain map. */
 export async function getSettingsMap(agentId: string, keys: string[]): Promise<Record<string, string>> {
@@ -16,13 +16,16 @@ export interface LLMConfig {
 }
 
 export async function getLLMConfig(agentId: string): Promise<LLMConfig | null> {
-  const m = await getSettingsMap(agentId, ["llmApiKey", "llmModel", "llmProvider"]);
-  const apiKey = m.llmApiKey || process.env.GROQ_API_KEY || "";
+  const [m, env] = await Promise.all([
+    getSettingsMap(agentId, ["llmApiKey", "llmModel", "llmProvider"]),
+    platformEnv(agentId),
+  ]);
+  const apiKey = m.llmApiKey || env("GROQ_API_KEY");
   if (!apiKey) return null;
-  return { 
-    apiKey, 
+  return {
+    apiKey,
     model: m.llmModel || process.env.GROQ_MODEL || "",
-    provider: m.llmProvider || "Groq (Llama 3)"
+    provider: m.llmProvider || "Groq (Llama 3)",
   };
 }
 
@@ -56,6 +59,7 @@ function parseHour(v: string | undefined): number | null {
 }
 
 export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
+  const env = await platformEnv(agentId);
   const m = await getSettingsMap(agentId, [
     "callProvider", "plivoAuthId", "plivoAuthToken", "callApiKey", "callerPhone",
     "elevenLabsAgentId", "voiceApiKey", "callScript", "callGreeting", "callMaxDuration",
@@ -66,12 +70,12 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
   const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
     callProvider: provider,
-    plivoAuthId: m.plivoAuthId || process.env.PLIVO_AUTH_ID || "",
+    plivoAuthId: m.plivoAuthId || env("PLIVO_AUTH_ID"),
     // callApiKey held the Plivo token before plivoAuthToken existed; only trust it for Plivo.
-    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" ? m.callApiKey : "") || process.env.PLIVO_AUTH_TOKEN || "",
-    callerPhone: m.callerPhone || process.env.PLIVO_FROM_NUMBER || "",
-    elevenLabsAgentId: (m.elevenLabsAgentId || process.env.ELEVENLABS_AGENT_ID || "").trim(),
-    elevenLabsApiKey: (m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "").trim(),
+    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" ? m.callApiKey : "") || env("PLIVO_AUTH_TOKEN"),
+    callerPhone: m.callerPhone || env("PLIVO_FROM_NUMBER"),
+    elevenLabsAgentId: (m.elevenLabsAgentId || env("ELEVENLABS_AGENT_ID")).trim(),
+    elevenLabsApiKey: (m.voiceApiKey || env("ELEVENLABS_API_KEY")).trim(),
     callScript: (m.callScript || "").trim(),
     callGreeting: (m.callGreeting || "").trim(),
     maxDurationMin: Number.isFinite(maxDuration) && maxDuration > 0 ? Math.min(maxDuration, 60) : 5,
@@ -81,27 +85,6 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
     hangupOnVoicemail: (m.callVoicemailDetection || "Off") !== "Off",
     callLanguage: ["Hindi", "Hinglish", "English"].includes(m.callLanguage) ? m.callLanguage : "",
     maxConcurrentCalls: Number.isFinite(concurrency) && concurrency > 0 ? Math.min(concurrency, 10) : 1,
-  };
-}
-
-export interface BusinessContext {
-  businessWebsite: string;
-  businessPhone: string;
-  businessServices: string;
-  docLink: string;
-  customPrompt: string;
-}
-
-export async function getBusinessContext(agentId: string): Promise<BusinessContext> {
-  const m = await getSettingsMap(agentId, [
-    "businessWebsite", "businessPhone", "businessServices", "docLink", "customPrompt",
-  ]);
-  return {
-    businessWebsite: m.businessWebsite || "",
-    businessPhone: m.businessPhone || "",
-    businessServices: m.businessServices || "",
-    docLink: m.docLink || "",
-    customPrompt: m.customPrompt || "",
   };
 }
 

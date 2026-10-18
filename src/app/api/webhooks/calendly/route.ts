@@ -4,7 +4,10 @@ import { Lead } from "@/lib/models/Lead";
 import { Meeting } from "@/lib/models/Meeting";
 import { Activity } from "@/lib/models/Activity";
 import { Setting } from "@/lib/models/Setting";
+import { Agent } from "@/lib/models/Agent";
+import { Organization } from "@/lib/models/Organization";
 import crypto from "crypto";
+import { Types } from "mongoose";
 
 /**
  * Calendly Webhook handler
@@ -12,7 +15,9 @@ import crypto from "crypto";
  * Setup steps for the user:
  * 1. Go to https://calendly.com/integrations/api_webhooks
  * 2. Create a webhook subscription pointing to:
- *    https://your-domain.com/api/webhooks/calendly
+ *    https://your-domain.com/api/webhooks/calendly?agentId=<workspace id>
+ *    (one per workspace — bookings are then matched only to that organization's leads;
+ *    the URL without agentId only reaches organizations on the platform's own credentials)
  *    (or use ngrok for local testing: https://xxxx.ngrok.io/api/webhooks/calendly)
  * 3. Subscribe to "invitee.created" and "invitee.canceled" events
  * 4. Copy the signing secret and paste it into:
@@ -20,9 +25,9 @@ import crypto from "crypto";
  *    - Your CRM Settings > Calendly > Webhook Signing Secret
  */
 
-async function verifySignature(req: Request, rawBody: string): Promise<boolean> {
-  // Try env first, then skip verification if not set (dev mode)
-  const secret = process.env.CALENDLY_WEBHOOK_SECRET;
+async function verifySignature(req: Request, rawBody: string, workspaceSecret: string | null): Promise<boolean> {
+  // The workspace's own signing secret, else the platform's; skip verification if neither is set (dev mode)
+  const secret = workspaceSecret || process.env.CALENDLY_WEBHOOK_SECRET;
   if (!secret || secret === "your_calendly_webhook_signing_secret_here") {
     console.warn("[Calendly Webhook] No signing secret set — skipping verification (dev mode)");
     return true;
@@ -43,10 +48,38 @@ async function verifySignature(req: Request, rawBody: string): Promise<boolean> 
   return given.length === want.length && crypto.timingSafeEqual(given, want);
 }
 
+/**
+ * Workspaces whose leads this webhook may touch: the agentId's organization,
+ * or (legacy URL without agentId) only organizations on platform credentials.
+ * Never every tenant — the same email can be a lead in two different companies.
+ */
+async function scopeAgentIds(agentIdParam: string | null): Promise<Types.ObjectId[] | null> {
+  if (agentIdParam) {
+    if (!Types.ObjectId.isValid(agentIdParam)) return null;
+    const agent = await Agent.findById(agentIdParam).select("organizationId deletedAt").lean();
+    if (!agent || agent.deletedAt) return null;
+    if (!agent.organizationId) return [agent._id];
+    return (await Agent.find({ organizationId: agent.organizationId, deletedAt: null }).select("_id").lean()).map((a) => a._id);
+  }
+  const orgs = await Organization.find({ usesPlatformCredentials: true }).select("_id").lean();
+  const agents = await Agent.find({
+    deletedAt: null,
+    $or: [{ organizationId: { $in: orgs.map((o) => o._id) } }, { organizationId: { $exists: false } }, { organizationId: null }],
+  }).select("_id").lean();
+  return agents.map((a) => a._id);
+}
+
 export async function POST(req: Request) {
   const rawBody = await req.text();
+  await connectDB();
+  const agentIdParam = new URL(req.url).searchParams.get("agentId");
+  const scope = await scopeAgentIds(agentIdParam);
+  if (!scope) return NextResponse.json({ error: "Unknown workspace" }, { status: 404 });
+  const workspaceSecret = agentIdParam
+    ? (await Setting.findOne({ agentId: agentIdParam, key: "calendlyWebhookSecret" }).lean())?.value || null
+    : null;
 
-  const isValid = await verifySignature(req, rawBody);
+  const isValid = await verifySignature(req, rawBody, workspaceSecret);
   if (!isValid) {
     console.error("[Calendly Webhook] Invalid signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
@@ -82,7 +115,7 @@ export async function POST(req: Request) {
     }
 
     // Find lead by email (most recently contacted if several agents have this lead)
-    const lead = await Lead.findOne({ email, deletedAt: null }).sort({ lastContactedAt: -1 }).lean();
+    const lead = await Lead.findOne({ email, deletedAt: null, agentId: { $in: scope } }).sort({ lastContactedAt: -1 }).lean();
     if (!lead) {
       console.log(`[Calendly Webhook] No lead found for email: ${email}`);
       return NextResponse.json({ ok: true, note: "Lead not found for this email" });
@@ -133,7 +166,7 @@ export async function POST(req: Request) {
   if (event === "invitee.canceled") {
     const email = String(invitee?.email || "").toLowerCase().trim();
     if (email) {
-      const lead = await Lead.findOne({ email, deletedAt: null }).sort({ lastContactedAt: -1 }).lean();
+      const lead = await Lead.findOne({ email, deletedAt: null, agentId: { $in: scope } }).sort({ lastContactedAt: -1 }).lean();
       if (lead) {
         // Revert status back to replied so they can be re-engaged
         await Lead.findByIdAndUpdate(lead._id, {

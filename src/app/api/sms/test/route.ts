@@ -3,17 +3,16 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { Conversation } from "@/lib/models/Conversation";
 import { Lead } from "@/lib/models/Lead";
+import { authorizeWorkspace } from "@/server/auth/access";
+import { platformEnv } from "@/server/services/platform-credentials";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const agentId = searchParams.get("agentId");
-    
-    if (!agentId) {
-      return NextResponse.json({ error: "agentId is required" }, { status: 400 });
-    }
-
     await connectDB();
+    const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
     
     // Find the most recent SMS conversation for this agent
     // Since we don't have a direct "last received SMS" timestamp index on Conversation, 
@@ -64,12 +63,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { agentId, to } = await req.json();
-    if (!agentId || !to) {
-      return NextResponse.json({ error: "agentId and to (phone number) are required" }, { status: 400 });
-    }
-
+    const { agentId: requestedAgentId, to } = await req.json();
     await connectDB();
+    const access = await authorizeWorkspace(req, requestedAgentId, { minRole: "admin" });
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
+    if (!to) {
+      return NextResponse.json({ error: "to (phone number) is required" }, { status: 400 });
+    }
+    const env = await platformEnv(agentId);
     const rows = await Setting.find({
       agentId,
       key: { $in: ["smsProvider", "smsApiKey", "smsAccountSid", "smsFrom"] },
@@ -78,9 +80,9 @@ export async function POST(req: Request) {
     rows.forEach((r) => { m[r.key] = r.value; });
 
     const provider   = m.smsProvider   || "Plivo";
-    const apiKey     = m.smsApiKey     || (provider === "Plivo" ? process.env.PLIVO_AUTH_TOKEN : "");
-    const accountSid = m.smsAccountSid || (provider === "Plivo" ? process.env.PLIVO_AUTH_ID : "");
-    const from       = m.smsFrom       || (provider === "Plivo" ? process.env.PLIVO_FROM_NUMBER : "");
+    const apiKey     = m.smsApiKey     || (provider === "Plivo" ? env("PLIVO_AUTH_TOKEN") : "");
+    const accountSid = m.smsAccountSid || (provider === "Plivo" ? env("PLIVO_AUTH_ID") : "");
+    const from       = m.smsFrom       || (provider === "Plivo" ? env("PLIVO_FROM_NUMBER") : "");
 
     if (!apiKey) {
       return NextResponse.json({ error: "Auth Token / API key not configured — save settings first." }, { status: 400 });

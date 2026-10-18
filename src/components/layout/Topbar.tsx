@@ -84,7 +84,8 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     try {
       const res = await publishAgent(activeAgent._id);
       updateAgent(activeAgent._id, { status: "active" });
-      setCronJobs(cronJobs.map((c) => ({ ...c, enabled: true })));
+      // Publish only re-arms schedules Unpublish paused; ones the user turned off stay off.
+      fetch(`/api/crons?agentId=${activeAgent._id}`).then((r) => (r.ok ? r.json() : null)).then((jobs) => { if (jobs) setCronJobs(jobs); }).catch(() => {});
       setStatusMenuOpen(false);
       if (res.schedules && res.schedules > 0) {
         showToast(`Agent published — ${res.schedules} schedule${res.schedules !== 1 ? "s" : ""} armed. Outreach runs at the scheduled times.`, "success");
@@ -125,6 +126,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
   const initials = getInitials(userName || "U");
   const bgColor = avatarColor(userName || "U");
   const isPublished = activeAgent?.status === "active";
+  const canPublish = activeAgent?.role !== "member";
   const pageTitle = PAGE_TITLES[currentPage] ?? currentPage;
 
   return (
@@ -300,9 +302,16 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   </div>
                 )}
 
-                <div style={{ height: 1, background: "var(--color-bg3)", margin: "6px 0" }} />
+                {!canPublish && (
+                  <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: "4px 10px 6px", lineHeight: 1.5 }}>
+                    Only admins can publish or unpublish this workspace.
+                  </p>
+                )}
+
+                {canPublish && <div style={{ height: 1, background: "var(--color-bg3)", margin: "6px 0" }} />}
 
                 {/* Publish option */}
+                {canPublish && <>
                 <button
                   disabled={updatingStatus || isPublished}
                   onClick={handlePublish}
@@ -359,6 +368,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   </div>
                   {!isPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text4)" }}>Draft</span>}
                 </button>
+                </>}
               </div>
             )}
           </div>

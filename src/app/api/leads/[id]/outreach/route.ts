@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { sendOutreachToLead } from "@/server/services/outreach.service";
 import { getAppBaseUrl } from "@/server/services/settings.service";
+import { authorizeLead } from "@/server/auth/access";
 
 /**
  * POST /api/leads/[id]/outreach
@@ -20,6 +21,8 @@ export async function POST(
 ) {
   const params = await props.params;
   await connectDB();
+  const access = await authorizeLead(req, params.id);
+  if (!access.ok) return access.response;
 
   const body = await req.json().catch(() => ({}));
 

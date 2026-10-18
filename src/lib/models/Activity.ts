@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 import type { Channel } from "./Lead";
 
 export interface IActivity extends Document {
@@ -25,5 +26,4 @@ const ActivitySchema = new Schema<IActivity>(
 
 ActivitySchema.index({ agentId: 1, createdAt: -1 });
 
-export const Activity: Model<IActivity> =
-  mongoose.models.Activity ?? mongoose.model<IActivity>("Activity", ActivitySchema);
+export const Activity: Model<IActivity> = defineModel<IActivity>("Activity", ActivitySchema);

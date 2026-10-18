@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { checkUsageLimit } from "@/lib/usage-check";
 import { sendSms } from "@/server/services/sms.service";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
-    const { agentId, to, text } = await req.json();
-    if (!agentId || !to || !text) {
-      return NextResponse.json({ error: "agentId, to, and text are required" }, { status: 400 });
-    }
+    const { agentId: requestedAgentId, to, text } = await req.json();
     await connectDB();
+    const access = await authorizeWorkspace(req, requestedAgentId);
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
+    if (!to || !text) {
+      return NextResponse.json({ error: "to and text are required" }, { status: 400 });
+    }
 
     const canSend = await checkUsageLimit(agentId, "smsSent", 1);
     if (!canSend) {

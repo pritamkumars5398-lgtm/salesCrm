@@ -2,6 +2,7 @@ import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { getSettingsMap } from "./settings.service";
 import { normalizePhone } from "./whatsapp.service";
+import { platformEnv } from "./platform-credentials";
 
 export interface SmsResult {
   provider: string;
@@ -15,11 +16,14 @@ export interface SmsResult {
  * /api/sms/send route sits behind the session-cookie middleware.
  */
 export async function sendSms(agentId: string, to: string, text: string): Promise<SmsResult> {
-  const m = await getSettingsMap(agentId, ["smsProvider", "smsApiKey", "smsAccountSid", "smsFrom"]);
+  const [m, env] = await Promise.all([
+    getSettingsMap(agentId, ["smsProvider", "smsApiKey", "smsAccountSid", "smsFrom"]),
+    platformEnv(agentId),
+  ]);
   const provider = m.smsProvider || "Plivo";
-  const apiKey = m.smsApiKey || (provider === "Plivo" ? process.env.PLIVO_AUTH_TOKEN : "") || "";
-  const accountSid = m.smsAccountSid || (provider === "Plivo" ? process.env.PLIVO_AUTH_ID : "") || "";
-  const from = m.smsFrom || (provider === "Plivo" ? process.env.PLIVO_FROM_NUMBER : "") || "";
+  const apiKey = m.smsApiKey || (provider === "Plivo" ? env("PLIVO_AUTH_TOKEN") : "");
+  const accountSid = m.smsAccountSid || (provider === "Plivo" ? env("PLIVO_AUTH_ID") : "");
+  const from = m.smsFrom || (provider === "Plivo" ? env("PLIVO_FROM_NUMBER") : "");
 
   if (!apiKey) throw new Error("SMS API Key / Auth Token not configured for this agent.");
   if (!from) throw new Error("SMS From Number not configured for this agent.");

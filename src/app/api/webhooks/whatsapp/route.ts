@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Conversation } from "@/lib/models/Conversation";
 import { eventEmitter } from "@/lib/events";
+import { inboundCandidateWorkspaces, findInboundLead } from "@/server/services/inbound-routing.service";
 
 export async function GET(req: Request) {
   try {
@@ -220,24 +221,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let agentId = agentIdParam;
-
-    // 1. Fallback to session ID mapping if dynamic webhook URL is not used
-    if (!agentId) {
-      if (!sessionId) {
-        console.log("[WhatsApp Webhook] Missing 'agentId' in URL and 'sessionId' in payload.");
-        return NextResponse.json({ error: "Missing routing identifier" }, { status: 400 });
-      }
-
-      const { Setting } = await import("@/lib/models/Setting");
-      const setting = await Setting.findOne({ key: "waSessionId", value: sessionId });
-
-      if (!setting) {
-        console.log(`[WhatsApp Webhook] No agent found configured with sessionId: ${sessionId}. Ignoring.`);
-        return NextResponse.json({ ok: true });
-      }
-      agentId = setting.agentId.toString();
+    if (!agentIdParam && !sessionId) {
+      console.log("[WhatsApp Webhook] Missing 'agentId' in URL and 'sessionId' in payload.");
+      return NextResponse.json({ error: "Missing routing identifier" }, { status: 400 });
     }
+    // 1. Every workspace this number serves (several business lines can share one WhatsApp number).
+    const candidates = await inboundCandidateWorkspaces(agentIdParam, "waSessionId", sessionId, "exact");
+    if (candidates.length === 0) {
+      console.log(`[WhatsApp Webhook] No workspace found for this webhook (sessionId: ${sessionId}). Ignoring.`);
+      return NextResponse.json({ ok: true });
+    }
+    let agentId = candidates[0];
 
     // 2. Clean the incoming phone number to get the last 10 digits
     const cleanFrom = from.replace(/\D/g, "");
@@ -253,15 +247,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // 3. Query the Lead database strictly scoped to this Agent
-    let lead = await Lead.findOne({
-      agentId: agentId,
-      deletedAt: null,
-      $or: [
-        { phone: new RegExp(last10 + "$") },
-        { whatsappLid: from }
-      ]
-    });
+    // 3. The lead, in whichever of those workspaces has them (most recent conversation wins)
+    let lead = await findInboundLead(candidates, from, "whatsapp");
 
     // 4. Fallback for WhatsApp Local IDs (@lid) which mask the real phone number
     let matchedByFallback = false;
@@ -270,7 +257,7 @@ export async function POST(req: Request) {
       const nameRegex = new RegExp(`^${firstWord}`, "i");
 
       const matchingLeads = await Lead.find({
-        agentId: agentId,
+        agentId: { $in: candidates },
         deletedAt: null,
         $or: [{ firstName: nameRegex }, { fullName: nameRegex }]
       });
@@ -300,6 +287,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    agentId = String(lead.agentId);
     console.log(`[WhatsApp Webhook] Lead found: ${lead.fullName} (${lead._id}). Processing message...`);
 
     // Update Lead status and save the masked waLid if we used fallback

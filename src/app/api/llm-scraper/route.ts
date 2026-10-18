@@ -6,13 +6,17 @@ import { Agent } from "@/lib/models/Agent";
 import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   await connectDB();
-  const { agentId, providerType } = await req.json();
+  const { agentId: requestedAgentId, providerType } = await req.json().catch(() => ({}));
+  const access = await authorizeWorkspace(req, requestedAgentId);
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
 
-  if (!agentId || !providerType) {
-    return NextResponse.json({ error: "agentId and providerType are required" }, { status: 400 });
+  if (!providerType || !/^[a-zA-Z]{2,20}$/.test(providerType)) {
+    return NextResponse.json({ error: "providerType is required" }, { status: 400 });
   }
 
   const canScrape = await checkUsageLimit(agentId, "leadsScraped", 1);

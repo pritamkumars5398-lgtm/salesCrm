@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const agentId  = searchParams.get("agentId")  || "";
   const provider = searchParams.get("provider")  || "";
   const msgId    = searchParams.get("msgId")     || "";
 
-  if (!agentId || !provider || !msgId) {
+  await connectDB();
+  const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
+  if (!provider || !/^[A-Za-z0-9-]{6,64}$/.test(msgId)) {
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
   }
-
-  await connectDB();
   const rows = await Setting.find({ agentId, key: { $in: ["smsApiKey", "smsAccountSid"] } }).lean();
   const m: Record<string, string> = {};
   rows.forEach((r) => { m[r.key] = r.value; });

@@ -9,6 +9,10 @@ import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
 import { countEligibleLeads } from "@/server/services/campaign.service";
+import { authorizeWorkspace } from "@/server/auth/access";
+import { groupFilterById, getFieldDefs } from "@/server/services/lead-groups.service";
+import { prepareNewLeadAttributes } from "@/server/services/lead-attributes.service";
+import { normalizeTag } from "@/lib/lead-fields";
 
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 25;
@@ -42,7 +46,9 @@ function escapeRegex(value: string) {
 export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
+  const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
   const status = searchParams.get("status");
   const search = searchParams.get("q");
   const source = searchParams.get("source");
@@ -55,6 +61,8 @@ export async function GET(req: Request) {
   const jobTitle = searchParams.get("jobTitle");
   const pipelineStage = searchParams.get("pipelineStage");
   const website = searchParams.get("website");
+  const groupId = searchParams.get("groupId");
+  const tag = searchParams.get("tag");
   // Sorting is opt-in so the Leads table and other consumers retain their
   // existing newest-created ordering. The CRM pipeline requests this explicitly.
   const sort = searchParams.get("sort");
@@ -79,7 +87,9 @@ export async function GET(req: Request) {
   // Everything except `status` and the `addedDate` range, so the status tabs and
   // the sync-date dropdown can each count across the axis they filter on.
   const baseFilter: Record<string, unknown> = {};
-  if (agentId) baseFilter.agentId = new mongoose.Types.ObjectId(agentId);
+  // Every condition that needs $or/$and goes here, so filters can't overwrite each other.
+  const and: Record<string, unknown>[] = [];
+  baseFilter.agentId = new mongoose.Types.ObjectId(agentId);
   // Trash view shows only soft-deleted leads; every other view hides them.
   baseFilter.deletedAt = trashed ? { $ne: null } : null;
   if (recentOnly) {
@@ -99,20 +109,20 @@ export async function GET(req: Request) {
   }
   if (search?.trim()) {
     const q = escapeRegex(search.trim());
-    baseFilter.$or = [
+    and.push({ $or: [
       { fullName: { $regex: q, $options: "i" } },
       { firstName: { $regex: q, $options: "i" } },
       { lastName: { $regex: q, $options: "i" } },
       { company: { $regex: q, $options: "i" } },
       { email: { $regex: q, $options: "i" } },
       { phone: { $regex: q, $options: "i" } },
-    ];
+    ] });
   }
   if (missingContact === "true") {
-    baseFilter.$and = [
+    and.push(
       { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] },
       { $or: [{ phone: { $in: [null, ""] } }, { phone: { $exists: false } }] },
-    ];
+    );
   }
   if (requireContact === "email") {
     baseFilter.email = { $nin: [null, ""] };
@@ -127,13 +137,22 @@ export async function GET(req: Request) {
     if (website === "yes") {
       baseFilter.website = { $nin: [null, ""], $not: nonWebsiteRegex };
     } else if (website === "no") {
-      baseFilter.$or = [
-        { website: { $in: [null, ""] } }, 
+      and.push({ $or: [
+        { website: { $in: [null, ""] } },
         { website: { $exists: false } },
-        { website: nonWebsiteRegex }
-      ];
+        { website: nonWebsiteRegex },
+      ] });
     }
   }
+  if (tag && tag !== "all") {
+    baseFilter.tags = normalizeTag(tag);
+  }
+  if (groupId && groupId !== "all") {
+    const group = await groupFilterById(agentId, groupId);
+    if (!group) return NextResponse.json({ error: "Group not found in this workspace." }, { status: 404 });
+    and.push(group);
+  }
+  if (and.length) baseFilter.$and = and;
 
   const statusFilter = status && status !== "all" ? { status } : {};
 
@@ -176,8 +195,8 @@ export async function GET(req: Request) {
       { $limit: 60 },
     ]),
     // Matches the predicate the outreach run itself uses, so "Run (n left)" is truthful.
-    agentId && !trashed ? countEligibleLeads(agentId) : Promise.resolve(0),
-    agentId ? Lead.distinct("jobTitle", { agentId, deletedAt: trashed ? { $ne: null } : null }) : Promise.resolve([]),
+    !trashed ? countEligibleLeads(agentId, groupId && groupId !== "all" ? groupId : null) : Promise.resolve(0),
+    Lead.distinct("jobTitle", { agentId, deletedAt: trashed ? { $ne: null } : null }),
   ]);
 
   const statusCounts: Record<string, number> = { all: 0 };
@@ -204,69 +223,96 @@ export async function GET(req: Request) {
   });
 }
 
+/** Fields a client may never set on create — they are server-managed. */
+const SERVER_MANAGED = ["_id", "agentId", "deletedAt", "history", "notes", "outreachStatus", "outreachAttempts", "lastContactedAt", "lastOutreachError", "recentAccessedAt", "createdAt", "updatedAt"];
+
+function stripServerManaged(l: Record<string, unknown>) {
+  const copy = { ...l };
+  for (const k of SERVER_MANAGED) delete copy[k];
+  return copy;
+}
+
 export async function POST(req: Request) {
   await connectDB();
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid body." }, { status: 400 });
+
+  const requestedAgentId = Array.isArray(body) ? body[0]?.agentId : body.agentId;
+  if (Array.isArray(body) && body.some((l) => l?.agentId && String(l.agentId) !== String(requestedAgentId))) {
+    return NextResponse.json({ error: "All imported leads must belong to the same workspace." }, { status: 400 });
+  }
+  if (Array.isArray(body) && body.length === 0) {
+    return NextResponse.json([], { status: 201 });
+  }
+  const access = await authorizeWorkspace(req, requestedAgentId);
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
+  const defs = await getFieldDefs(agentId);
 
   if (Array.isArray(body)) {
-    if (body.length === 0) {
-      return NextResponse.json([], { status: 201 });
+    if (body.length > 5000) {
+      return NextResponse.json({ error: "Import at most 5,000 leads at a time." }, { status: 400 });
     }
-    const leadsToInsert = body.map((l: any) => {
-      const firstName = l.firstName?.trim() || "Unknown";
-      const lastName = l.lastName?.trim() || "";
-      return {
+    const leadsToInsert = [];
+    for (let i = 0; i < body.length; i++) {
+      const l = stripServerManaged(body[i] ?? {}) as Record<string, any>;
+      const attrs = await prepareNewLeadAttributes(agentId, l, defs);
+      if (!attrs.ok) return NextResponse.json({ error: `Row ${i + 1}: ${attrs.error}` }, { status: 400 });
+      const firstName = String(l.firstName ?? "").trim() || "Unknown";
+      const lastName = String(l.lastName ?? "").trim();
+      leadsToInsert.push({
         ...l,
+        ...attrs.value,
+        agentId,
         firstName,
         lastName,
         fullName: l.fullName || `${firstName} ${lastName}`.trim(),
         pipelineStage: l.pipelineStage || "new",
         status: l.status || "new",
         channels: l.channels || [],
-      };
-    });
-    const agentId = body[0]?.agentId;
-    if (agentId) {
-      const canScrape = await checkUsageLimit(agentId, "leadsScraped", body.length);
-      if (!canScrape) {
-        return NextResponse.json({ error: "Plan limit exceeded for scraping/importing leads." }, { status: 403 });
-      }
+      });
+    }
+    const canScrape = await checkUsageLimit(agentId, "leadsScraped", body.length);
+    if (!canScrape) {
+      return NextResponse.json({ error: "Plan limit exceeded for scraping/importing leads." }, { status: 403 });
     }
 
     const leads = await Lead.insertMany(leadsToInsert);
-    if (agentId) {
-      await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: leads.length } });
-      await Usage.findOneAndUpdate(
-        { agentId, month: currentMonth() },
-        { $inc: { leadsScraped: leads.length } },
-        { upsert: true }
-      );
-    }
+    await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: leads.length } });
+    await Usage.findOneAndUpdate(
+      { agentId, month: currentMonth() },
+      { $inc: { leadsScraped: leads.length } },
+      { upsert: true }
+    );
     return NextResponse.json(leads, { status: 201 });
-  } else {
-    const agentId = body.agentId;
-    const lead = await Lead.create(body);
-    if (agentId) {
-      await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: 1 } });
-      // Note: Manual lead addition does NOT consume 'leadsScraped' usage limit.
-    }
+  }
+
+  const input = stripServerManaged(body);
+  const attrs = await prepareNewLeadAttributes(agentId, input, defs);
+  if (!attrs.ok) return NextResponse.json({ error: attrs.error }, { status: 400 });
+  try {
+    const lead = await Lead.create({ ...input, ...attrs.value, agentId });
+    await Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: 1 } });
+    // Note: Manual lead addition does NOT consume 'leadsScraped' usage limit.
     return NextResponse.json(lead, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Could not create the lead." }, { status: 400 });
   }
 }
-
 
 export async function DELETE(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
-  if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
+  const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
 
   const idsParam = searchParams.get("ids");
   const permanent = searchParams.get("permanent") === "1";
 
   const match: Record<string, unknown> = { agentId };
   if (idsParam) {
-    const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    const ids = idsParam.split(",").map((s) => s.trim()).filter((s) => mongoose.Types.ObjectId.isValid(s));
     if (ids.length === 0) return NextResponse.json({ deleted: 0 });
     match._id = { $in: ids };
   } else {
@@ -306,9 +352,12 @@ export async function DELETE(req: Request) {
  */
 export async function PATCH(req: Request) {
   await connectDB();
-  const { agentId, ids } = await req.json().catch(() => ({}));
-  if (!agentId || !Array.isArray(ids) || ids.length === 0) {
-    return NextResponse.json({ error: "agentId and ids[] are required" }, { status: 400 });
+  const { agentId: requestedAgentId, ids } = await req.json().catch(() => ({}));
+  const access = await authorizeWorkspace(req, requestedAgentId);
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.some((id) => !mongoose.Types.ObjectId.isValid(String(id)))) {
+    return NextResponse.json({ error: "ids[] of valid lead ids are required" }, { status: 400 });
   }
 
   // Only restore leads currently in Trash so the count delta stays correct.

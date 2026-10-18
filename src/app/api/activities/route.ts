@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Activity } from "@/lib/models/Activity";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 25;
@@ -10,14 +11,15 @@ export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
   const agentId = searchParams.get("agentId");
+  const access = await authorizeWorkspace(req, agentId);
+  if (!access.ok) return access.response;
   const channel = searchParams.get("channel");
   const range = searchParams.get("range"); // "today" | "week" | "all"
 
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE));
 
-  const filter: Record<string, unknown> = {};
-  if (agentId) filter.agentId = agentId;
+  const filter: Record<string, unknown> = { agentId: access.agentId };
   if (channel && channel !== "all") filter.channel = channel;
 
   if (range === "today") {

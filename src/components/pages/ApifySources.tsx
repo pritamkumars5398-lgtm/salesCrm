@@ -358,7 +358,7 @@ export default function ApifySources() {
         allSettingKeys.forEach((k) => { if (data[k] !== undefined) filtered[k] = data[k]; });
         // Seed defaults
         if (!filtered.activeScraperType) filtered.activeScraperType = "google-maps";
-        if (!filtered.gmActorId) filtered.gmActorId = "nwua9Gu5YrADL7ZD";
+        if (!filtered.gmActorId) filtered.gmActorId = "nwua9Gu5YrADL7ZDj";
         if (!filtered.gmKeyword && data.industry) filtered.gmKeyword = data.industry;
         if (!filtered.gmLocation && data.leadLocation) filtered.gmLocation = data.leadLocation;
         if (!filtered.gmMaxResults) filtered.gmMaxResults = "25";

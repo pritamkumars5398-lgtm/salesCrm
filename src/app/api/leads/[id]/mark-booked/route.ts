@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Meeting } from "@/lib/models/Meeting";
 import { Activity } from "@/lib/models/Activity";
+import { authorizeLead } from "@/server/auth/access";
 
 export async function POST(
   req: Request,
@@ -11,10 +12,9 @@ export async function POST(
   const params = await props.params;
   await connectDB();
 
-  const lead = await Lead.findById(params.id).lean();
-  if (!lead) {
-    return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-  }
+  const access = await authorizeLead(req, params.id);
+  if (!access.ok) return access.response;
+  const lead = access.lead;
 
   const body = await req.json().catch(() => ({}));
 
@@ -22,6 +22,7 @@ export async function POST(
   let scheduledAt: Date;
   if (body.scheduledAt) {
     scheduledAt = new Date(body.scheduledAt);
+    if (isNaN(scheduledAt.getTime())) return NextResponse.json({ error: "Invalid meeting time." }, { status: 400 });
   } else {
     scheduledAt = new Date();
     scheduledAt.setDate(scheduledAt.getDate() + 1);

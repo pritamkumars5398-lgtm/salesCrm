@@ -24,10 +24,10 @@ function getInitials(name: string) {
 
 export default function Profile() {
   const router = useRouter();
-  const { userName, userEmail, logout, setPage } = useAppStore();
+  const { userName, userEmail, logout, setPage, showToast } = useAppStore();
 
   const [name, setName]         = useState(userName);
-  const [email, setEmail]       = useState(userEmail);
+  const [email]                 = useState(userEmail);
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw]       = useState("");
   const [saved, setSaved]       = useState<string | null>(null);
@@ -35,15 +35,37 @@ export default function Profile() {
   const bg       = avatarColor(userName || "U");
   const initials = getInitials(userName || "U");
 
-  function saveProfile() {
-    const stored = JSON.parse(localStorage.getItem("sa_user") ?? "{}");
-    localStorage.setItem("sa_user", JSON.stringify({ ...stored, name, email }));
+  async function saveProfile() {
+    const res = await fetch("/api/auth/me", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) {
+      showToast(data.error || "Could not save your name", "error");
+      return;
+    }
+    // login() also resets the workspace list; keep the session's workspaces by only updating the cached name.
+    localStorage.setItem("sa_user", JSON.stringify({ name: data.name, email: userEmail }));
+    useAppStore.setState({ userName: data.name });
     setSaved("profile");
     setTimeout(() => setSaved(null), 2500);
   }
 
-  function savePassword() {
+  async function savePassword() {
     if (!currentPw || !newPw) return;
+    const res = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) {
+      showToast(data.error || "Could not change the password", "error");
+      return;
+    }
+    showToast("Password changed — other devices have been signed out.", "success");
     setSaved("password");
     setCurrentPw("");
     setNewPw("");
@@ -128,7 +150,7 @@ export default function Profile() {
               </div>
               <div>
                 <label style={labelStyle}>Email address</label>
-                <input style={inputStyle} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
+                <input style={{ ...inputStyle, opacity: 0.7 }} type="email" value={email} readOnly title="Your login email can't be changed here" />
               </div>
               <SaveRow saved={saved === "profile"} onSave={saveProfile} />
             </div>
@@ -143,7 +165,7 @@ export default function Profile() {
               </div>
               <div>
                 <label style={labelStyle}>New password</label>
-                <input style={inputStyle} type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="Min. 6 characters" />
+                <input style={inputStyle} type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="Min. 8 characters" />
               </div>
               <SaveRow saved={saved === "password"} onSave={savePassword} label="Update password" />
             </div>

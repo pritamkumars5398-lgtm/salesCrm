@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { defineModel } from "./define-model";
 
 /**
  * One phone call attempt. Created when a call is dispatched, then advanced by
@@ -52,6 +53,9 @@ export interface ICall extends Document {
   whatsappError?: string;
   bridgeEndedAt?: Date;
   finalizedAt?: Date | null;
+  /** full agent instructions + opening line, built from the workspace playbook when the call is placed */
+  aiPrompt?: string;
+  aiFirstMessage?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -101,6 +105,8 @@ const CallSchema = new Schema<ICall>(
     whatsappError:  { type: String },
     bridgeEndedAt: { type: Date },
     finalizedAt:   { type: Date, default: null },
+    aiPrompt:       { type: String, select: false },
+    aiFirstMessage: { type: String, select: false },
   },
   { timestamps: true }
 );
@@ -114,5 +120,4 @@ CallSchema.index(
   { unique: true, partialFilterExpression: { active: true, leadId: { $type: "objectId" } } }
 );
 
-export const Call: Model<ICall> =
-  mongoose.models.Call ?? mongoose.model<ICall>("Call", CallSchema);
+export const Call: Model<ICall> = defineModel<ICall>("Call", CallSchema);

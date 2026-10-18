@@ -264,7 +264,7 @@ const DEFAULT_GREETING = {
 function buildCallPrompt(cfg, vars, lead) {
   const base = cfg.callScript
     ? fillTemplate(cfg.callScript, vars)
-    : "You are Priya, a friendly and professional business consultant calling a local business owner.";
+    : "You are Priya, a friendly and professional sales representative calling a business owner.";
   const notes = ((lead && lead.notes) || []).slice(-3).map((n) => n && n.text).filter(Boolean);
   const parts = [
     base,
@@ -285,9 +285,8 @@ function buildCallPrompt(cfg, vars, lead) {
   parts.push(
     "## How to run this call",
     "- This is a live phone call. Keep every reply to 1–2 short sentences, ask one question at a time, and let them speak.",
-    `- Talk only about THIS business: ${vars.company_name}, a ${vars.business_type}${vars.location ? ` in ${vars.location}` : ""}. Pick the 2–3 of our services that matter most to a ${vars.business_type} (for example online appointment booking, a website, Google visibility, WhatsApp automation) and explain the benefit for them in plain words. Never read out a list of services.`,
-    vars.website ? "- They already have a website — ask how it is working for them before suggesting improvements." : "- They don't seem to have their own website — find out how customers find and book them today.",
-    "- Never mention any other company or client by name, and never invent facts about their business.",
+    `- Talk only about THIS business: ${vars.company_name}, a ${vars.business_type}${vars.location ? ` in ${vars.location}` : ""}. Pick the 2–3 parts of what we offer (above) that matter most to a ${vars.business_type} and explain the benefit for them in plain words. Never read out a list.`,
+    "- Never mention any other company or client by name, never offer anything not listed above, and never invent facts about their business.",
     "- Goal: understand their situation, then offer a free 15-minute call with our team. If they agree, confirm a convenient day and time.",
     "- When the lead asks for details/information on WhatsApp, or agrees to a meeting or callback, use the send_whatsapp_details tool with a short topic (what they need and any agreed day/time), then tell them you've sent it. If the tool reports a problem, say our team will share the details shortly. Never say you sent something unless the tool succeeded.",
     "- If they are busy, ask for a better time to call back. If they are not interested, thank them politely and end the call. If it is a wrong number, apologise and end the call.",
@@ -387,9 +386,11 @@ async function handlePlivoStream(plivoWs, req) {
     const payload = { type: "conversation_initiation_client_data", dynamic_variables: vars };
     if (overrideLevel > 0) {
       const greeting = cfg.callGreeting || DEFAULT_GREETING[cfg.language || "English"];
+      // The app builds these from the workspace's playbook when it places the call;
+      // the local builder only covers calls placed before that existed.
       const agent = {
-        prompt: { prompt: buildCallPrompt(cfg, vars, lead) },
-        first_message: fillTemplate(greeting, vars),
+        prompt: { prompt: call.aiPrompt || buildCallPrompt(cfg, vars, lead) },
+        first_message: call.aiFirstMessage || fillTemplate(greeting, vars),
       };
       if (overrideLevel > 1 && speechLang) agent.language = speechLang;
       payload.conversation_config_override = { agent };

@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { logManualCall, placeAiCall } from "@/server/services/call.service";
+import { authorizeLead } from "@/server/auth/access";
 
 /**
  * POST { mode?: "ai_call" | "manual" }
@@ -13,11 +14,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   await connectDB();
   const { id } = await params;
   if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  const access = await authorizeLead(req, id);
+  if (!access.ok) return access.response;
 
   const body = await req.json().catch(() => ({}));
 
-  const lead = await Lead.findById(id);
-  if (!lead || lead.deletedAt) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  const lead = access.lead;
+  if (lead.deletedAt) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
   if (!lead.phone) return NextResponse.json({ error: "Lead has no phone number" }, { status: 400 });
 
   if (body.mode === "manual") {

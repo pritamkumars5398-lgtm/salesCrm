@@ -1,28 +1,28 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Setting } from "@/lib/models/Setting";
 import { resolveGroqModel, groqModelParams } from "@/lib/llm";
+import { authorizeWorkspace } from "@/server/auth/access";
+import { getLLMConfig } from "@/server/services/settings.service";
 
 export async function POST(req: Request) {
   try {
     await connectDB();
     const { text, agentId } = await req.json();
+    const access = await authorizeWorkspace(req, agentId);
+    if (!access.ok) return access.response;
 
     if (!text || !text.trim()) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
-
-    let apiKey = process.env.GROQ_API_KEY || "";
-    if (agentId) {
-      const setting = await Setting.findOne({ agentId, key: "llmApiKey" }).lean();
-      if (setting?.value) {
-        apiKey = setting.value;
-      }
+    if (text.length > 50000) {
+      return NextResponse.json({ error: "Paste at most 50,000 characters at a time." }, { status: 400 });
     }
+
+    const apiKey = (await getLLMConfig(access.agentId))?.apiKey || "";
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "GROQ_API_KEY is not configured in environment or settings." },
+        { error: "The AI key is not configured — add it in Settings → AI Brain." },
         { status: 400 }
       );
     }

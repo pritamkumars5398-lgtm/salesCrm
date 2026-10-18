@@ -1,13 +1,37 @@
 import { Usage } from "@/lib/models/Usage";
 import { Setting } from "@/lib/models/Setting";
-import { PLANS, type PlanId } from "@/lib/plans";
+import { Agent } from "@/lib/models/Agent";
+import { PLANS, type PlanId, type PlanLimits } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
+import { getOrganizationLimits, getOrganizationUsage, UsageField } from "@/server/services/workspace.service";
 
+const LIMIT_KEY: Record<UsageField, keyof PlanLimits> = {
+  leadsScraped: "leadsPerMonth",
+  messagesSent: "messagesPerMonth",
+  emailsSent: "emailsPerMonth",
+  smsSent: "smsPerMonth",
+  callsMade: "callsPerMonth",
+};
+
+/**
+ * The plan belongs to the organization and usage is summed over all its
+ * workspaces — otherwise every new workspace would come with a fresh quota.
+ * Workspaces not yet migrated into an organization fall back to their own plan.
+ */
 export async function checkUsageLimit(
   agentId: string,
-  field: "leadsScraped" | "messagesSent" | "emailsSent" | "smsSent" | "callsMade",
+  field: UsageField,
   incrementAmount: number = 1
 ): Promise<boolean> {
+  const agent = await Agent.findById(agentId).select("organizationId").lean();
+
+  if (agent?.organizationId) {
+    const orgId = String(agent.organizationId);
+    const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId)]);
+    const max = limits[LIMIT_KEY[field]];
+    return max === -1 || usage[field] + incrementAmount <= max;
+  }
+
   const month = currentMonth();
   const [usage, planRow, customLimitsRow] = await Promise.all([
     Usage.findOne({ agentId, month }).lean(),
@@ -16,9 +40,7 @@ export async function checkUsageLimit(
   ]);
 
   const planId = (planRow?.value ?? "free") as PlanId;
-  const plan = PLANS[planId];
-  let limits = { ...plan.limits };
-
+  let limits = { ...(PLANS[planId] ?? PLANS.free).limits };
   if (customLimitsRow?.value) {
     try {
       limits = { ...limits, ...JSON.parse(customLimitsRow.value) };
@@ -27,16 +49,7 @@ export async function checkUsageLimit(
     }
   }
 
-  let maxVal: number;
-  if (field === "leadsScraped") maxVal = limits.leadsPerMonth;
-  else if (field === "messagesSent") maxVal = limits.messagesPerMonth;
-  else if (field === "emailsSent") maxVal = limits.emailsPerMonth;
-  else if (field === "smsSent") maxVal = limits.smsPerMonth;
-  else if (field === "callsMade") maxVal = limits.callsPerMonth;
-  else maxVal = -1; // Fallback or unhandled
-
-  if (maxVal === -1) return true; // Unlimited
-
-  const currentVal = usage?.[field] ?? 0;
-  return (currentVal + incrementAmount) <= maxVal;
+  const max = limits[LIMIT_KEY[field]];
+  if (max === -1) return true;
+  return (usage?.[field] ?? 0) + incrementAmount <= max;
 }

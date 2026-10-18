@@ -8,6 +8,8 @@ import { CronJob } from "@/lib/models/CronJob";
 import { computeNextRun } from "@/lib/utils/cron";
 import { executeCronJob } from "@/server/services/cron.service";
 import { getAppBaseUrl } from "@/server/services/settings.service";
+import { authorizeRecord } from "@/server/auth/access";
+import { Types } from "mongoose";
 
 export async function POST(
   req: Request,
@@ -16,8 +18,10 @@ export async function POST(
   await connectDB();
   const { id } = await params;
 
-  const job = await CronJob.findById(id).lean();
-  if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const found = Types.ObjectId.isValid(id) ? await CronJob.findById(id).lean() : null;
+  const access = await authorizeRecord(req, found, "Not found", { minRole: "admin" });
+  if (!access.ok) return access.response;
+  const job = access.record;
 
   let ok = false;
   let detail: string | undefined;

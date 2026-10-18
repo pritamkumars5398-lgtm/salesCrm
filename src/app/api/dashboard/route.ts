@@ -3,12 +3,14 @@ import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Meeting } from "@/lib/models/Meeting";
 import { Activity } from "@/lib/models/Activity";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function GET(req: Request) {
   await connectDB();
   const { searchParams } = new URL(req.url);
-  const agentId = searchParams.get("agentId");
-  if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
+  const access = await authorizeWorkspace(req, searchParams.get("agentId"));
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);

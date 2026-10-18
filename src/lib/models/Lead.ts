@@ -49,6 +49,11 @@ export interface ILead extends Document {
   location?: string;
   notes: ILeadNote[];
   history: ILeadHistory[];
+  /** values of the workspace's custom fields, keyed by LeadField.key */
+  customFields: Record<string, unknown>;
+  tags: string[];
+  /** manual groups only — smart groups are computed from their rules */
+  groupIds: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,8 +97,12 @@ const LeadSchema = new Schema<ILead>(
       at:    { type: Date, default: Date.now },
       note:  { type: String },
     }],
+    customFields: { type: Schema.Types.Mixed, default: {} },
+    tags:          { type: [String], default: [] },
+    groupIds:      [{ type: Schema.Types.ObjectId, ref: "LeadGroup" }],
   },
-  { timestamps: true }
+  // customFields is a free-form map; keep empty objects so `customFields.x` paths always resolve.
+  { timestamps: true, minimize: false }
 );
 
 LeadSchema.pre("save", function (next) {
@@ -109,6 +118,8 @@ LeadSchema.index({ agentId: 1, deletedAt: 1, pipelineStage: 1, updatedAt: -1, _i
 // Supports the CRM's Recent column without changing the normal updatedAt order.
 LeadSchema.index({ agentId: 1, deletedAt: 1, recentAccessedAt: -1, _id: -1 });
 LeadSchema.index({ fullName: "text", company: "text", email: "text" });
+LeadSchema.index({ agentId: 1, tags: 1 });
+LeadSchema.index({ agentId: 1, groupIds: 1 });
 
 // Delete the cached model if it exists to ensure HMR picks up schema changes like the new 'LLM' source enum
 if (mongoose.models.Lead) {

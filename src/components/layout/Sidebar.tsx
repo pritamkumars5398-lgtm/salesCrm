@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import WorkspaceSwitcher from "@/components/workspace/WorkspaceSwitcher";
 import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconClock,
@@ -152,7 +153,7 @@ export default function Sidebar() {
   const {
     agents, activeAgent, setActiveAgent, currentPage, setPage,
     leads, cronJobs, setCronJobs, addAgent, updateAgent, showToast,
-    userEmail, sidebarOpenMobile, setSidebarOpenMobile, sidebarCollapsed,
+    userEmail, isSuperadmin, sidebarOpenMobile, setSidebarOpenMobile, sidebarCollapsed,
   } = useAppStore();
 
   const isMobile = useIsMobile();
@@ -271,48 +272,32 @@ export default function Sidebar() {
           flexShrink: 0,
         }}
       >
+        {currentPage === "superadmin" ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <div
             style={{
               width: 28,
               height: 28,
               borderRadius: "var(--radius-md)",
-              background: currentPage === "superadmin"
-                ? "linear-gradient(135deg, #ef4444, #f87171)"
-                : "linear-gradient(135deg, var(--color-primary), var(--color-primary-light))",
+              background: "linear-gradient(135deg, #ef4444, #f87171)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
-              boxShadow: "0 2px 8px rgba(79,70,229,0.3)",
             }}
           >
-            <span style={{ color: "#fff", fontSize: 13, fontWeight: 800 }}>
-              {currentPage === "superadmin" ? "SA" : "S"}
-            </span>
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 800 }}>SA</span>
           </div>
           {!collapsed && (
             <div style={{ minWidth: 0 }}>
-              <p
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "var(--color-text)",
-                  margin: 0,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  lineHeight: 1.2,
-                }}
-              >
-                {currentPage === "superadmin" ? "Admin Portal" : (activeAgent?.name || "Workspace")}
-              </p>
-              <p style={{ fontSize: 10, color: "var(--color-text4)", margin: 0, fontWeight: 500 }}>
-                {currentPage === "superadmin" ? "Superadmin" : "AI Sales Agent"}
-              </p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0, lineHeight: 1.2 }}>Admin Portal</p>
+              <p style={{ fontSize: 10, color: "var(--color-text4)", margin: 0, fontWeight: 500 }}>Superadmin</p>
             </div>
           )}
         </div>
+        ) : (
+          <WorkspaceSwitcher collapsed={collapsed} onNavigate={navigate} />
+        )}
 
         {/* Close (mobile) */}
         <button
@@ -626,7 +611,7 @@ export default function Sidebar() {
             </div>
 
             {/* ── Admin (conditional) ── */}
-            {userEmail?.toLowerCase() === "admin@salesagent.ai" && (
+            {isSuperadmin && (
               <>
                 <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
                 <div style={{ padding: "0 4px" }}>

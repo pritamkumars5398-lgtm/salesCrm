@@ -1,21 +1,21 @@
 /**
- * GET /api/agents/summary?userEmail=xxx
- * Returns status counts (new, in_outreach, total) for every agent owned by the user.
+ * GET /api/agents/summary
+ * Returns status counts (new, in_outreach, total) for every workspace the signed-in user can open.
  */
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
-import { Agent } from "@/lib/models/Agent";
 import { Lead } from "@/lib/models/Lead";
+import { authorizeUser } from "@/server/auth/access";
+import { listWorkspacesForUser } from "@/server/services/workspace.service";
 
 export async function GET(req: Request) {
   await connectDB();
-  const { searchParams } = new URL(req.url);
-  const userEmail = searchParams.get("userEmail");
-  if (!userEmail) return NextResponse.json([]);
+  const auth = await authorizeUser(req);
+  if (!auth.ok) return auth.response;
 
-  const agents = await Agent.find({ userEmail }).select("_id").lean();
-  const objectIds = agents.map((a) => new mongoose.Types.ObjectId(String(a._id)));
+  const { workspaces } = await listWorkspacesForUser(auth.user._id);
+  const objectIds = workspaces.map((w) => new mongoose.Types.ObjectId(w._id));
 
   const agg = await Lead.aggregate([
     { $match: { agentId: { $in: objectIds }, deletedAt: null } },

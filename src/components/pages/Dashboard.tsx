@@ -60,12 +60,25 @@ export default function Dashboard() {
 
   // Cached by agent: revisiting the page renders the previous data immediately and
   // only refetches once it goes stale, instead of blanking out to skeletons.
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["dashboard", activeAgent?._id],
     queryFn: () => fetch(`/api/dashboard?agentId=${activeAgent!._id}`).then((r) => r.json()),
     enabled: !!activeAgent,
   });
   useEffect(() => { if (data) setDashboard(data); }, [data, setDashboard]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      refetch();
+    };
+    window.addEventListener("crm:leads-synced", handleUpdate);
+    window.addEventListener("crm:data-changed", handleUpdate);
+    return () => {
+      window.removeEventListener("crm:leads-synced", handleUpdate);
+      window.removeEventListener("crm:data-changed", handleUpdate);
+    };
+  }, [refetch]);
+
   const loading = !activeAgent ? !(agentsLoaded && agents.length === 0) : isLoading;
 
   const stats = dashboardStats;

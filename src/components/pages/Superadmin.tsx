@@ -1,4 +1,5 @@
 "use client";
+import IntegrationsPanel from "@/components/settings/IntegrationsPanel";
 import { useEffect, useState } from "react";
 import Pagination from "@/components/ui/Pagination";
 import {
@@ -235,6 +236,15 @@ export default function Superadmin() {
           <IconRefresh size={14} />
           Refresh Stats
         </button>
+      </div>
+
+      {/* Platform keys from .env — used by organizations allowed to run on platform credentials */}
+      <div style={{ marginBottom: 28, padding: 20, borderRadius: 16, background: "var(--color-bg2)", border: "1px solid var(--color-bg4)" }}>
+        <IntegrationsPanel
+          endpoint="/api/superadmin/integrations"
+          title="Platform API keys"
+          subtitle="The keys in the server's .env (Groq, ElevenLabs, Plivo, SMTP, Calendly). Organizations marked 'uses platform credentials' run on these — watch their balances here."
+        />
       </div>
 
       {/* Overview Cards */}

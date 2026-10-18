@@ -3,6 +3,7 @@ import { eventEmitter } from "@/lib/events";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
 import { Setting } from "@/lib/models/Setting";
+import { authorizeLead } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   await connectDB();
@@ -12,6 +13,8 @@ export async function POST(req: Request) {
     if (!leadId || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    const access = await authorizeLead(req, leadId);
+    if (!access.ok) return access.response;
     
     // Emit real-time typing events
     eventEmitter.emit("typing", { leadId, role, isTyping, by });

@@ -2,12 +2,27 @@ export type Page = "dashboard" | "leads" | "sequence" | "crm" | "calendar" | "ac
 export type Channel = "email" | "whatsapp" | "sms" | "call";
 export type LeadStatus = "new" | "in_outreach" | "replied" | "meeting_booked" | "closed";
 
+export type MemberRole = "owner" | "admin" | "member";
+
+/** A workspace — one business line of an organization. */
 export interface Agent {
   _id: string;
   name: string;
   status: "active" | "inactive";
   leadCount: number;
   userEmail?: string;
+  organizationId?: string;
+  organizationName?: string;
+  businessTemplate?: string;
+  /** the signed-in user's role in this workspace's organization */
+  role?: MemberRole;
+}
+
+export interface OrganizationSummary {
+  _id: string;
+  name: string;
+  role: MemberRole;
+  plan: string;
 }
 
 export interface LeadNote {
@@ -52,6 +67,9 @@ export interface Lead {
   history?: LeadHistory[];
   deletedAt?: string | null;
   recentAccessedAt?: string | null;
+  customFields?: Record<string, unknown>;
+  tags?: string[];
+  groupIds?: string[];
   createdAt: string;
   updatedAt?: string;
 }

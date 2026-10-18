@@ -18,6 +18,10 @@ import { STATUS_TABS, SOURCE_META } from "@/lib/constants/leads";
 import { CHANNEL_CONFIG } from "@/lib/constants/channels";
 import { startLeadOutreach, mapWithConcurrency, deleteLeads, restoreLeads, permanentlyDeleteLeads } from "@/lib/api/leads.api";
 import { startManualRun } from "@/lib/api/campaigns.api";
+import { listLeadGroups } from "@/lib/api/workspace.api";
+import LeadGroupBar from "@/components/leads/LeadGroupBar";
+import BulkGroupActions from "@/components/leads/BulkGroupActions";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 
 const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = {
@@ -95,6 +99,10 @@ export default function Leads({ onAddLead }: Props) {
   const [jobTitleFilter, setJobTitleFilter] = useState("all");
   const [jobTitles, setJobTitles] = useState<string[]>([]);
   const [websiteFilter, setWebsiteFilter] = useState("all");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [groupFilter, setGroupFilter] = useState(searchParams.get("groupId") || "all");
+  const [tagFilter, setTagFilter] = useState("");
 
 
   const dropdownItemStyle = {
@@ -113,6 +121,23 @@ export default function Leads({ onAddLead }: Props) {
     textAlign: "left" as const,
     transition: "background-color 0.15s",
   };
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ["lead-groups", activeAgent?._id],
+    queryFn: () => listLeadGroups(activeAgent!._id),
+    enabled: !!activeAgent,
+  });
+  const activeGroup = groups.find((g) => g._id === groupFilter);
+
+  function selectGroup(groupId: string) {
+    setGroupFilter(groupId);
+    setPage(1);
+    const params = new URLSearchParams(window.location.search);
+    if (groupId === "all") params.delete("groupId");
+    else params.set("groupId", groupId);
+    const qs = params.toString();
+    router.replace(`${window.location.pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }
 
   const { data: sequences } = useQuery<any[]>({
     queryKey: ["sequences", activeAgent?._id],
@@ -133,7 +158,7 @@ export default function Leads({ onAddLead }: Props) {
     queryKey: [
       "leads", activeAgent?._id, trashView, statusFilter, sourceFilter, channelFilter,
       locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter,
-      search, missingContact, page, pageSize,
+      search, missingContact, page, pageSize, groupFilter, tagFilter,
     ],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -153,9 +178,17 @@ export default function Leads({ onAddLead }: Props) {
       if (websiteFilter !== "all") params.set("website", websiteFilter);
       if (search) params.set("q", search);
       if (missingContact) params.set("missingContact", "true");
-      return fetch(`/api/leads?${params}`).then((r) => r.json());
+      if (groupFilter !== "all") params.set("groupId", groupFilter);
+      if (tagFilter.trim()) params.set("tag", tagFilter.trim());
+      return fetch(`/api/leads?${params}`).then(async (r) => {
+        const body = await r.json();
+        // A group deleted in another tab: drop the filter instead of showing an error forever.
+        if (r.status === 404 && groupFilter !== "all") selectGroup("all");
+        return body;
+      });
     },
     enabled: !!activeAgent,
+    staleTime: 0,
     // Keeps the current rows on screen while the next page / filter loads, and
     // makes the query the single in-flight source — no stale response can land
     // out of order over a newer one.
@@ -193,8 +226,10 @@ export default function Leads({ onAddLead }: Props) {
 
   // Callers that need fresh rows after a mutation (delete, start run, sync).
   const fetchLeads = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["leads", activeAgent?._id] });
-  }, [queryClient, activeAgent?._id]);
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+    queryClient.invalidateQueries({ queryKey: ["lead-groups"] });
+    leadsQuery.refetch();
+  }, [queryClient, leadsQuery]);
 
   // Infinite Scroll Observer removed for pagination
 
@@ -202,6 +237,19 @@ export default function Leads({ onAddLead }: Props) {
   useEffect(() => {
     setPage(1);
   }, [trashView, statusFilter, sourceFilter, channelFilter, locationFilter, addedDateFilter, outreachFilter, jobTitleFilter, websiteFilter, search, missingContact, pageSize, activeAgent?._id]);
+
+  // Listen for sync completion events across the application
+  useEffect(() => {
+    const handleSync = () => {
+      fetchLeads();
+    };
+    window.addEventListener("crm:leads-synced", handleSync);
+    window.addEventListener("crm:data-changed", handleSync);
+    return () => {
+      window.removeEventListener("crm:leads-synced", handleSync);
+      window.removeEventListener("crm:data-changed", handleSync);
+    };
+  }, [fetchLeads]);
 
   // An Apify sync just finished — pull in whatever it imported.
   const prevSyncing = useRef(syncing);
@@ -275,7 +323,7 @@ export default function Leads({ onAddLead }: Props) {
     if (!activeAgent || starting) return;
     setStarting(true);
     try {
-      const res = await startManualRun(activeAgent._id, runCount);
+      const res = await startManualRun(activeAgent._id, runCount, activeGroup?._id);
       setActiveCampaign(res.campaign);
       setCampaignPanelOpen(true);
       setRunOpen(false);
@@ -626,7 +674,7 @@ export default function Leads({ onAddLead }: Props) {
                 >
                   <p className="text-[11px] font-bold uppercase tracking-wider text-text3 m-0 mb-2">Start outreach run</p>
                   <p className="text-[12px] text-text2 m-0 mb-2">
-                    {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} left. How many to contact?
+                    {remainingEligible} lead{remainingEligible !== 1 ? "s" : ""} left{activeGroup ? <> in <b>{activeGroup.name}</b></> : ""}. How many to contact?
                   </p>
                   <div className="flex items-center gap-2 mb-2">
                     <input
@@ -801,6 +849,17 @@ export default function Leads({ onAddLead }: Props) {
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Tag</label>
+                  <input
+                    value={tagFilter}
+                    onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
+                    placeholder="e.g. decision-maker"
+                    className="form-input w-full"
+                    style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase" }}>Website</label>
                   <select
                     value={websiteFilter}
@@ -890,6 +949,15 @@ export default function Leads({ onAddLead }: Props) {
         </div>
       </div>
 
+      {!trashView && (
+        <LeadGroupBar
+          groups={groups}
+          activeGroupId={groupFilter}
+          onSelect={selectGroup}
+          onManage={() => activeAgent && router.push(`/settings/${activeAgent._id}?tab=groups`)}
+        />
+      )}
+
       {/* Bulk action bar — slides in when items selected */}
       {selected.size > 0 && (
         <div
@@ -946,6 +1014,9 @@ export default function Leads({ onAddLead }: Props) {
               </>
             ) : (
               <>
+                {activeAgent && (
+                  <BulkGroupActions agentId={activeAgent._id} selectedIds={Array.from(selected)} groups={groups} onDone={fetchLeads} />
+                )}
                 <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg whitespace-nowrap" onClick={bulkStartOutreach}>
                   <IconPlayerPlay size={13} /> Start outreach
                 </button>

@@ -13,6 +13,10 @@ export interface SyncRun {
 // df
 interface Props {
   runs: SyncRun[];
+  /** the sync flow is still working (starting, polling or importing) */
+  syncing: boolean;
+  /** why nothing ran, when that's the outcome */
+  note?: string | null;
   open: boolean;
   onClose: () => void;
   onCancel?: (runId: string) => void;
@@ -33,11 +37,21 @@ const SCRAPER_COLOR: Record<string, string> = {
   custom: "#6366f1",
 };
 
-export default function SyncPanel({ runs, open, onClose, onCancel }: Props) {
+export default function SyncPanel({ runs, syncing, note, open, onClose, onCancel }: Props) {
   if (!open) return null;
 
-  const allDone = runs.length > 0 && runs.every((r) => r.status === "done" || r.status === "failed");
+  // Finished when the flow says so — not only when runs exist, or a sync that
+  // never started a run would spin on "Starting scrapers…" forever.
+  const allDone = !syncing;
   const totalNew = runs.reduce((s, r) => s + r.imported, 0);
+  const anyFailed = runs.some((r) => r.status === "failed");
+  const title = !allDone
+    ? "Syncing lead sources…"
+    : runs.length === 0
+      ? "Nothing was synced"
+      : totalNew > 0
+        ? `Done — ${totalNew} lead${totalNew === 1 ? "" : "s"} imported`
+        : anyFailed ? "Sync finished with problems" : "Sync complete — no new leads";
 
   return (
     <div
@@ -66,19 +80,24 @@ export default function SyncPanel({ runs, open, onClose, onCancel }: Props) {
           background: "var(--color-bg3)",
         }}
       >
-        <IconRefresh
-          size={16}
-          style={{
-            color: "#6366f1",
-            animation: !allDone ? "spin 1s linear infinite" : "none",
-          }}
-        />
+        {allDone && runs.length === 0 ? (
+          <IconAlertCircle size={16} style={{ color: "#ff6b6b" }} />
+        ) : (
+          <IconRefresh
+            size={16}
+            style={{
+              color: "#6366f1",
+              animation: !allDone ? "spin 1s linear infinite" : "none",
+            }}
+          />
+        )}
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", flex: 1 }}>
-          {allDone ? (totalNew > 0 ? `Done — ${totalNew} leads imported` : "Sync complete") : "Apify Sync Running…"}
+          {title}
         </span>
-        {allDone && (
+        {/* Closing only hides the panel — a running sync keeps going in the background. */}
           <button
             onClick={onClose}
+            title={allDone ? "Close" : "Hide (the sync keeps running)"}
             style={{
               padding: 4, border: "none", background: "transparent",
               color: "var(--color-text3)", cursor: "pointer", borderRadius: 6,
@@ -87,15 +106,17 @@ export default function SyncPanel({ runs, open, onClose, onCancel }: Props) {
           >
             <IconX size={15} />
           </button>
-        )}
       </div>
 
       {/* Runs list */}
       <div style={{ padding: "10px 0" }}>
         {runs.length === 0 && (
-          <div style={{ padding: "16px 16px", fontSize: 12.5, color: "var(--color-text3)" }}>
-            Starting scrapers…
+          <div style={{ padding: "16px 16px", fontSize: 12.5, color: note ? "#ff6b6b" : "var(--color-text3)", lineHeight: 1.5 }}>
+            {note ?? (syncing ? "Starting scrapers…" : "No scraper ran.")}
           </div>
+        )}
+        {runs.length > 0 && note && (
+          <div style={{ padding: "8px 16px", fontSize: 12, color: "#ff6b6b", lineHeight: 1.5 }}>{note}</div>
         )}
         {runs.map((run) => {
           const cfg = STATUS_CFG[run.status];

@@ -1,4 +1,5 @@
 import { eventEmitter } from "@/lib/events";
+import { authorizeLead } from "@/server/auth/access";
 
 export const dynamic = "force-dynamic";
 
@@ -6,9 +7,8 @@ export async function GET(req: Request) {
   const { searchParams, origin } = new URL(req.url);
   const leadId = searchParams.get("leadId");
 
-  if (!leadId) {
-    return new Response("leadId is required", { status: 400 });
-  }
+  const access = await authorizeLead(req, leadId);
+  if (!access.ok) return access.response;
 
   let intervalId: NodeJS.Timeout | undefined;
   const encoder = new TextEncoder();

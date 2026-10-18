@@ -5,18 +5,22 @@ import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
 import twilio from "twilio";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { agentId, to, text } = await req.json() as {
-      agentId: string;
-      to: string;
-      text: string;
+    const { agentId: requestedAgentId, to, text } = await req.json() as {
+      agentId?: string;
+      to?: string;
+      text?: string;
     };
+    const access = await authorizeWorkspace(req, requestedAgentId);
+    if (!access.ok) return access.response;
+    const agentId = access.agentId;
 
-    if (!agentId || !to || !text) {
-      return NextResponse.json({ error: "agentId, to, and text required" }, { status: 400 });
+    if (!to || !text) {
+      return NextResponse.json({ error: "to and text required" }, { status: 400 });
     }
 
     const canSend = await checkUsageLimit(agentId, "messagesSent", 1);

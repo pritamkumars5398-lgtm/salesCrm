@@ -5,6 +5,7 @@ import {
   IconPlayerPlay, IconMessageCircle, IconBuilding,
   IconBriefcase, IconUser, IconCalendar, IconLink, IconEdit,
 } from "@tabler/icons-react";
+import LeadAttributesSection from "@/components/leads/LeadAttributesSection";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
 import StatusPill from "@/components/ui/Pill";
@@ -778,6 +779,8 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     </div>
                   </div>
                 )}
+
+                <LeadAttributesSection lead={lead} />
 
                 {/* Meta */}
                 <div style={{ padding: "18px 20px", borderBottom: "1px solid var(--color-bg4)" }}>

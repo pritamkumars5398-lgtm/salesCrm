@@ -5,18 +5,22 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   await connectDB();
-  const { agentId, to, subject, body: emailBody } = await req.json() as {
-    agentId: string;
-    to: string;
-    subject: string;
-    body: string;
+  const { agentId: requestedAgentId, to, subject, body: emailBody } = await req.json().catch(() => ({})) as {
+    agentId?: string;
+    to?: string;
+    subject?: string;
+    body?: string;
   };
+  const access = await authorizeWorkspace(req, requestedAgentId);
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
 
-  if (!agentId || !to || !subject || !emailBody) {
-    return NextResponse.json({ error: "agentId, to, subject, body required" }, { status: 400 });
+  if (!to || !subject || !emailBody) {
+    return NextResponse.json({ error: "to, subject and body are required" }, { status: 400 });
   }
 
   const canSend = await checkUsageLimit(agentId, "emailsSent", 1);
@@ -55,8 +59,9 @@ export async function POST(req: Request) {
 // Test connection (GET)
 export async function GET(req: Request) {
   await connectDB();
-  const agentId = new URL(req.url).searchParams.get("agentId");
-  if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
+  const access = await authorizeWorkspace(req, new URL(req.url).searchParams.get("agentId"), { minRole: "admin" });
+  if (!access.ok) return access.response;
+  const agentId = access.agentId;
 
   const cfg = await getEmailConfig(agentId);
   if (!cfg) return NextResponse.json({ ok: false, error: "Email not configured" });

@@ -1,61 +1,46 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/User";
-import { Agent } from "@/lib/models/Agent";
-import crypto from "crypto";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { SESSION_COOKIE, signSession, sessionCookieOptions } from "@/lib/session";
+import { ensureOrganizationForUser } from "@/server/services/workspace.service";
+import { clearRateLimit, clientIp, hitRateLimit } from "@/server/auth/rate-limit";
 
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { email, password } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const email = String(body.email ?? "").toLowerCase().trim();
+    const password = String(body.password ?? "");
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const limitKey = `login:${clientIp(req)}:${email}`;
+    const wait = hitRateLimit(limitKey);
+    if (wait) return NextResponse.json({ error: `Too many attempts. Try again in ${Math.ceil(wait / 60)} min.` }, { status: 429 });
 
-    if (normalizedEmail === "admin@salesagent.ai") {
-      const existingAdmin = await User.findOne({ email: normalizedEmail });
-      if (!existingAdmin) {
-        const hash = crypto.createHash("sha256").update("admin123").digest("hex");
-        await User.create({
-          name: "Super Admin",
-          email: normalizedEmail,
-          passwordHash: hash,
-        });
-      }
-    }
-
-    // Find the user
-    const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
+    const user = await User.findOne({ email });
+    const check = user ? verifyPassword(password, user.passwordHash) : { ok: false, needsRehash: false };
+    if (!user || !check.ok) {
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
+    clearRateLimit(limitKey);
 
-    // Hash password to check
-    const passwordHash = crypto.createHash("sha256").update(password).digest("hex");
-    if (user.passwordHash !== passwordHash) {
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    if (check.needsRehash) {
+      await User.updateOne({ _id: user._id }, { $set: { passwordHash: hashPassword(password) } });
     }
-    await Agent.updateMany(
-      { $or: [{ userEmail: { $exists: false } }, { userEmail: null }] },
-      { $set: { userEmail: normalizedEmail } }
-    );
 
-    const response = NextResponse.json({
-      name: user.name,
-      email: user.email,
-    }, { status: 200 });
+    await ensureOrganizationForUser({ _id: String(user._id), name: user.name, email: user.email });
 
-    response.cookies.set("sa_auth", "1", {
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60,
-      sameSite: "lax",
-    });
-
+    const token = await signSession({ uid: String(user._id), email: user.email, sv: user.sessionVersion ?? 0 });
+    const response = NextResponse.json({ name: user.name, email: user.email }, { status: 200 });
+    response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+    // The old client-set flag cookie meant nothing; make sure it's gone.
+    response.cookies.set("sa_auth", "", { path: "/", maxAge: 0 });
     return response;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Login API Error]", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });
   }

@@ -1,22 +1,25 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Lead } from "@/lib/models/Lead";
+import { authorizeLead } from "@/server/auth/access";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   await connectDB();
   const { id } = await params;
-  const { text, author } = await req.json();
+  const { text } = await req.json().catch(() => ({}));
 
-  if (!text || !text.trim()) {
+  if (typeof text !== "string" || !text.trim()) {
     return NextResponse.json({ error: "Text is required" }, { status: 400 });
   }
 
-  const lead = await Lead.findById(id);
-  if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const access = await authorizeLead(req, id);
+  if (!access.ok) return access.response;
+  const lead = access.lead;
+  // The author is whoever is signed in — never a name sent by the browser.
+  const author = access.user.name;
 
   lead.notes.push({
-    text: text.trim(),
-    author: author || "User",
+    text: text.trim().slice(0, 5000),
+    author,
     createdAt: new Date(),
   });
 
@@ -25,7 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     field: "note",
     from: "—",
     to: "Added new note/comment",
-    by: author || "User",
+    by: author,
     at: new Date(),
   });
 

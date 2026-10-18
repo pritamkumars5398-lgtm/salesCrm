@@ -6,6 +6,8 @@ export interface PlanLimits {
   callsPerMonth: number;
   emailsPerMonth: number;
   smsPerMonth: number;
+  /** business lines (workspaces) one organization may run */
+  workspaces: number;
 }
 
 export interface Plan {
@@ -30,8 +32,10 @@ export const PLANS: Record<PlanId, Plan> = {
       callsPerMonth: 5,
       emailsPerMonth: 100,
       smsPerMonth: 20,
+      workspaces: 2,
     },
     features: [
+      "2 business workspaces",
       "25 leads / month",
       "50 WhatsApp messages / month",
       "20 SMS messages / month",
@@ -51,8 +55,10 @@ export const PLANS: Record<PlanId, Plan> = {
       callsPerMonth: 30,
       emailsPerMonth: -1,
       smsPerMonth: 200,
+      workspaces: 3,
     },
     features: [
+      "3 business workspaces",
       "200 leads / month",
       "500 WhatsApp messages / month",
       "200 SMS messages / month",
@@ -74,8 +80,10 @@ export const PLANS: Record<PlanId, Plan> = {
       callsPerMonth: 100,
       emailsPerMonth: -1,
       smsPerMonth: 1000,
+      workspaces: 5,
     },
     features: [
+      "5 business workspaces",
       "1,000 leads / month",
       "2,000 WhatsApp messages / month",
       "1,000 SMS messages / month",
@@ -96,8 +104,10 @@ export const PLANS: Record<PlanId, Plan> = {
       callsPerMonth: 500,
       emailsPerMonth: -1,
       smsPerMonth: 3000,
+      workspaces: -1,
     },
     features: [
+      "Unlimited business workspaces",
       "5,000 leads / month",
       "Unlimited WhatsApp messages",
       "3,000 SMS messages / month",

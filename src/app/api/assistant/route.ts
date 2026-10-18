@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { runAssistant, type AssistantEvent } from "@/server/services/assistant/assistant.service";
+import { authorizeWorkspace } from "@/server/auth/access";
 
 /**
  * AI assistant panel.
@@ -13,14 +13,14 @@ import { runAssistant, type AssistantEvent } from "@/server/services/assistant/a
  */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  if (!body.agentId || !Types.ObjectId.isValid(body.agentId)) {
-    return NextResponse.json({ error: "agentId required" }, { status: 400 });
-  }
   await connectDB();
+  const access = await authorizeWorkspace(req, body.agentId);
+  if (!access.ok) return access.response;
 
   const opts = {
-    agentId: body.agentId as string,
+    agentId: access.agentId,
     req,
+    canManage: access.canManage,
     messages: body.messages,
     page: typeof body.page === "string" ? body.page : undefined,
     confirm: body.confirm && typeof body.confirm.toolCallId === "string"
