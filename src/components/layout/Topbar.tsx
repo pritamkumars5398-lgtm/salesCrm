@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle,
+  IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle, IconSparkles,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -27,6 +27,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     sidebarOpenMobile, setSidebarOpenMobile,
     sidebarCollapsed, setSidebarCollapsed,
     updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
+    assistantOpen, setAssistantOpen,
   } = useAppStore();
 
   const isMobile = useIsMobile();
@@ -362,6 +363,29 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
             )}
           </div>
         )}
+
+        {/* AI assistant */}
+        <button
+          onClick={() => setAssistantOpen(!assistantOpen)}
+          title="AI assistant — set up and run anything by chat (⌘J / Ctrl+J)"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 14px",
+            borderRadius: "var(--radius-lg)",
+            background: assistantOpen ? "rgba(139,92,246,0.22)" : "linear-gradient(135deg, rgba(139,92,246,0.16), rgba(108,99,255,0.16))",
+            border: "1px solid rgba(139,92,246,0.35)",
+            color: "#a78bfa",
+            fontSize: 12.5,
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all var(--transition-fast)",
+          }}
+        >
+          <IconSparkles size={14} />
+          <span className="hidden sm:inline">Ask AI</span>
+        </button>
 
         {/* Add Lead */}
         <button

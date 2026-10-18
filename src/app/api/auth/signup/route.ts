@@ -41,7 +41,13 @@ export async function POST(req: Request) {
       { $set: { userEmail: normalizedEmail } }
     );
 
-    return NextResponse.json({ success: true }, { status: 201 });
+    const response = NextResponse.json({ success: true }, { status: 201 });
+    response.cookies.set("sa_auth", "1", {
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: "lax",
+    });
+    return response;
   } catch (err: any) {
     console.error("[Signup API Error]", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });

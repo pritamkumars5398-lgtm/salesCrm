@@ -4,7 +4,7 @@ export interface OutreachResponse {
   sent: boolean;
   skipped?: boolean;
   reason?: string;
-  channel?: "email" | "whatsapp" | null;
+  channel?: "email" | "whatsapp" | "sms" | "call" | null;
   subject?: string;
   body?: string;
   error?: string;

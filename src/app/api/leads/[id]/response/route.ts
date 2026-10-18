@@ -6,6 +6,7 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Setting } from "@/lib/models/Setting";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 async function handleInterested(lead: any, agentId: string) {
   const calendlySetting = await Setting.findOne({ agentId, key: "calendlyLink" }).lean();
@@ -29,7 +30,7 @@ Return ONLY valid JSON:
   llmRows.forEach((r) => { llmMap[r.key] = r.value; });
 
   const apiKey = llmMap.llmApiKey || process.env.GROQ_API_KEY || "";
-  const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  const model = resolveGroqModel(process.env.GROQ_MODEL);
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -37,6 +38,7 @@ Return ONLY valid JSON:
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
+        ...groqModelParams(model),
         messages: [{ role: "user", content: prompt }],
         temperature: 0.4,
         max_tokens: 256,

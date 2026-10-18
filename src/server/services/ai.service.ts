@@ -1,4 +1,5 @@
 import { getLLMConfig, getBusinessContext } from "./settings.service";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 export interface OutreachLeadInfo {
   fullName: string;
@@ -70,7 +71,7 @@ async function callGroq(
     const endpoint = isOpenAi 
       ? "https://api.openai.com/v1/chat/completions" 
       : "https://api.groq.com/openai/v1/chat/completions";
-    const selectedModel = llm.model || (isOpenAi ? "gpt-4o-mini" : "llama-3.3-70b-versatile");
+    const selectedModel = isOpenAi ? (llm.model || "gpt-4o-mini") : resolveGroqModel(llm.model);
 
     const res = await fetch(endpoint, {
       method: "POST",
@@ -80,6 +81,7 @@ async function callGroq(
       },
       body: JSON.stringify({
         model: selectedModel,
+        ...(isOpenAi ? {} : groqModelParams(selectedModel)),
         messages: [{ role: "user", content: prompt }],
         temperature: opts.temperature ?? 0.4,
         max_tokens: opts.maxTokens ?? 512,
@@ -231,6 +233,10 @@ export interface CallAnalysis {
   summary: string;
   sentiment: "positive" | "neutral" | "negative";
   outcome: CallOutcome;
+  /** the lead asked for details on WhatsApp, or the agent promised to send them */
+  whatsappFollowUp: boolean;
+  /** what the WhatsApp message should cover (their need, agreed time…) */
+  followUpTopic: string;
 }
 
 const CALL_OUTCOMES: CallOutcome[] = [
@@ -260,8 +266,10 @@ Judge ONLY from what the LEAD actually said. Do not infer interest the lead did 
   - "no_decision" if the lead barely spoke or nothing was decided
 - sentiment: the lead's overall tone — "positive", "neutral" or "negative"
 - summary: 1–2 plain sentences a salesperson can read at a glance (what was discussed, what's next). Always write the summary in English, even if the call was in Hindi or Hinglish.
+- whatsapp_follow_up: true if the lead asked for details/information on WhatsApp, OR the agent said details would be sent on WhatsApp, OR a meeting/callback was agreed; otherwise false
+- follow_up_topic: if whatsapp_follow_up is true, a short English phrase of what the message should cover (their need and any agreed day/time), else ""
 
-Return ONLY valid JSON: {"summary":"...","sentiment":"...","outcome":"..."}`;
+Return ONLY valid JSON: {"summary":"...","sentiment":"...","outcome":"...","whatsapp_follow_up":false,"follow_up_topic":""}`;
 
   const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.2, maxTokens: 300 });
   const start = raw.indexOf("{");
@@ -270,5 +278,37 @@ Return ONLY valid JSON: {"summary":"...","sentiment":"...","outcome":"..."}`;
 
   const sentiment = ["positive", "neutral", "negative"].includes(parsed.sentiment) ? parsed.sentiment : "neutral";
   const outcome = CALL_OUTCOMES.includes(parsed.outcome) ? parsed.outcome : "no_decision";
-  return { summary: String(parsed.summary || "").slice(0, 600), sentiment, outcome };
+  return {
+    summary: String(parsed.summary || "").slice(0, 600),
+    sentiment,
+    outcome,
+    whatsappFollowUp: parsed.whatsapp_follow_up === true || parsed.whatsapp_follow_up === "true",
+    followUpTopic: String(parsed.follow_up_topic || "").slice(0, 300),
+  };
+}
+
+/**
+ * Short WhatsApp message to send a lead after (or during) a call. Links and
+ * contact details are appended by the caller — this only writes the message.
+ */
+export async function generateCallFollowUpWhatsApp(
+  agentId: string,
+  input: { leadName: string; company?: string; topic: string; language: string; senderName: string }
+): Promise<string> {
+  const ctx = await getBusinessContext(agentId);
+  const lang = input.language === "English"
+    ? "simple English"
+    : "natural Hinglish written in Roman script (the way Indians text on WhatsApp), keeping business words in English";
+  const prompt = `Write a short WhatsApp message (max 60 words) to ${input.leadName}${input.company && input.company !== input.leadName ? ` of ${input.company}` : ""}, sent right after a phone call with them.
+
+What it should cover: ${input.topic || "a thank-you and our details, as discussed on the call"}
+What we do (pick only what fits the topic): ${(ctx.businessServices || "").replace(/\s*\n\s*/g, ", ").slice(0, 600)}
+
+Rules:
+- Write in ${lang}.
+- Start by referring to the call ("as discussed on the call" or similar), then 1–2 sentences on how we can help them specifically. If a day/time was agreed, confirm it.
+- No links, phone numbers or email addresses — they are added below the message automatically.
+- At most one emoji. No hashtags, no markdown, no sign-off line.
+- Return ONLY the message text.`;
+  return (await callGroq(agentId, prompt, { temperature: 0.6, maxTokens: 220 })).trim().replace(/^"|"$/g, "");
 }

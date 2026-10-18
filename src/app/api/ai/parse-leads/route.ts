@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 export async function POST(req: Request) {
   try {
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+    const model = resolveGroqModel(process.env.GROQ_MODEL);
 
     const prompt = `You are an expert sales assistant. Your job is to extract lead information from the provided raw text and return a structured JSON array of leads.
 
@@ -58,6 +59,7 @@ ${text}
       },
       body: JSON.stringify({
         model,
+        ...groqModelParams(model),
         messages: [{ role: "user", content: prompt }],
         temperature: 0.2,
       }),

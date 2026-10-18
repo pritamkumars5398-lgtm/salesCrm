@@ -9,6 +9,7 @@ import SavedBadge from "@/components/settings/SavedBadge";
 import ApifySources from "@/components/pages/ApifySources";
 import LlmSources from "@/components/pages/LlmSources";
 import { useRouter, useSearchParams } from "next/navigation";
+import ElevenLabsSetupPanel from "@/components/settings/ElevenLabsSetupPanel";
 
 export default function Settings() {
   const { activeAgent, showToast, agents, updateAgent } = useAppStore();
@@ -404,6 +405,18 @@ export default function Settings() {
     }
   }
 
+  // Reload the form when the AI assistant changes settings, so a later Save
+  // doesn't write stale values over what it just set.
+  const [settingsReload, setSettingsReload] = useState(0);
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const changes = (e as CustomEvent<{ changes?: string[] }>).detail?.changes ?? [];
+      if (changes.includes("settings")) setSettingsReload((n) => n + 1);
+    };
+    window.addEventListener("crm:data-changed", onChange);
+    return () => window.removeEventListener("crm:data-changed", onChange);
+  }, []);
+
   useEffect(() => {
     if (!activeAgent) return;
     setCopySourceAgentId("");
@@ -415,7 +428,7 @@ export default function Settings() {
         INTEGRATION_CARDS.filter((c) => c.togglable).forEach((c) => { t[c.key] = data[`${c.key}Enabled`] !== "false"; });
         setToggles(t);
       });
-  }, [activeAgent?._id]);
+  }, [activeAgent?._id, settingsReload]);
 
   async function saveCard(card: SettingsCard) {
     if (!activeAgent) return;
@@ -660,8 +673,8 @@ export default function Settings() {
                     }
                   } else if (f.key === "llmModel") {
                     if (currentLlmProvider.includes("Groq")) {
-                      displayPlaceholder = "llama-3.3-70b-versatile";
-                      displayHint = "e.g. llama-3.3-70b-versatile, llama-3.1-8b-instant";
+                      displayPlaceholder = "openai/gpt-oss-120b";
+                      displayHint = "e.g. openai/gpt-oss-120b (default), qwen/qwen3.8-27b";
                     } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
                       displayPlaceholder = "gpt-4o-mini";
                       displayHint = "e.g. gpt-4o-mini, gpt-4o";
@@ -1047,6 +1060,15 @@ export default function Settings() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ElevenLabs key / agent diagnostics with one-click fixes */}
+            {activeCard.key === "voice" && activeAgent && (
+              <ElevenLabsSetupPanel
+                agentId={activeAgent._id}
+                apiKey={values["voiceApiKey"] || ""}
+                onAgentIdChange={(id) => setValues((p) => ({ ...p, elevenLabsAgentId: id }))}
+              />
             )}
 
             {/* Voice call preview panel */}

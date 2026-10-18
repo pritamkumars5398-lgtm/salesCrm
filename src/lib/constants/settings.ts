@@ -57,7 +57,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     fields: [
       { label: "Provider", key: "llmProvider", placeholder: "", options: ["Groq (Llama 3)", "GPT-4o (OpenAI)", "Claude (Anthropic)", "Gemini 1.5 Pro"], hint: "Model used for all AI responses" },
       { label: "LLM API Key (Groq/OpenAI)", key: "llmApiKey", type: "password", placeholder: "Enter your Groq or OpenAI API key...", hint: "Stored encrypted, never exposed" },
-      { label: "Model Name / ID", key: "llmModel", placeholder: "llama-3.3-70b-versatile", hint: "e.g. llama-3.3-70b-versatile, gpt-4o-mini, gpt-4o" },
+      { label: "Model Name / ID", key: "llmModel", placeholder: "openai/gpt-oss-120b", hint: "Groq: openai/gpt-oss-120b (default), qwen/qwen3.8-27b · OpenAI: gpt-4o-mini, gpt-4o" },
     ],
   },
   {
@@ -103,6 +103,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Max Call Duration (minutes)", key: "callMaxDuration", placeholder: "", options: ["2", "3", "5", "7", "10", "15"], hint: "Call ends automatically after this duration" },
       { label: "Call Window Start (hour, 24h)", key: "callWindowStart", placeholder: "9", hint: "Earliest hour (IST, or CALL_TIMEZONE) AI calls to leads may start, e.g. 9 = 9 AM. Leave both empty for no limit." },
       { label: "Call Window End (hour, 24h)", key: "callWindowEnd", placeholder: "18", hint: "Calls are refused from this hour on, e.g. 18 = 6 PM" },
+      { label: "Max Simultaneous Calls", key: "callConcurrency", placeholder: "", options: ["1", "2", "3", "5"], hint: "Sequence/campaign calls are placed in batches of this size — the next lead is dialed when a call ends. Check your ElevenLabs plan's concurrency limit." },
       { label: "Record Calls", key: "callRecording", placeholder: "", options: ["On", "Off"], hint: "Saves a recording of each AI call (playable in the lead's Call tab). Tell callees the call is recorded where required." },
       { label: "Voicemail Detection", key: "callVoicemailDetection", placeholder: "", options: ["Off", "Hang up on voicemail"], hint: "Hang up automatically when an answering machine picks up" },
     ],

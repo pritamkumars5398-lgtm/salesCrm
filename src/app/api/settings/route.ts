@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 export async function GET(req: Request) {
   await connectDB();
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
   const defaults: Record<string, string> = {
     llmProvider: "Groq (Llama 3)",
     llmApiKey: process.env.GROQ_API_KEY || "",
-    llmModel: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    llmModel: resolveGroqModel(process.env.GROQ_MODEL),
     callProvider: "Plivo",
     plivoAuthId: process.env.PLIVO_AUTH_ID || "",
     plivoAuthToken: process.env.PLIVO_AUTH_TOKEN || "",

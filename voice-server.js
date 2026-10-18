@@ -89,7 +89,7 @@ wss.on("connection", async (clientWs, req) => {
 
   if (llmProvider?.includes("Groq") || (llmApiKey && llmApiKey.startsWith("gsk_"))) {
     openaiConfig.baseURL = "https://api.groq.com/openai/v1";
-    llmModel = "llama-3.1-8b-instant"; // Extremely fast Groq model perfect for real-time voice
+    llmModel = "qwen/qwen3.8-27b"; // fast Groq model without a reasoning phase — good for real-time voice (Llama 3.x was retired)
   }
 
   const openai = new OpenAI(openaiConfig);

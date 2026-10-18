@@ -34,7 +34,7 @@ export default function Activity() {
       }).toString()
     : null;
 
-  const { data, isPending: loading } = useQuery<{ activities: ActivityRecord[]; total: number }>({
+  const { data, isLoading: loading } = useQuery<{ activities: ActivityRecord[]; total: number }>({
     queryKey: ["activities", activeAgent?._id, channel, range, page, pageSize],
     queryFn: () => fetch(`/api/activities?${query}`).then((r) => r.json()),
     enabled: !!activeAgent,

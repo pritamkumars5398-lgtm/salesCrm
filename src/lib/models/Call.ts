@@ -45,6 +45,11 @@ export interface ICall extends Document {
   sentiment?: "positive" | "neutral" | "negative";
   outcome?: string;
   error?: string;
+  /** the user pressed "End call" in the CRM */
+  endedByUser?: boolean;
+  /** WhatsApp follow-up with our details (sent during or right after the call) */
+  whatsappSentAt?: Date | null;
+  whatsappError?: string;
   bridgeEndedAt?: Date;
   finalizedAt?: Date | null;
   createdAt: Date;
@@ -91,6 +96,9 @@ const CallSchema = new Schema<ICall>(
     sentiment: { type: String, enum: ["positive", "neutral", "negative"] },
     outcome:   { type: String },
     error:     { type: String },
+    endedByUser: { type: Boolean },
+    whatsappSentAt: { type: Date, default: null },
+    whatsappError:  { type: String },
     bridgeEndedAt: { type: Date },
     finalizedAt:   { type: Date, default: null },
   },

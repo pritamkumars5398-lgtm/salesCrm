@@ -10,6 +10,7 @@ import ConversationDrawer from "@/components/drawer/ConversationDrawer";
 import ToastContainer from "@/components/ui/Toast";
 import AddLeadModal from "@/components/ui/AddLeadModal";
 import SyncPanel from "@/components/ui/SyncPanel";
+import AssistantPanel from "@/components/assistant/AssistantPanel";
 import "@/lib/devFetchLogger";
 
 /**
@@ -80,7 +81,14 @@ function Shell({ children }: { children: React.ReactNode }) {
     }
     setMounted(true);
 
-    if (useAppStore.getState().agentsLoaded) return;
+    const store = useAppStore.getState();
+    if (
+      store.agentsLoaded &&
+      store.agents.length > 0 &&
+      store.agents[0]?.userEmail?.toLowerCase() === user.email.toLowerCase()
+    ) {
+      return;
+    }
 
     fetch(`/api/agents?email=${encodeURIComponent(user.email)}`)
       .then((r) => r.json())
@@ -213,6 +221,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           if (activeAgent) cancelSyncRun(activeAgent._id, runId);
         }}
       />
+      <AssistantPanel />
       <ToastContainer />
     </div>
   );

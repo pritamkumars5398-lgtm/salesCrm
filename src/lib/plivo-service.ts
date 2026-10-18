@@ -138,6 +138,20 @@ export async function hangupPlivoCall(authId: string, authToken: string, callUui
   }
 }
 
+/** Cancels a call that hasn't been answered yet (queued/ringing), by its request UUID. */
+export async function cancelPlivoRequest(authId: string, authToken: string, requestUuid: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.plivo.com/v1/Account/${authId}/Request/${requestUuid}/`, {
+      method: "DELETE",
+      headers: plivoHeaders(authId, authToken),
+      signal: AbortSignal.timeout(PLIVO_TIMEOUT_MS),
+    });
+    return res.ok || res.status === 404;
+  } catch {
+    return false;
+  }
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

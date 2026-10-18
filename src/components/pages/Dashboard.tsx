@@ -54,19 +54,19 @@ const STAT_DEFS = [
 export default function Dashboard() {
   const router = useRouter();
   const {
-    activeAgent, dashboardStats, dashboardRecentLeads,
+    activeAgent, agents, agentsLoaded, dashboardStats, dashboardRecentLeads,
     dashboardRecentActivity, setDashboard, openDrawer,
   } = useAppStore();
 
   // Cached by agent: revisiting the page renders the previous data immediately and
   // only refetches once it goes stale, instead of blanking out to skeletons.
-  const { data, isPending } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["dashboard", activeAgent?._id],
     queryFn: () => fetch(`/api/dashboard?agentId=${activeAgent!._id}`).then((r) => r.json()),
     enabled: !!activeAgent,
   });
   useEffect(() => { if (data) setDashboard(data); }, [data, setDashboard]);
-  const loading = isPending;
+  const loading = !activeAgent ? !(agentsLoaded && agents.length === 0) : isLoading;
 
   const stats = dashboardStats;
 

@@ -1,4 +1,5 @@
 import { Setting } from "@/lib/models/Setting";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 /** Load a set of settings keys for an agent as a plain map. */
 export async function getSettingsMap(agentId: string, keys: string[]): Promise<Record<string, string>> {
@@ -20,7 +21,7 @@ export async function getLLMConfig(agentId: string): Promise<LLMConfig | null> {
   if (!apiKey) return null;
   return { 
     apiKey, 
-    model: m.llmModel || process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    model: m.llmModel || process.env.GROQ_MODEL || "",
     provider: m.llmProvider || "Groq (Llama 3)"
   };
 }
@@ -44,6 +45,8 @@ export interface VoiceConfig {
   hangupOnVoicemail: boolean;
   /** "Hindi" | "Hinglish" | "English", or "" to keep the ElevenLabs agent's language */
   callLanguage: string;
+  /** how many automated (sequence/campaign) calls may be live at once */
+  maxConcurrentCalls: number;
 }
 
 function parseHour(v: string | undefined): number | null {
@@ -56,8 +59,9 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
   const m = await getSettingsMap(agentId, [
     "callProvider", "plivoAuthId", "plivoAuthToken", "callApiKey", "callerPhone",
     "elevenLabsAgentId", "voiceApiKey", "callScript", "callGreeting", "callMaxDuration",
-    "callWindowStart", "callWindowEnd", "callRecording", "callVoicemailDetection", "callLanguage",
+    "callWindowStart", "callWindowEnd", "callRecording", "callVoicemailDetection", "callLanguage", "callConcurrency",
   ]);
+  const concurrency = parseInt(m.callConcurrency || "", 10);
   const provider = m.callProvider || "Plivo";
   const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
@@ -76,6 +80,7 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
     recordCalls: (m.callRecording || "On") !== "Off",
     hangupOnVoicemail: (m.callVoicemailDetection || "Off") !== "Off",
     callLanguage: ["Hindi", "Hinglish", "English"].includes(m.callLanguage) ? m.callLanguage : "",
+    maxConcurrentCalls: Number.isFinite(concurrency) && concurrency > 0 ? Math.min(concurrency, 10) : 1,
   };
 }
 

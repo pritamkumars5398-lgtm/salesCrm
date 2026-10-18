@@ -4,6 +4,7 @@ import { Lead } from "@/lib/models/Lead";
 import { getEmailConfig } from "@/lib/email-service";
 import { getLLMConfig, getWhatsAppConfig } from "./settings.service";
 import { sendOutreachToLead, OutreachOptions } from "./outreach.service";
+import { getVoiceSetupError } from "./call.service";
 
 /** How many leads are sent in parallel inside one batch. */
 const CONCURRENCY = 3;
@@ -17,7 +18,7 @@ export interface PreflightResult {
   issues: string[];
   warnings: string[];
   eligibleLeads: number;
-  channels: { email: boolean; whatsapp: boolean };
+  channels: { email: boolean; whatsapp: boolean; call: boolean };
 }
 
 /**
@@ -28,18 +29,21 @@ export async function preflightCheck(agentId: string): Promise<PreflightResult> 
   const issues: string[] = [];
   const warnings: string[] = [];
 
-  const [llm, emailCfg, waCfg] = await Promise.all([
+  const [llm, emailCfg, waCfg, voiceError] = await Promise.all([
     getLLMConfig(agentId),
     getEmailConfig(agentId),
     getWhatsAppConfig(agentId),
+    getVoiceSetupError(agentId),
   ]);
+  const callReady = !voiceError;
 
   if (!llm) issues.push("AI (LLM) API key is not configured — set it in Settings → AI.");
-  if (!emailCfg && !waCfg) {
-    issues.push("No outreach channel configured — set up Email (SMTP/API) or WhatsApp in Settings.");
+  if (!emailCfg && !waCfg && !callReady) {
+    issues.push("No outreach channel configured — set up Email (SMTP/API), WhatsApp or Voice Calls in Settings.");
   } else {
     if (!emailCfg) warnings.push("Email is not configured — leads with only an email address cannot be contacted.");
     if (!waCfg) warnings.push("WhatsApp is not configured — leads without an email cannot be contacted.");
+    if (!callReady) warnings.push(`Voice calls are not ready — sequence call steps will fail. ${voiceError}`);
   }
 
   const eligibleLeads = await countEligibleLeads(agentId);
@@ -50,7 +54,7 @@ export async function preflightCheck(agentId: string): Promise<PreflightResult> 
     issues,
     warnings,
     eligibleLeads,
-    channels: { email: !!emailCfg, whatsapp: !!waCfg },
+    channels: { email: !!emailCfg, whatsapp: !!waCfg, call: callReady },
   };
 }
 

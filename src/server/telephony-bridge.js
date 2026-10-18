@@ -18,6 +18,7 @@
 const WebSocket = require("ws");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const liveListen = require("./live-listen");
 
 const ELEVEN_API = "https://api.elevenlabs.io/v1/convai";
 const ELEVEN_CONNECT_TIMEOUT_MS = 15000;
@@ -287,8 +288,11 @@ function buildCallPrompt(cfg, vars, lead) {
     `- Talk only about THIS business: ${vars.company_name}, a ${vars.business_type}${vars.location ? ` in ${vars.location}` : ""}. Pick the 2–3 of our services that matter most to a ${vars.business_type} (for example online appointment booking, a website, Google visibility, WhatsApp automation) and explain the benefit for them in plain words. Never read out a list of services.`,
     vars.website ? "- They already have a website — ask how it is working for them before suggesting improvements." : "- They don't seem to have their own website — find out how customers find and book them today.",
     "- Never mention any other company or client by name, and never invent facts about their business.",
-    "- Goal: understand their situation, then offer a free 15-minute call with our team. If they agree, confirm a convenient day and time and say the details will come on WhatsApp.",
+    "- Goal: understand their situation, then offer a free 15-minute call with our team. If they agree, confirm a convenient day and time.",
+    "- When the lead asks for details/information on WhatsApp, or agrees to a meeting or callback, use the send_whatsapp_details tool with a short topic (what they need and any agreed day/time), then tell them you've sent it. If the tool reports a problem, say our team will share the details shortly. Never say you sent something unless the tool succeeded.",
     "- If they are busy, ask for a better time to call back. If they are not interested, thank them politely and end the call. If it is a wrong number, apologise and end the call.",
+    "- If you hear an automated phone menu, hold music or a recorded greeting (\"Press 1…\", \"Welcome to…\", \"Press 0 for operator\"), do not talk to it — end the call immediately.",
+    "- Whenever the conversation is over (goodbye, not interested, wrong number, meeting or callback confirmed), say one short goodbye and then use the end_call tool. Never keep the line open in silence.",
   );
   if (cfg.language) parts.push("## Language", LANGUAGE_RULES[cfg.language]);
   return parts.filter(Boolean).join("\n");
@@ -358,7 +362,8 @@ async function handlePlivoStream(plivoWs, req) {
 
   function addTurn(role, content) {
     const text = String(content || "").trim();
-    if (!text) return;
+    // ElevenLabs reports silence / unintelligible audio as "..." — not speech.
+    if (!text || /^[\s.…,!?-]*$/.test(text)) return;
     const turn = { role, content: text, timestamp: new Date() };
     transcript.push(turn);
     col("calls")
@@ -390,6 +395,26 @@ async function handlePlivoStream(plivoWs, req) {
       payload.conversation_config_override = { agent };
     }
     return payload;
+  }
+
+  /** Agent asked (mid-call) to WhatsApp our details to the lead — the Next app sends it. */
+  async function sendWhatsAppDetails(topic) {
+    try {
+      const res = await fetch(`${internalAppUrl()}/api/calls/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId, token, topic }),
+        signal: AbortSignal.timeout(18000),
+      });
+      const r = await res.json().catch(() => ({}));
+      if (r.ok) {
+        console.log(`[TelephonyBridge] WhatsApp details ${r.alreadySent ? "were already sent" : "sent"} for call ${callId}`);
+        return { ok: true, text: r.alreadySent ? "Already sent on WhatsApp earlier in this call." : "Sent on WhatsApp — the lead now has our website, booking link and contact details." };
+      }
+      return { ok: false, text: `Couldn't send the WhatsApp message (${r.error || "unknown error"}). Tell the lead our team will share the details with them shortly.` };
+    } catch (err) {
+      return { ok: false, text: "Couldn't send the WhatsApp message right now. Tell the lead our team will share the details with them shortly." };
+    }
   }
 
   async function hangupNow() {
@@ -463,13 +488,16 @@ async function handlePlivoStream(plivoWs, req) {
         case "audio": {
           const b64 = data.audio_event && data.audio_event.audio_base_64;
           if (b64 && !endRequested) {
-            sendToPlivo({ event: "playAudio", media: { contentType: "audio/x-mulaw", sampleRate: 8000, payload: elevenToPlivo(b64) } });
+            const mulaw = elevenToPlivo(b64);
+            sendToPlivo({ event: "playAudio", media: { contentType: "audio/x-mulaw", sampleRate: 8000, payload: mulaw } });
+            liveListen.broadcastAudio(callId, liveListen.CHANNEL_AGENT, Buffer.from(mulaw, "base64"));
           }
           break;
         }
         case "interruption":
           if (streamId) sendToPlivo({ event: "clearAudio", streamId });
           outputCarry = Buffer.alloc(0);
+          liveListen.broadcastControl(callId, { type: "clear" });
           break;
         case "user_transcript":
           addTurn("lead", data.user_transcription_event && data.user_transcription_event.user_transcript);
@@ -494,9 +522,16 @@ async function handlePlivoStream(plivoWs, req) {
           break;
         }
         case "client_tool_call": {
-          // No client tools are implemented on the phone bridge; tell the agent so it doesn't wait.
-          const toolCallId = data.client_tool_call && data.client_tool_call.tool_call_id;
-          if (toolCallId) ws.send(JSON.stringify({ type: "client_tool_result", tool_call_id: toolCallId, result: "Tool not available on phone calls", is_error: true }));
+          const tc = data.client_tool_call || {};
+          const reply = (result, isError) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "client_tool_result", tool_call_id: tc.tool_call_id, result, is_error: !!isError }));
+          };
+          if (!tc.tool_call_id) break;
+          if (tc.tool_name === "send_whatsapp_details") {
+            sendWhatsAppDetails((tc.parameters && tc.parameters.topic) || "").then((r) => reply(r.text, !r.ok));
+          } else {
+            reply("Tool not available on phone calls", true);
+          }
           break;
         }
         default:
@@ -544,6 +579,7 @@ async function handlePlivoStream(plivoWs, req) {
     finished = true;
     timers.forEach(clearTimeout);
     if (elevenWs) { try { elevenWs.close(); } catch {} }
+    liveListen.endListeners(callId);
     console.log(`[TelephonyBridge] Call ${callId} stream closed (${why}). Turns: ${transcript.length}`);
 
     try {
@@ -578,6 +614,7 @@ async function handlePlivoStream(plivoWs, req) {
         break;
       case "media": {
         const payload = msg.media && msg.media.payload;
+        if (payload) liveListen.broadcastAudio(callId, liveListen.CHANNEL_LEAD, Buffer.from(payload, "base64"));
         if (payload && elevenReady && inputFormat && elevenWs && elevenWs.readyState === WebSocket.OPEN) {
           elevenWs.send(JSON.stringify({ user_audio_chunk: plivoToEleven(payload, inputFormat) }));
         }

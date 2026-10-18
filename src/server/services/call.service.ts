@@ -3,14 +3,16 @@ import { Types } from "mongoose";
 import { Call, ICall, CallStatus, ACTIVE_CALL_STATUSES } from "@/lib/models/Call";
 import { Lead, ILead } from "@/lib/models/Lead";
 import { Activity } from "@/lib/models/Activity";
+import { Agent } from "@/lib/models/Agent";
 import { Conversation } from "@/lib/models/Conversation";
 import { Usage } from "@/lib/models/Usage";
 import { eventEmitter } from "@/lib/events";
 import { checkUsageLimit } from "@/lib/usage-check";
 import { currentMonth } from "@/lib/utils/date";
-import { makePlivoCall, normalizeDialableNumber } from "@/lib/plivo-service";
-import { getVoiceConfig, VoiceConfig } from "./settings.service";
-import { analyzeCallTranscript } from "./ai.service";
+import { makePlivoCall, normalizeDialableNumber, hangupPlivoCall, cancelPlivoRequest } from "@/lib/plivo-service";
+import { getVoiceConfig, VoiceConfig, getSettingsMap, getWhatsAppConfig } from "./settings.service";
+import { sendWhatsAppMessage } from "./whatsapp.service";
+import { analyzeCallTranscript, generateCallFollowUpWhatsApp } from "./ai.service";
 
 /** Providers whose lead calls run through Plivo + the ElevenLabs bridge. */
 const PLIVO_PROVIDERS = ["Plivo", "ElevenLabs Conversational AI"];
@@ -96,8 +98,10 @@ export async function placeAiCall(opts: {
   toNumber?: string;
   isTest?: boolean;
   req?: Request;
+  /** outreach counts the attempt itself (markSent) — avoid counting it twice */
+  countAttempt?: boolean;
 }): Promise<PlaceCallResult> {
-  const { agentId, lead, isTest = false } = opts;
+  const { agentId, lead, isTest = false, countAttempt = true } = opts;
   const cfg = await getVoiceConfig(agentId);
 
   const configError = voiceConfigError(cfg);
@@ -127,6 +131,11 @@ export async function placeAiCall(opts: {
   }
 
   if (lead) await expireStaleCalls({ leadId: lead._id }, cfg.maxDurationMin);
+  await expireStaleCalls({ agentId, to }, cfg.maxDurationMin);
+  // Duplicate leads often share a number — never ring the same phone twice at once.
+  if (await Call.exists({ agentId, to, active: true })) {
+    return { ok: false, status: 409, error: `+${to} is already on a call (possibly a duplicate lead with the same number).` };
+  }
 
   const token = crypto.randomBytes(24).toString("hex");
   let call: ICall;
@@ -188,7 +197,7 @@ export async function placeAiCall(opts: {
     if (lead.pipelineStage === "new") set.pipelineStage = "contacted";
     await Lead.updateOne({ _id: lead._id }, {
       $set: set,
-      $inc: { outreachAttempts: 1 },
+      ...(countAttempt ? { $inc: { outreachAttempts: 1 } } : {}),
       $push: { history: { field: "call", from: "—", to: `AI call placed to +${to}`, by: "AI Voice Agent", at: new Date() } },
     });
     await Activity.create({
@@ -200,6 +209,148 @@ export async function placeAiCall(opts: {
   }
 
   return { ok: true, status: 200, call: (await Call.findById(call._id))! };
+}
+
+/** Why this agent can't place AI calls right now, or null when it can (publish preflight). */
+export async function getVoiceSetupError(agentId: string): Promise<string | null> {
+  return voiceConfigError(await getVoiceConfig(agentId));
+}
+
+const SLOT_POLL_MS = 5000;
+
+/**
+ * Block until fewer than the agent's "Max Simultaneous Calls" are live, so a
+ * campaign dials leads one batch at a time instead of all at once.
+ * Returns an error message if no slot frees up in time.
+ */
+export async function waitForCallSlot(agentId: string): Promise<string | null> {
+  const cfg = await getVoiceConfig(agentId);
+  const deadline = Date.now() + (cfg.maxDurationMin + 3) * 60 * 1000;
+  for (;;) {
+    await expireStaleCalls({ agentId }, cfg.maxDurationMin);
+    const live = await Call.countDocuments({ agentId, active: true, isTest: { $ne: true } });
+    if (live < cfg.maxConcurrentCalls) return null;
+    if (Date.now() > deadline) return `Call queue timed out — ${live} call(s) still live.`;
+    await new Promise((r) => setTimeout(r, SLOT_POLL_MS));
+  }
+}
+
+/**
+ * The user pressed "End call": hang up a connected call, or cancel one that's
+ * still ringing. Plivo's hangup callback then closes the call out as usual.
+ */
+export async function endCallByUser(callId: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  const call = await Call.findById(callId);
+  if (!call) return { ok: false, status: 404, error: "Call not found" };
+  if (!call.active) return { ok: true, status: 200 }; // already over
+  const cfg = await getVoiceConfig(String(call.agentId));
+  if (!cfg.plivoAuthId || !cfg.plivoAuthToken) return { ok: false, status: 400, error: "Plivo credentials are not configured." };
+
+  await Call.updateOne({ _id: call._id }, { $set: { endedByUser: true } });
+  const ok = call.callUuid
+    ? await hangupPlivoCall(cfg.plivoAuthId, cfg.plivoAuthToken, call.callUuid)
+    : call.requestUuid
+      ? await cancelPlivoRequest(cfg.plivoAuthId, cfg.plivoAuthToken, call.requestUuid)
+      : false;
+  if (!ok) return { ok: false, status: 502, error: "Plivo didn't accept the hangup — try again." };
+
+  // Never dispatched to Plivo (no UUIDs) or already gone there: close it locally.
+  if (!call.callUuid && !call.requestUuid) {
+    await Call.updateOne({ _id: call._id, active: true }, { $set: { status: "canceled", active: false, endedAt: new Date() } });
+    await finalizeCall(String(call._id));
+  }
+  emitLeadUpdate(call.leadId);
+  return { ok: true, status: 200 };
+}
+
+const withScheme = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+
+/**
+ * Send the lead our details on WhatsApp because of a call — requested mid-call
+ * by the voice agent's send_whatsapp_details tool, or after the call when the
+ * transcript shows they asked for it. Sends at most once per call.
+ */
+export async function sendCallWhatsAppDetails(
+  callId: string,
+  topic: string,
+  source: "during_call" | "after_call",
+): Promise<{ ok: boolean; alreadySent?: boolean; error?: string }> {
+  const call = await Call.findById(callId);
+  if (!call) return { ok: false, error: "Call not found" };
+  if (call.whatsappSentAt) return { ok: true, alreadySent: true };
+  if (!call.leadId) return { ok: false, error: "Test calls don't send WhatsApp messages." };
+  const lead = await Lead.findById(call.leadId);
+  if (!lead) return { ok: false, error: "Lead not found" };
+  const agentId = String(call.agentId);
+
+  const fail = async (error: string) => {
+    await Call.updateOne({ _id: call._id }, { $set: { whatsappError: error.slice(0, 300) } });
+    emitLeadUpdate(lead._id);
+    return { ok: false, error };
+  };
+
+  const target = lead.phone || lead.whatsappLid;
+  if (!target) return fail("Lead has no WhatsApp number.");
+  const s = await getSettingsMap(agentId, ["whatsappEnabled", "businessWebsite", "calendlyLink", "docLink", "businessPhone", "callLanguage", "agentName"]);
+  if (s.whatsappEnabled === "false") return fail("WhatsApp is turned off in Settings → WhatsApp.");
+  const waCfg = await getWhatsAppConfig(agentId);
+  if (!waCfg) return fail("WhatsApp isn't configured (Settings → WhatsApp).");
+  if (!(await checkUsageLimit(agentId, "messagesSent", 1))) return fail("Monthly WhatsApp message limit reached for your plan.");
+
+  // Claim the send so the in-call tool and the after-call check can't both send.
+  const claimed = await Call.findOneAndUpdate(
+    { _id: call._id, $or: [{ whatsappSentAt: null }, { whatsappSentAt: { $exists: false } }] },
+    { $set: { whatsappSentAt: new Date() }, $unset: { whatsappError: "" } },
+  );
+  if (!claimed) return { ok: true, alreadySent: true };
+
+  const agent = await Agent.findById(agentId).select("name").lean();
+  const senderName = s.agentName || agent?.name || "our team";
+  const leadName = lead.fullName || lead.company || "there";
+  let body: string;
+  try {
+    body = await generateCallFollowUpWhatsApp(agentId, {
+      leadName, company: lead.company, topic, language: s.callLanguage || "English", senderName,
+    });
+  } catch {
+    body = `Hi ${leadName}, thank you for your time on the call today. As discussed, here are our details — happy to help you take your business online.`;
+  }
+  // Links/contacts are added verbatim, never written by the AI.
+  const details = [
+    s.businessWebsite && `🌐 Website: ${withScheme(s.businessWebsite)}`,
+    s.calendlyLink && `📅 Book a free call: ${s.calendlyLink}`,
+    s.docLink && withScheme(s.docLink) !== withScheme(s.businessWebsite || "") && `📄 Details: ${withScheme(s.docLink)}`,
+    s.businessPhone && `📞 Call us: ${s.businessPhone}`,
+  ].filter(Boolean);
+  const message = `${body}${details.length ? `\n\n${details.join("\n")}` : ""}\n\n– ${senderName}`;
+
+  try {
+    await sendWhatsAppMessage(waCfg, target, message);
+  } catch (err) {
+    await Call.updateOne({ _id: call._id }, { $set: { whatsappSentAt: null } });
+    const raw = err instanceof Error ? err.message : String(err);
+    const outsideWindow = /131047|re-?engagement|24 ?hour|outside the allowed window/i.test(raw);
+    return fail(outsideWindow
+      ? "Meta only allows free-form WhatsApp messages within 24h of the lead messaging you — an approved template is needed for this lead."
+      : `WhatsApp send failed: ${raw.slice(0, 200)}`);
+  }
+
+  await Usage.findOneAndUpdate({ agentId, month: currentMonth() }, { $inc: { messagesSent: 1 } }, { upsert: true });
+  await Conversation.findOneAndUpdate(
+    { leadId: lead._id, channel: "whatsapp" },
+    {
+      $setOnInsert: { agentId: call.agentId },
+      $push: { messages: { role: "agent", content: message, timestamp: new Date(), meta: { type: "call_follow_up", callId: String(call._id) } } },
+    },
+    { upsert: true }
+  );
+  await Activity.create({
+    agentId, leadId: lead._id, leadName: lead.fullName || "Lead", channel: "whatsapp",
+    event: source === "during_call" ? "WhatsApp details sent during call" : "WhatsApp details sent after call",
+    detail: message.slice(0, 2000),
+  });
+  emitLeadUpdate(lead._id);
+  return { ok: true };
 }
 
 /** Record a call the user is placing from their own phone (tel: link). */
@@ -370,12 +521,14 @@ export async function finalizeCall(callId: string) {
   const agentId = String(call.agentId);
   const leadSpoke = call.transcript.some((t) => t.role === "lead" && t.content.trim().length > 0);
 
+  let whatsappTopic: string | null = null;
   if (call.status === "completed" && leadSpoke) {
     try {
       const analysis = await analyzeCallTranscript(agentId, call.transcript);
       call.summary = analysis.summary;
       call.sentiment = analysis.sentiment;
       call.outcome = analysis.outcome;
+      if (analysis.whatsappFollowUp) whatsappTopic = analysis.followUpTopic || analysis.summary;
     } catch (err) {
       console.error("[Call] transcript analysis failed:", err instanceof Error ? err.message : err);
     }
@@ -435,4 +588,10 @@ export async function finalizeCall(callId: string) {
     { upsert: true }
   );
   emitLeadUpdate(lead._id);
+
+  // The lead asked for details / a meeting was agreed, and the agent didn't send them mid-call.
+  if (whatsappTopic && !call.whatsappSentAt) {
+    await sendCallWhatsAppDetails(String(call._id), whatsappTopic, "after_call")
+      .catch((err) => console.error("[Call] after-call WhatsApp failed:", err));
+  }
 }

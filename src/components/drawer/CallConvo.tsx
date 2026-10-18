@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import {
-  IconPhone, IconPhoneCall, IconMicrophone, IconChevronDown, IconChevronRight, IconAlertTriangle, IconLoader2,
+  IconPhone, IconPhoneCall, IconPhoneOff, IconMicrophone, IconBrandWhatsapp, IconChevronDown, IconChevronRight, IconAlertTriangle, IconLoader2,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, CallRecord, CallStatus } from "@/store/types";
 import { formatDateTime } from "@/lib/utils/date";
+import LiveListenButton from "./LiveListenButton";
 
 interface Props {
   lead: Lead;
@@ -33,6 +34,16 @@ export const CALL_STATUS_META: Record<CallStatus, { label: string; color: string
 
 const SENTIMENT_COLOR: Record<string, string> = { positive: "#22c97a", neutral: "var(--color-text2)", negative: "#ff6b6b" };
 
+/** Older transcripts saved ElevenLabs' "..." (silence) as if it were speech. */
+function isSpokenTurn(t: { content: string }) {
+  return !/^[\s.…,!?-]*$/.test(t.content);
+}
+
+/** ElevenLabs expressive models put delivery cues like "[smiling]" in the transcript — not spoken words. */
+function stripVoiceTags(text: string) {
+  return text.replace(/\[[a-z][a-z\s-]{1,24}\]\s*/gi, "").trim() || text;
+}
+
 export function fmtDuration(sec?: number) {
   const s = Math.max(0, Math.round(sec || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -53,6 +64,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
   const [calls, setCalls] = useState<CallRecord[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [dialing, setDialing] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const activeCall = calls?.find((c) => ACTIVE.includes(c.status));
@@ -101,6 +113,24 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
     }
   }
 
+  async function endCall(call: CallRecord) {
+    if (ending) return;
+    const ringing = call.status !== "in_progress";
+    if (!confirm(ringing ? `Cancel the call to ${lead.fullName}?` : `Hang up the call with ${lead.fullName} now?`)) return;
+    setEnding(true);
+    try {
+      const res = await fetch(`/api/voice/hangup?callId=${call._id}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't end the call");
+      showToast(ringing ? "Call canceled" : "Call ended", "success");
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Couldn't end the call", "error");
+    } finally {
+      setEnding(false);
+    }
+  }
+
   const latestId = calls?.[0]?._id;
   const isOpen = (c: CallRecord) => expanded[c._id] ?? c._id === latestId;
 
@@ -138,6 +168,22 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                 ? `Live · ${fmtDuration(activeCall.answeredAt ? (now - new Date(activeCall.answeredAt).getTime()) / 1000 : 0)}`
                 : `${CALL_STATUS_META[activeCall.status].label}… +${activeCall.to}`}
             </span>
+            {activeCall.mode === "ai" && (
+              <div className="ml-auto flex items-center gap-1.5">
+                {/* audio starts flowing once the lead picks up */}
+                <LiveListenButton key={activeCall._id} callId={activeCall._id} live={!!activeCall} />
+                <button
+                  onClick={() => endCall(activeCall)}
+                  disabled={ending}
+                  className="inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-[11.5px] font-semibold text-white transition-all"
+                  style={{ background: ending ? "var(--color-bg4)" : "#e5484d", cursor: ending ? "wait" : "pointer" }}
+                  title={activeCall.status === "in_progress" ? "Hang up this call now" : "Cancel this call before it's answered"}
+                >
+                  {ending ? <IconLoader2 size={13} className="animate-spin" /> : <IconPhoneOff size={13} />}
+                  {activeCall.status === "in_progress" ? "End call" : "Cancel"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -221,7 +267,21 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                   <p className="text-[12.5px] leading-[1.55] mb-2.5" style={{ color: "var(--color-text2)" }}>{c.summary}</p>
                 )}
 
-                {!live && c.hangupCause && c.status !== "completed" && (
+                {c.whatsappSentAt ? (
+                  <div className="flex items-center gap-1.5 text-[11.5px] mb-2" style={{ color: "#22c97a" }}>
+                    <IconBrandWhatsapp size={13} /> WhatsApp details sent to the lead ({formatDateTime(c.whatsappSentAt)})
+                  </div>
+                ) : c.whatsappError ? (
+                  <div className="flex items-start gap-1.5 text-[11.5px] mb-2" style={{ color: "#f5a623" }}>
+                    <IconBrandWhatsapp size={13} className="flex-shrink-0 mt-[1px]" /> WhatsApp details not sent: {c.whatsappError}
+                  </div>
+                ) : null}
+
+                {c.endedByUser && !live && (
+                  <p className="text-[11.5px] mb-2" style={{ color: "var(--color-text3)" }}>You ended this call from the CRM.</p>
+                )}
+
+                {!live && c.hangupCause && c.status !== "completed" && !c.endedByUser && (
                   <p className="text-[11.5px] mb-2" style={{ color: "var(--color-text3)" }}>Reason: {c.hangupCause}</p>
                 )}
 
@@ -236,9 +296,9 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                   <audio controls preload="none" src={c.recordingUrl} className="w-full mb-2.5" style={{ height: 34 }} />
                 )}
 
-                {c.transcript?.length > 0 ? (
+                {c.transcript?.some(isSpokenTurn) ? (
                   <div className="mt-1">
-                    {c.transcript.map((t, i) => (
+                    {c.transcript.filter(isSpokenTurn).map((t, i) => (
                       <div key={i} className={`flex flex-col mb-2 ${t.role === "agent" ? "items-end" : "items-start"}`}>
                         <div
                           className="max-w-[85%] px-3 py-2 rounded-xl text-[12.5px] leading-[1.5] border"
@@ -248,7 +308,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                               : { background: "var(--color-bg)", color: "var(--color-text)", borderColor: "rgba(0,0,0,0.1)" }
                           }
                         >
-                          {t.content}
+                          {stripVoiceTags(t.content)}
                         </div>
                         <span className="text-[10.5px] mt-0.5" style={{ color: "var(--color-text3)" }}>
                           {t.role === "agent" ? "Agent" : lead.fullName}

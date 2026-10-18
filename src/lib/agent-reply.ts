@@ -11,6 +11,7 @@ import { checkUsageLimit } from "@/lib/usage-check";
 import { getWhatsAppConfig } from "@/server/services/settings.service";
 import { sendWhatsAppMessage } from "@/server/services/whatsapp.service";
 import { sendSms } from "@/server/services/sms.service";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 export async function handleAgentReply(
   lead: any,
@@ -72,7 +73,7 @@ export async function handleAgentReply(
     }
 
     const apiKey = settingsMap.llmApiKey || process.env.GROQ_API_KEY || "";
-    const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+    const model = resolveGroqModel(process.env.GROQ_MODEL);
 
     if (!apiKey) {
       console.warn("Auto Agent Reply: LLM API key not configured");
@@ -155,6 +156,7 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
+        ...groqModelParams(model),
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens: 300,

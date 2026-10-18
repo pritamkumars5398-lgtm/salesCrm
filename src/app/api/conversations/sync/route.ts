@@ -10,6 +10,7 @@ import { handleAgentReply } from "@/lib/agent-reply";
 import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
 import { getAppBaseUrl } from "@/server/services/settings.service";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 function cleanEmailBody(body: string): string {
   if (!body) return "";
@@ -71,7 +72,7 @@ async function sendAutomatedFollowUp(lead: any, agentId: string, followUpNum: nu
     settingsRows.forEach((r) => { settingsMap[r.key] = r.value; });
 
     const apiKey = settingsMap.llmApiKey || process.env.GROQ_API_KEY || "";
-    const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+    const model = resolveGroqModel(process.env.GROQ_MODEL);
     
     if (!apiKey) {
       console.warn("Automated Follow-up: LLM API key not configured");
@@ -127,6 +128,7 @@ Return ONLY valid JSON format:
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
+        ...groqModelParams(model),
         messages: [{ role: "user", content: prompt }],
         temperature: 0.4,
         max_tokens: 300,

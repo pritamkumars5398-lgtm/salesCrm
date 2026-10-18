@@ -43,10 +43,18 @@ export async function POST(req: Request) {
       { $set: { userEmail: normalizedEmail } }
     );
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       name: user.name,
       email: user.email,
     }, { status: 200 });
+
+    response.cookies.set("sa_auth", "1", {
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: "lax",
+    });
+
+    return response;
   } catch (err: any) {
     console.error("[Login API Error]", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });

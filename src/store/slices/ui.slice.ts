@@ -28,6 +28,10 @@ export interface UiSlice {
   sidebarOpenMobile: boolean;
   setSidebarOpenMobile: (open: boolean) => void;
 
+  /** AI assistant side panel */
+  assistantOpen: boolean;
+  setAssistantOpen: (open: boolean) => void;
+
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
 
@@ -66,6 +70,9 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
 
   sidebarOpenMobile: false,
   setSidebarOpenMobile: (open) => set({ sidebarOpenMobile: open }),
+
+  assistantOpen: false,
+  setAssistantOpen: (open) => set({ assistantOpen: open }),
 
   sidebarCollapsed: false,
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),

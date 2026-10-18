@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY ?? "";
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+const GROQ_MODEL = resolveGroqModel(process.env.GROQ_MODEL);
 
 export interface GenerateEmailRequest {
   firstName: string;
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       model: GROQ_MODEL,
+      ...groqModelParams(GROQ_MODEL),
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
       max_tokens: 512,

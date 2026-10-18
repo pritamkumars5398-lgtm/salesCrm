@@ -14,6 +14,7 @@ const next = require("next");
 const WebSocket = require("ws");
 const mongoose = require("mongoose");
 const { handlePlivoStream } = require("./src/server/telephony-bridge");
+const { handleListener } = require("./src/server/live-listen");
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
@@ -57,12 +58,20 @@ app.prepare().then(() => {
     });
   });
 
-  const isPlivoUpgrade = (req) => parse(req.url || "").pathname === "/ws/plivo";
+  // Browsers listening to live calls (see src/server/live-listen.js)
+  const listenWss = new WebSocket.Server({ noServer: true });
+  listenWss.on("connection", (ws, req) => {
+    handleListener(ws, req).catch(() => { try { ws.close(); } catch {} });
+  });
 
-  function handlePlivoUpgrade(req, socket, head) {
-    if (!isPlivoUpgrade(req)) return; // Next.js HMR etc. are handled by Next's own listener
-    plivoWss.handleUpgrade(req, socket, head, (ws) => {
-      plivoWss.emit("connection", ws, req);
+  const OWN_WS_PATHS = { "/ws/plivo": plivoWss, "/ws/listen": listenWss };
+  const isOwnUpgrade = (req) => !!OWN_WS_PATHS[parse(req.url || "").pathname];
+
+  function handleOwnUpgrade(req, socket, head) {
+    const wss = OWN_WS_PATHS[parse(req.url || "").pathname];
+    if (!wss) return; // Next.js HMR etc. are handled by Next's own listener
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
     });
   }
 
@@ -72,12 +81,12 @@ app.prepare().then(() => {
   for (const method of ["on", "addListener", "prependListener"]) {
     const original = server[method].bind(server);
     server[method] = (event, listener) =>
-      event === "upgrade" && listener !== handlePlivoUpgrade
-        ? original(event, (req, socket, head) => { if (!isPlivoUpgrade(req)) listener(req, socket, head); })
+      event === "upgrade" && listener !== handleOwnUpgrade
+        ? original(event, (req, socket, head) => { if (!isOwnUpgrade(req)) listener(req, socket, head); })
         : original(event, listener);
   }
 
-  server.on("upgrade", handlePlivoUpgrade);
+  server.on("upgrade", handleOwnUpgrade);
 
   server.listen(port, () => {
     console.log(`====================================================`);

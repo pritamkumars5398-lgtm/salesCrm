@@ -43,7 +43,7 @@ export default function Crons() {
   const queryClient = useQueryClient();
   const cronsKey = ["crons", activeAgent?._id];
 
-  const { data, isPending: loading } = useQuery({
+  const { data, isLoading: loading } = useQuery({
     queryKey: cronsKey,
     queryFn: () => fetch(`/api/crons?agentId=${activeAgent!._id}`).then((r) => r.json()),
     enabled: !!activeAgent,

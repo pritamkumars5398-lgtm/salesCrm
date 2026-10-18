@@ -11,7 +11,7 @@ export default function Calendar() {
   const [provider, setProvider] = useState("cal.com");
   const [apiKey, setApiKey] = useState("");
 
-  const { data, isPending: loading } = useQuery({
+  const { data, isLoading: loading } = useQuery({
     queryKey: ["meetings", activeAgent?._id],
     queryFn: () => fetch(`/api/meetings?agentId=${activeAgent!._id}`).then((r) => r.json()),
     enabled: !!activeAgent,

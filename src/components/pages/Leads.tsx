@@ -322,9 +322,13 @@ export default function Leads({ onAddLead }: Props) {
           lastContactedAt: new Date().toISOString() 
         });
         showToast(
-          data.channel === "whatsapp"
-            ? `WhatsApp message sent to ${lead.fullName} (no email — used WhatsApp)`
-            : `AI email sent to ${lead.fullName}!`,
+          data.channel === "call"
+            ? `📞 AI call started to ${lead.fullName} — follow it in Voice or the lead's Call tab`
+            : data.channel === "whatsapp"
+              ? `WhatsApp message sent to ${lead.fullName}`
+              : data.channel === "sms"
+                ? `SMS sent to ${lead.fullName}`
+                : `AI email sent to ${lead.fullName}!`,
           "success"
         );
       } else if (data.skipped) {

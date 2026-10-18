@@ -7,10 +7,11 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { sendSms } from "./sms.service";
+import { placeAiCall, waitForCallSlot } from "./call.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 import { eventEmitter } from "@/lib/events";
 
-export type OutreachChannel = "email" | "whatsapp" | "sms";
+export type OutreachChannel = "email" | "whatsapp" | "sms" | "call";
 
 export interface ChannelResult {
   channel: OutreachChannel;
@@ -145,39 +146,46 @@ function buildResponseButtonsHtml(baseUrl: string, leadId: string): string {
 
 /**
  * Which channels to use for the first touch:
- * - If the lead is attached to a sequence, use the channels of the earliest
- *   step(s) — steps sharing the same dayOffset+sendTime fire together, so a
- *   sequence with email AND WhatsApp at the same time sends BOTH.
- * - Otherwise: email preferred, WhatsApp as fallback when there is no email.
+ * - If the lead is attached to a sequence (its own, or the agent's), use exactly
+ *   the channels of the earliest step(s) — steps sharing the same
+ *   dayOffset+sendTime fire together. Never substitute a different channel: a
+ *   call-only sequence must not send WhatsApp. If the lead lacks the contact
+ *   detail a step needs, the result says so.
+ * - Without a sequence: email preferred, then WhatsApp, then SMS.
  */
-async function channelsForLead(lead: ILead): Promise<OutreachChannel[]> {
+async function channelsForLead(lead: ILead): Promise<{ channels: OutreachChannel[]; error?: string }> {
   const canEmail = !!lead.email;
   const canWhatsApp = !!(lead.phone || lead.whatsappLid);
-  const canSms = !!lead.phone;
+  const canPhone = !!lead.phone;
+  const usable = (c: OutreachChannel) =>
+    c === "email" ? canEmail : c === "whatsapp" ? canWhatsApp : canPhone;
 
-  // Check lead's specific sequence, or fall back to agent's sequence
+  // Lead's own sequence, else the agent's active one — the most recently updated,
+  // which is the one the Sequence page shows and edits.
   const seq = lead.sequenceId
     ? await Sequence.findById(lead.sequenceId).lean()
-    : await Sequence.findOne({ agentId: lead.agentId }).lean();
+    : await Sequence.findOne({ agentId: lead.agentId }).sort({ updatedAt: -1 }).lean();
 
   if (seq?.steps?.length) {
     const sorted = [...seq.steps].sort(
       (a, b) => a.dayOffset - b.dayOffset || a.sendTime.localeCompare(b.sendTime)
     );
     const first = sorted[0];
-    const sameSlot = sorted.filter(
-      (s) => s.dayOffset === first.dayOffset && s.sendTime === first.sendTime
-    );
-    const channels = [...new Set(sameSlot.map((s) => s.channel))]
-      .filter((c): c is OutreachChannel => c === "email" || c === "whatsapp" || c === "sms")
-      .filter((c) => (c === "email" ? canEmail : c === "whatsapp" ? canWhatsApp : canSms));
-    if (channels.length > 0) return channels;
+    const wanted = [...new Set(
+      sorted
+        .filter((s) => s.dayOffset === first.dayOffset && s.sendTime === first.sendTime)
+        .map((s) => s.channel as OutreachChannel)
+    )];
+    const channels = wanted.filter(usable);
+    if (channels.length > 0) return { channels };
+    const needs = wanted.map((c) => (c === "email" ? "an email address" : c === "whatsapp" ? "a WhatsApp number" : "a phone number"));
+    return { channels: [], error: `Sequence step needs ${[...new Set(needs)].join(" or ")}, which this lead doesn't have.` };
   }
 
-  if (canEmail) return ["email"];
-  if (canWhatsApp) return ["whatsapp"];
-  if (canSms) return ["sms"];
-  return [];
+  if (canEmail) return { channels: ["email"] };
+  if (canWhatsApp) return { channels: ["whatsapp"] };
+  if (canPhone) return { channels: ["sms"] };
+  return { channels: [], error: "Lead has no email or phone number." };
 }
 
 /**
@@ -225,10 +233,10 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
   }
 
   const info = leadInfo(lead, opts.senderName);
-  const channels = await channelsForLead(lead);
+  const { channels, error: channelError } = await channelsForLead(lead);
 
   if (channels.length === 0) {
-    const error = "Lead has no email or phone number.";
+    const error = channelError ?? "Lead has no email or phone number.";
     await markFailed(leadId, error);
     return { sent: false, skipped: false, channel: null, error };
   }
@@ -285,6 +293,17 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
           channelResults.push({ channel, sent: false, error });
           await logOutreach(lead, agentId, "whatsapp", false, message, error);
         }
+      } else if (channel === "call") {
+        // Respect "Max Simultaneous Calls" — a campaign dials in batches, not all at once.
+        // A manual single-lead start (force) dials right away.
+        const slotError = opts.force ? null : await waitForCallSlot(agentId);
+        if (slotError) {
+          channelResults.push({ channel, sent: false, error: slotError });
+          continue;
+        }
+        const result = await placeAiCall({ agentId, lead, countAttempt: false });
+        // placeAiCall logs its own activity, lead history and call record.
+        channelResults.push(result.ok ? { channel, sent: true } : { channel, sent: false, error: result.error });
       } else if (channel === "sms") {
         const target = lead.phone;
         if (!target) {

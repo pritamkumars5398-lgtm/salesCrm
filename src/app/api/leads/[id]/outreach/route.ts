@@ -5,7 +5,8 @@ import { getAppBaseUrl } from "@/server/services/settings.service";
 
 /**
  * POST /api/leads/[id]/outreach
- * Sends one AI outreach message (email preferred, WhatsApp fallback).
+ * Starts outreach for one lead on its sequence's first-step channel(s) — email,
+ * WhatsApp, SMS, or an AI voice call (no sequence: email, then WhatsApp, then SMS).
  *
  * Responses:
  *  200 { sent: true,  channel, subject?, body }         — delivered

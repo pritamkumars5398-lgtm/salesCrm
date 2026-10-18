@@ -7,6 +7,7 @@ export interface Agent {
   name: string;
   status: "active" | "inactive";
   leadCount: number;
+  userEmail?: string;
 }
 
 export interface LeadNote {
@@ -84,6 +85,9 @@ export interface CallRecord {
   sentiment?: "positive" | "neutral" | "negative";
   outcome?: string;
   error?: string;
+  endedByUser?: boolean;
+  whatsappSentAt?: string | null;
+  whatsappError?: string;
   createdAt: string;
 }
 

@@ -16,11 +16,29 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set) 
   login: (name, email) => {
     localStorage.setItem("sa_user", JSON.stringify({ name, email }));
     document.cookie = "sa_auth=1; path=/; max-age=2592000; SameSite=Lax";
-    set({ isAuthed: true, userName: name, userEmail: email });
+    set({
+      isAuthed: true,
+      userName: name,
+      userEmail: email,
+      agentsLoaded: false,
+      agents: [],
+      activeAgent: null,
+    });
   },
   logout: () => {
     localStorage.removeItem("sa_user");
     document.cookie = "sa_auth=; path=/; max-age=0";
-    set({ isAuthed: false, userName: "", userEmail: "", agents: [], activeAgent: null, leads: [] });
+    set({
+      isAuthed: false,
+      userName: "",
+      userEmail: "",
+      agents: [],
+      activeAgent: null,
+      agentsLoaded: false,
+      leads: [],
+      dashboardStats: null,
+      dashboardRecentLeads: [],
+      dashboardRecentActivity: [],
+    });
   },
 });

@@ -19,10 +19,11 @@ export async function POST(req: Request) {
   if (!body.agentId) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
+  // Same "active" sequence the UI and outreach use: the most recently updated one.
   const sequence = await Sequence.findOneAndUpdate(
     { agentId: body.agentId },
     body,
-    { upsert: true, new: true }
+    { upsert: true, new: true, sort: { updatedAt: -1 } }
   );
   return NextResponse.json(sequence, { status: 200 });
 }
