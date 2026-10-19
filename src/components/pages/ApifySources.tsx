@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   IconMap, IconBrandLinkedin, IconSearch, IconCode, IconCheck,
   IconChevronDown, IconChevronUp, IconKey, IconPlayerPlay, IconCircleFilled, IconCopy,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import SettingsToggle from "@/components/settings/SettingsToggle";
+import LeadFilterPanel from "@/components/settings/LeadFilterPanel";
 
 // ─── Scraper Definitions ────────────────────────────────────────────────────
 
@@ -35,8 +37,9 @@ const SCRAPERS: ScraperDef[] = [
     actorLink: "https://apify.com/compass/crawler-google-places",
     fields: [
       { label: "Search Keyword", key: "gmKeyword", placeholder: "e.g. Carpenter, Plumber, Electrician", hint: "Combined with location → search query", syncType: "keyword" },
+      { label: "Extra Search Terms (optional)", key: "gmExtraKeywords", placeholder: "e.g. budget hotel, guest house, lodge, boutique hotel", hint: "Comma or newline separated. Searches extra terms to find real independent businesses" },
       { label: "Location", key: "gmLocation", placeholder: "e.g. Lucknow, Mumbai, Delhi NCR", syncType: "location" },
-      { label: "Max Results", key: "gmMaxResults", placeholder: "25", hint: "Max businesses to scrape per run (1–100)" },
+      { label: "Max Results", key: "gmMaxResults", placeholder: "25", hint: "Max businesses to scrape per search term (1–100)" },
       { label: "Actor ID", key: "gmActorId", placeholder: "nwua9Gu5YrADL7ZDj", hint: "Leave blank to use default stable actor" },
     ],
   },
@@ -331,8 +334,12 @@ function ScraperCard({
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
-export default function ApifySources() {
+export default function ApifySources({ agentId: propAgentId }: { agentId?: string } = {}) {
+  const pathname = usePathname();
   const { activeAgent, agents, showToast } = useAppStore();
+  const routeAgentId = pathname ? pathname.split("/")[2] : "";
+  const agentId = propAgentId || activeAgent?._id || routeAgentId || (agents[0]?._id ?? "");
+  const currentAgent = activeAgent || agents.find((a) => a._id === agentId) || agents[0];
   const [values, setValues] = useState<Record<string, string>>({});
   const [agentSettings, setAgentSettings] = useState<Record<string, string>>({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
@@ -349,8 +356,8 @@ export default function ApifySources() {
   ];
 
   useEffect(() => {
-    if (!activeAgent) return;
-    fetch(`/api/settings?agentId=${activeAgent._id}`)
+    if (!agentId) return;
+    fetch(`/api/settings?agentId=${agentId}`)
       .then((r) => r.json())
       .then((data) => {
         setAgentSettings(data);
@@ -369,7 +376,7 @@ export default function ApifySources() {
         setValues(filtered);
         setApifyScraperEnabled(filtered.apifyScraperEnabled !== "false");
       });
-  }, [activeAgent?._id]);
+  }, [agentId]);
 
   function patchValues(patch: Record<string, string>) {
     setValues((prev) => ({ ...prev, ...patch }));
@@ -574,85 +581,19 @@ export default function ApifySources() {
         </div>
       </div>
 
-      {/* Copy settings from another agent (Commented out for single-agent mode)
-      {agents.length > 1 && (
-        <div
-          style={{
-            background: "var(--color-bg2)",
-            border: "1px solid var(--color-bg4)",
-            borderRadius: 14,
-            padding: "16px 20px",
-            marginBottom: 24,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
+      {/* Ideal Customer Filter (Brand Exclusions & Quality) */}
+      {agentId ? (
+        <LeadFilterPanel
+          agentId={agentId}
+          filterString={agentSettings.leadFilter}
+          industry={agentSettings.industry}
+          businessName={agentSettings.brandName || currentAgent?.name}
+          onSaved={(f) => {
+            setAgentSettings((prev) => ({ ...prev, leadFilter: JSON.stringify(f) }));
           }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <IconCopy size={15} style={{ color: "#df2a2a" }} />
-            </span>
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Copy Settings from Another Agent</p>
-              <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Load Apify token or full scraper config from another agent</p>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <select
-              value={copySourceAgentId}
-              onChange={(e) => setCopySourceAgentId(e.target.value)}
-              style={{
-                flex: 1, minWidth: 140, padding: "8px 12px", borderRadius: 9,
-                border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
-                color: "var(--color-text)", fontSize: 12.5, outline: "none", fontFamily: "inherit",
-              }}
-            >
-              <option value="">Select agent…</option>
-              {agents
-                .filter((a) => a._id !== activeAgent?._id)
-                .map((a) => (
-                  <option key={a._id} value={a._id}>{a.name}</option>
-                ))}
-            </select>
-
-            <button
-              disabled={!copySourceAgentId}
-              onClick={() => handleCopyApifySettings("token")}
-              style={{
-                padding: "8px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 600,
-                border: "1px solid var(--color-bg4)", background: "var(--color-bg2)",
-                color: "var(--color-text2)", cursor: copySourceAgentId ? "pointer" : "not-allowed",
-                opacity: copySourceAgentId ? 1 : 0.5, transition: "opacity 0.15s",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Token only
-            </button>
-
-            <button
-              disabled={!copySourceAgentId}
-              onClick={() => handleCopyApifySettings("all")}
-              style={{
-                padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700,
-                border: "none", background: "linear-gradient(135deg,#df2a2a,#f24444)",
-                color: "#fff", cursor: copySourceAgentId ? "pointer" : "not-allowed",
-                opacity: copySourceAgentId ? 1 : 0.5, transition: "opacity 0.15s",
-                whiteSpace: "nowrap",
-              }}
-            >
-              All Apify config
-            </button>
-          </div>
-
-          {copySourceAgentId && (
-            <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>
-              Settings are loaded locally — click <strong>Save</strong> on each scraper card (or <strong>Save</strong> on the token) to persist them.
-            </p>
-          )}
-        </div>
-      )}
-      */}
+          showToast={showToast}
+        />
+      ) : null}
 
       {/* Section label */}
       <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>

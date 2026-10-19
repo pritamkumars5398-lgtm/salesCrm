@@ -10,6 +10,7 @@ import { sendSms } from "./sms.service";
 import { placeAiCall, waitForCallSlot } from "./call.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 import { leadAiContext } from "./playbook.service";
+import { getLeadHistory, historyPromptBlock } from "./lead-history.service";
 import { eventEmitter } from "@/lib/events";
 
 export type OutreachChannel = "email" | "whatsapp" | "sms" | "call";
@@ -80,6 +81,35 @@ function leadInfo(lead: ILead, senderName?: string) {
     notes: lead.notes?.map(n => n.text) || [],
     senderName,
   };
+}
+
+/** Everything the outreach writers need about a lead: facts, custom fields, group guidance, history. */
+async function outreachInfo(lead: ILead, agentId: string, senderName?: string) {
+  // Extra context only sharpens the message — never let it block a claimed send.
+  const [extra, history] = await Promise.all([
+    leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" })),
+    getLeadHistory(lead._id, { maxChars: 3000 }).catch(() => null),
+  ]);
+  return {
+    ...leadInfo(lead, senderName),
+    facts: extra.facts,
+    groupGuidance: extra.groupGuidance,
+    history: history ? historyPromptBlock(history) : "",
+  };
+}
+
+/** Write (don't send) the first outreach message for a channel — exactly what a real send would use. */
+export async function draftOutreachMessage(lead: ILead, channel: "email" | "whatsapp" | "sms"): Promise<{ subject?: string; body: string }> {
+  const agentId = String(lead.agentId);
+  // Real runs sign with the workspace name (campaign senderName) — do the same here.
+  const agent = await Agent.findById(agentId).select("name").lean();
+  const info = await outreachInfo(lead, agentId, agent?.name);
+  if (channel === "email") {
+    const cfg = await getEmailConfig(agentId);
+    return generateOutreachEmail(agentId, { ...info, senderName: cfg?.fromName || agent?.name || "our team" });
+  }
+  // SMS reuses the short-form WhatsApp writer, as the live send does.
+  return { body: await generateWhatsAppMessage(agentId, info) };
 }
 
 async function markFailed(leadId: string, error: string) {
@@ -233,9 +263,7 @@ export async function sendOutreachToLead(leadId: string, opts: OutreachOptions =
     return { sent: false, skipped: true, channel: null, error: "Outreach already in progress for this lead." };
   }
 
-  // Extra context only sharpens the message — never let it block a claimed send.
-  const extra = await leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" }));
-  const info = { ...leadInfo(lead, opts.senderName), facts: extra.facts, groupGuidance: extra.groupGuidance };
+  const info = await outreachInfo(lead, agentId, opts.senderName);
   const { channels, error: channelError } = await channelsForLead(lead);
 
   if (channels.length === 0) {

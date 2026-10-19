@@ -15,6 +15,7 @@ import { sendWhatsAppMessage } from "./whatsapp.service";
 import { analyzeCallTranscript, generateCallFollowUpWhatsApp } from "./ai.service";
 import { buildCallInstructions } from "./call-prompt";
 import { applyAiFieldValues } from "./playbook.service";
+import { getLeadHistory } from "./lead-history.service";
 
 /** Providers whose lead calls run through Plivo + the ElevenLabs bridge. */
 const PLIVO_PROVIDERS = ["Plivo", "ElevenLabs Conversational AI"];
@@ -320,8 +321,10 @@ export async function sendCallWhatsAppDetails(
   const leadName = lead.fullName || lead.company || "there";
   let body: string;
   try {
+    const history = await getLeadHistory(lead._id, { maxChars: 1500 }).catch(() => null);
     body = await generateCallFollowUpWhatsApp(agentId, {
       leadName, company: lead.company, topic, language: s.callLanguage || "English", senderName,
+      history: history?.hasHistory ? history.timeline : undefined,
     });
   } catch {
     body = `Hi ${leadName}, thank you for your time on the call today. As discussed, here are our details — happy to help you take your business online.`;

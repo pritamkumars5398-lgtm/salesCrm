@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/useAppStore";
 import type { Lead, CallRecord, CallStatus } from "@/store/types";
 import { formatDateTime } from "@/lib/utils/date";
 import LiveListenButton from "./LiveListenButton";
+import PracticeCallModal from "@/components/voice/PracticeCallModal";
 
 interface Props {
   lead: Lead;
@@ -21,7 +22,9 @@ const ACTIVE = ACTIVE_CALL_STATUSES;
 
 export const CALL_STATUS_META: Record<CallStatus, { label: string; color: string; bg: string }> = {
   queued:      { label: "Dialing",     color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
-  ringing:     { label: "Ringing",     color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
+  // Plivo's "ring" event means the phone network is trying the number — not
+  // that the handset is actually ringing (blocked/DND/switched-off phones report it too).
+  ringing:     { label: "Connecting",  color: "#f5a623", bg: "rgba(245,166,35,0.12)" },
   in_progress: { label: "Live",        color: "#22c97a", bg: "rgba(34,201,122,0.14)" },
   completed:   { label: "Completed",   color: "#22c97a", bg: "rgba(34,201,122,0.12)" },
   no_answer:   { label: "No answer",   color: "#94a3b8", bg: "rgba(148,163,184,0.14)" },
@@ -31,6 +34,19 @@ export const CALL_STATUS_META: Record<CallStatus, { label: string; color: string
   voicemail:   { label: "Voicemail",   color: "#cc99ff", bg: "rgba(204,153,255,0.12)" },
   logged:      { label: "Manual call", color: "#4dabf7", bg: "rgba(77,171,247,0.12)" },
 };
+
+/** Plivo hangup causes in plain words, with what to do about them. */
+function explainHangup(cause: string): string {
+  const c = cause.toLowerCase();
+  if (c.includes("reject")) return "The phone network rejected the call — the number may be switched off, out of coverage, on DND, or blocking unknown / business numbers (call-blocking apps like Truecaller do this too). The phone never rang.";
+  if (c.includes("busy")) return "The line was busy.";
+  if (c.includes("no answer") || c.includes("timeout")) return "It rang but nobody picked up.";
+  if (c.includes("cancel")) return "Cancelled before it was answered.";
+  if (c.includes("unallocated") || c.includes("invalid") || c.includes("not exist")) return "This number doesn't exist — check it.";
+  if (c.includes("unreachable") || c.includes("network")) return "The number couldn't be reached by the phone network.";
+  if (c.includes("machine")) return "An answering machine / voicemail picked up.";
+  return cause;
+}
 
 const SENTIMENT_COLOR: Record<string, string> = { positive: "#22c97a", neutral: "var(--color-text2)", negative: "#ff6b6b" };
 
@@ -66,6 +82,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
   const [dialing, setDialing] = useState(false);
   const [ending, setEnding] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [practicing, setPracticing] = useState(false);
 
   const activeCall = calls?.find((c) => ACTIVE.includes(c.status));
   const now = useNow(!!activeCall);
@@ -158,7 +175,15 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
             {dialing ? <IconLoader2 size={14} className="animate-spin" /> : <IconPhoneCall size={14} />}
             {dialing ? "Dialing…" : activeCall ? "On a call" : "Call now"}
           </button>
+          <button
+            onClick={() => setPracticing(true)}
+            className="inline-flex items-center gap-1.5 rounded-[8px] border border-bg4 px-3 py-1.5 text-[12px] font-semibold text-text2 flex-shrink-0 hover:bg-bg3"
+            title="Talk or type with the AI agent as this lead — nobody is dialed"
+          >
+            <IconMicrophone size={14} /> Practice
+          </button>
         </div>
+        {practicing && <PracticeCallModal leadId={lead._id} leadName={lead.fullName || lead.company || "this lead"} onClose={() => setPracticing(false)} />}
 
         {activeCall && (
           <div className="mt-3 flex items-center gap-2 rounded-[10px] px-3 py-2" style={{ background: CALL_STATUS_META[activeCall.status].bg }}>
@@ -166,7 +191,9 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
             <span className="text-[12.5px] font-semibold" style={{ color: CALL_STATUS_META[activeCall.status].color }}>
               {activeCall.status === "in_progress"
                 ? `Live · ${fmtDuration(activeCall.answeredAt ? (now - new Date(activeCall.answeredAt).getTime()) / 1000 : 0)}`
-                : `${CALL_STATUS_META[activeCall.status].label}… +${activeCall.to}`}
+                : activeCall.status === "ringing"
+                  ? `Connecting… waiting for +${activeCall.to} to pick up`
+                  : `${CALL_STATUS_META[activeCall.status].label}… +${activeCall.to}`}
             </span>
             {activeCall.mode === "ai" && (
               <div className="ml-auto flex items-center gap-1.5">
@@ -282,7 +309,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                 )}
 
                 {!live && c.hangupCause && c.status !== "completed" && !c.endedByUser && (
-                  <p className="text-[11.5px] mb-2" style={{ color: "var(--color-text3)" }}>Reason: {c.hangupCause}</p>
+                  <p className="text-[11.5px] mb-2" style={{ color: "var(--color-text3)" }}>{explainHangup(c.hangupCause)}</p>
                 )}
 
                 {c.error && (

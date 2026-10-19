@@ -9,6 +9,12 @@ import { Usage } from "@/lib/models/Usage";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
 import { getOrganizationLimits, getOrganizationUsage } from "./workspace.service";
+import {
+  rejectReason,
+  parseLeadFilter,
+  hotelStarsOf,
+  LEAD_FILTER_KEY,
+} from "@/lib/lead-filter";
 
 const DEFAULT_GM_ACTOR = "nwua9Gu5YrADL7ZDj";
 /** Older workspaces were seeded with this id, which is missing its last character and doesn't exist on Apify. */
@@ -36,11 +42,11 @@ export interface StartedRun {
 
 // ─── config loading ───────────────────────────────────────────────────────────
 
-export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
+export async function getAllConfigs(agentId: string, opts: { withoutToken?: boolean } = {}): Promise<ScraperConfig[]> {
   const keys = [
     "apifyToken",
     "google-mapsEnabled", "linkedinEnabled", "justdialEnabled", "customEnabled",
-    "gmActorId", "gmKeyword", "gmLocation", "gmMaxResults",
+    "gmActorId", "gmKeyword", "gmLocation", "gmMaxResults", "gmExtraKeywords",
     "liActorId", "liKeywords", "liMaxResults",
     "justdialEnabled", "jdActorId", "jdCategory", "jdCity", "jdMaxResults",
     "customActorId", "customActorInput",
@@ -50,7 +56,7 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
   const m: Record<string, string> = {};
   rows.forEach((r) => { m[r.key] = r.value; });
 
-  if (!m.apifyToken) return [];
+  if (!m.apifyToken && !opts.withoutToken) return [];
   const configs: ScraperConfig[] = [];
 
   let activeLocations: string[] = [];
@@ -78,12 +84,22 @@ export async function getAllConfigs(agentId: string): Promise<ScraperConfig[]> {
     let gmLocs = m.gmLocation ? m.gmLocation.split(",").map(s => s.trim()).filter(Boolean) : [];
     if (gmLocs.length === 0) gmLocs = activeLocations;
 
+    const extraKeywords = (m.gmExtraKeywords ?? "")
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const allKeywords = [keyword, ...extraKeywords].filter((v, i, a) => a.indexOf(v) === i);
+
     gmLocs.forEach((location) => {
+      const searchStrings = allKeywords.map((k) => `${k} in ${location}`);
+      const label = allKeywords.length > 1
+        ? `${allKeywords[0]} (+${allKeywords.length - 1} terms) in ${location}`
+        : `${keyword} in ${location}`;
       configs.push({
         token: m.apifyToken, actorId, scraperType: "google-maps",
-        searchLabel: `${keyword} in ${location}`,
+        searchLabel: label,
         input: {
-          searchStringsArray: [`${keyword} in ${location}`],
+          searchStringsArray: searchStrings,
           maxCrawledPlacesPerSearch: max,
           language: "en",
           countryCode: "in",
@@ -236,32 +252,39 @@ export interface ImportResult {
   limitReached?: boolean;
 }
 
+/** Items read from each finished run's dataset. */
+export const IMPORT_PER_RUN = 100;
+
+/** This month's lead quota (-1 = unlimited). Shared by all of an organization's workspaces. */
+export async function leadQuota(agentId: string): Promise<{ limit: number; used: number }> {
+  const month = currentMonth();
+  const agent = await Agent.findById(agentId).select("organizationId").lean();
+  if (agent?.organizationId) {
+    const orgId = String(agent.organizationId);
+    const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId, month)]);
+    return { limit: limits.leadsPerMonth, used: usage.leadsScraped };
+  }
+  const [planRow, usageDoc] = await Promise.all([
+    Setting.findOne({ agentId, key: "plan" }).lean(),
+    Usage.findOne({ agentId, month }).lean(),
+  ]);
+  const planId = (planRow?.value && PLANS[planRow.value as PlanId] ? planRow.value : "free") as PlanId;
+  return { limit: PLANS[planId].limits.leadsPerMonth, used: usageDoc?.leadsScraped ?? 0 };
+}
+
 /** Import one finished dataset into leads (dedup + plan-limit aware). */
 export async function importDataset(
   agentId: string,
   datasetId: string,
   scraperType: ScraperType
 ): Promise<ImportResult> {
-  const month = currentMonth();
-  const agent = await Agent.findById(agentId).select("organizationId").lean();
-  const [planRow, usageDoc, locationsRow] = await Promise.all([
-    Setting.findOne({ agentId, key: "plan" }).lean(),
-    Usage.findOne({ agentId, month }).lean(),
+  const [{ limit, used }, locationsRow, filterRow] = await Promise.all([
+    leadQuota(agentId),
     Setting.findOne({ agentId, key: "leadLocations" }).lean(),
+    Setting.findOne({ agentId, key: LEAD_FILTER_KEY }).lean(),
   ]);
-  // The lead quota is shared by all of an organization's workspaces.
-  let limit: number;
-  let used: number;
-  if (agent?.organizationId) {
-    const orgId = String(agent.organizationId);
-    const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId, month)]);
-    limit = limits.leadsPerMonth;
-    used = usage.leadsScraped;
-  } else {
-    const planId = (planRow?.value && PLANS[planRow.value as PlanId] ? planRow.value : "free") as PlanId;
-    limit = PLANS[planId].limits.leadsPerMonth;
-    used = usageDoc?.leadsScraped ?? 0;
-  }
+
+  const leadFilter = parseLeadFilter(filterRow?.value);
 
   let activeLocations: string[] = [];
   if (locationsRow?.value) {
@@ -289,7 +312,7 @@ export async function importDataset(
   if (!token) throw new Error("Apify token not set");
 
   const itemsRes = await fetch(
-    `${BASE_URL}/datasets/${datasetId}/items?clean=true&format=json&limit=100`,
+    `${BASE_URL}/datasets/${datasetId}/items?clean=true&format=json&limit=${IMPORT_PER_RUN}`,
     { headers: apifyHeaders(token) }
   );
   if (!itemsRes.ok) throw new Error("Could not fetch dataset");
@@ -301,8 +324,20 @@ export async function importDataset(
   const existingPhones = new Set(existing.map((l) => l.phone).filter(Boolean));
   const existingEmails = new Set(existing.map((l) => l.email).filter(Boolean));
 
+  let filteredOutCount = 0;
+  const filteredReasons: Record<string, number> = {};
+
   const toInsert = places
     .filter((p) => {
+      // 1. Ideal Customer Filter: exclude chain brands (Taj, Marriott, etc.), closed places, wrong categories
+      const rejection = rejectReason(p, leadFilter);
+      if (rejection) {
+        filteredOutCount++;
+        filteredReasons[rejection] = (filteredReasons[rejection] || 0) + 1;
+        return false;
+      }
+
+      // 2. Validate contact details & dedup
       const phone = normalizePhone(p.phone as string);
       const email = ((p.email as string) ?? "").toLowerCase().trim();
       if (!phone && !email) return false;
@@ -351,6 +386,38 @@ export async function importDataset(
         leadLocation = found || activeLocations[0] || "";
       }
 
+      // Compute fit score (Hot / Warm / Cold) and reason
+      const rawReviews = Number(p.reviewsCount);
+      const reviews = Number.isFinite(rawReviews) && rawReviews > 0 ? rawReviews : 0;
+      const rawRating = Number(p.totalScore);
+      const rating = Number.isFinite(rawRating) && rawRating > 0 ? rawRating : 0;
+      const stars = hotelStarsOf(p);
+      const host = (p.website && typeof p.website === "string") ? p.website.trim() : "";
+      const hasRealWebsite = !!host && !host.includes("google.com") && !host.includes("business.site");
+
+      let fitScore: "hot" | "warm" | "cold" = "warm";
+      const fitReasons: string[] = [];
+      if (stars) fitReasons.push(`${stars}★`);
+      if (p.categoryName || p.category) fitReasons.push(String(p.categoryName || p.category));
+      if (reviews > 0) fitReasons.push(`${reviews} reviews`);
+      if (rating > 0) fitReasons.push(`${rating}★ rating`);
+
+      if (!hasRealWebsite) {
+        fitReasons.push("no direct website (high booking & CRM automation need)");
+        fitScore = "hot";
+      } else if (rating >= 3.4 && rating <= 4.2) {
+        fitReasons.push("established property with room to improve review management");
+        fitScore = "hot";
+      } else if (reviews >= 20 && reviews <= 500) {
+        fitReasons.push("independent mid-sized business");
+      }
+
+      const tags = ["scraped", scraperType];
+      if (fitScore === "hot") tags.push("hot-lead");
+      if (stars) tags.push(`${stars}-star`);
+      if (!hasRealWebsite) tags.push("no-website");
+      if (phone) tags.push("has-phone");
+
       return {
         agentId,
         firstName,
@@ -367,10 +434,25 @@ export async function importDataset(
         agentEnabled:  true,
         website:       website.trim(),
         location:      leadLocation,
+        tags,
+        customFields: {
+          reviewsCount: reviews || undefined,
+          rating: rating || undefined,
+          hotelStars: stars || undefined,
+          fitScore,
+          fitReason: fitReasons.join(", "),
+          address: (p.address as string) || "",
+          googleMapsUrl: (p.url as string) || "",
+        },
       };
     });
 
-  if (!toInsert.length) return { imported: 0, message: "All leads already in DB" };
+  if (!toInsert.length) {
+    const msg = filteredOutCount > 0
+      ? `Filtered out ${filteredOutCount} non-ideal businesses (chains/closed). All other leads already in CRM.`
+      : "All leads already in DB";
+    return { imported: 0, message: msg };
+  }
 
   const remaining = limit === -1 ? toInsert.length : Math.min(toInsert.length, limit - used);
   const capped = toInsert.slice(0, remaining);
@@ -379,14 +461,21 @@ export async function importDataset(
   await Promise.all([
     Agent.findByIdAndUpdate(agentId, { $inc: { leadCount: capped.length } }),
     Usage.findOneAndUpdate(
-      { agentId, month },
+      { agentId, month: currentMonth() },
       { $inc: { leadsScraped: capped.length } },
       { upsert: true }
     ),
   ]);
 
+  const summaryParts: string[] = [];
+  if (filteredOutCount > 0) {
+    const reasonsStr = Object.entries(filteredReasons).map(([r, c]) => `${c} ${r}`).join(", ");
+    summaryParts.push(`Filtered out ${filteredOutCount} non-ideal (${reasonsStr})`);
+  }
+
   return {
     imported: capped.length,
+    message: summaryParts.length ? summaryParts.join(". ") : undefined,
     ...(capped.length < toInsert.length ? { warning: `Capped at plan limit (${limit}/month). Upgrade for more.` } : {}),
   };
 }

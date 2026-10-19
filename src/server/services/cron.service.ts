@@ -1,5 +1,6 @@
 import { Agent } from "@/lib/models/Agent";
 import { CronJob } from "@/lib/models/CronJob";
+import { CronRun } from "@/lib/models/CronRun";
 import { computeNextRun } from "@/lib/utils/cron";
 import {
   createCampaign,
@@ -13,6 +14,8 @@ import { runFullSync } from "./apify.service";
 export interface CronRunResult {
   ok: boolean;
   detail: string;
+  /** outreach campaign started by this run, so the UI can show its leads */
+  campaignId?: string;
 }
 
 /** Minimal shape needed to execute a job (works for hydrated and lean docs). */
@@ -39,7 +42,7 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
 
   if (job.action === "start_outreach") {
     const campaign = await createCampaign(agentId, "cron");
-    if (!campaign) return { ok: true, detail: "No eligible leads to contact." };
+    if (!campaign) return { ok: true, detail: "No eligible leads to contact — every lead with contact info was already contacted, or AI is off for them." };
 
     const { remaining, campaign: fresh } = await processCampaignSlice(String(campaign._id), {
       baseUrl,
@@ -49,7 +52,8 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
     const failed = fresh?.failed ?? 0;
     return {
       ok: true,
-      detail: `Campaign ${campaign._id}: ${sent} sent, ${failed} failed, ${remaining} remaining${remaining > 0 ? " (continues next run)" : ""}`,
+      campaignId: String(campaign._id),
+      detail: `${campaign.total} lead${campaign.total === 1 ? "" : "s"} picked: ${sent} contacted, ${failed} failed${remaining > 0 ? `, ${remaining} still queued (continues automatically)` : ""}.`,
     };
   }
 
@@ -58,9 +62,11 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
     // results, then hand the fresh leads to the campaign pipeline.
     const { imported, notes } = await runFullSync(agentId);
     let outreachNote = "";
+    let campaignId: string | undefined;
     if (imported > 0) {
       const campaign = await createCampaign(agentId, "cron");
       if (campaign) {
+        campaignId = String(campaign._id);
         const { remaining, campaign: fresh } = await processCampaignSlice(String(campaign._id), {
           baseUrl,
           maxLeads: BATCH_SLICE,
@@ -70,6 +76,7 @@ export async function executeCronJob(job: CronJobLike, baseUrl: string): Promise
     }
     return {
       ok: true,
+      campaignId,
       detail: `Imported ${imported} new lead${imported !== 1 ? "s" : ""}.${outreachNote}${notes.length ? ` Notes: ${notes.join("; ")}` : ""}`,
     };
   }
@@ -134,4 +141,28 @@ export async function resumeUnfinishedCampaigns(baseUrl: string): Promise<string
     notes.push(`Campaign ${c._id}: resumed, ${remaining} remaining`);
   }
   return notes;
+}
+
+/** Execute a schedule and keep a record of the run (shown when the schedule is opened). */
+export async function runCronJob(
+  job: CronJobLike & { _id: unknown },
+  baseUrl: string,
+  trigger: "schedule" | "manual",
+): Promise<CronRunResult> {
+  const run = await CronRun.create({ jobId: job._id, agentId: job.agentId, trigger, status: "running", startedAt: new Date() });
+  let result: CronRunResult;
+  try {
+    result = await executeCronJob(job, baseUrl);
+  } catch (err) {
+    result = { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+  await CronRun.updateOne({ _id: run._id }, {
+    $set: {
+      status: result.ok ? "done" : "failed",
+      detail: result.detail.slice(0, 1000),
+      campaignId: result.campaignId ?? null,
+      finishedAt: new Date(),
+    },
+  });
+  return result;
 }

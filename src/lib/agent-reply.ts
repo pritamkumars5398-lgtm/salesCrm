@@ -15,6 +15,7 @@ import { callGroq } from "@/server/services/ai.service";
 import { getPlaybook, businessBrief, leadAiContext, aiFillInstructions, applyAiFieldValues } from "@/server/services/playbook.service";
 import { findKnowledge } from "@/server/services/knowledge.service";
 import { getFieldDefs } from "@/server/services/lead-groups.service";
+import { getLeadHistory, historyPromptBlock } from "@/server/services/lead-history.service";
 
 export async function handleAgentReply(
   lead: any,
@@ -62,79 +63,8 @@ export async function handleAgentReply(
       }
     }
 
-    // 2. Everything the AI should know: this workspace's playbook, the
-    //    knowledge-base passages relevant to the question, and the lead's fields/groups.
-    const calendlyLink = (settingsMap.calendlyLink || "").trim();
-    const [playbook, knowledge, leadCtx, fieldDefs] = await Promise.all([
-      getPlaybook(agentId),
-      findKnowledge(agentId, `${clientMessageContent} ${lead.company || ""}`, 2500).catch(() => ""),
-      leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "", groupNames: [] })),
-      getFieldDefs(agentId).catch(() => []),
-    ]);
-    const fillHelp = aiFillInstructions(fieldDefs);
-
-    let previousContext = "";
-    const existingConvo = await Conversation.findOne({ leadId: lead._id, channel }).lean();
-    if (existingConvo && existingConvo.messages && existingConvo.messages.length > 0) {
-      // Get the last 6 messages to provide good context without overflowing tokens
-      const recentMessages = existingConvo.messages.slice(-6);
-      previousContext = "Previous Conversation Context:\n" + recentMessages.map((m: any) => `${m.role === 'agent' ? 'Us' : 'Lead'}: ${m.content}`).join("\n") + "\n\n";
-    }
-
-    const bookingRule = calendlyLink
-      ? `   - CRITICAL RULE FOR CALENDAR LINK: ANY TIME you include the calendar link (${calendlyLink}), you MUST precede it with a variation of this exact text: "If you are interested or need more details, you can schedule a meeting here: " followed by the link. The calendar link MUST be the very last thing in your message. Do NOT add any follow-up questions or text after the calendar link.
-   - CRITICAL RULE ON REPETITION: Read the "Previous Conversation Context". If we already provided the calendar link or already asked "Would you be open to a chat?", do NOT loop and ask it again if they just reply "ok". Only send the calendar link again if they explicitly ask for it.`
-      : `   - We have NO booking link. Never invent one. When they want to meet, ask which day and time suits them and say our team will confirm.
-   - CRITICAL RULE ON REPETITION: if we already asked for a time, don't ask again when they just reply "ok".`;
-
-    // 3. Build prompt with relevance classification instructions
-    const prompt = `You are an expert sales representative for ${playbook.brandName}. A lead has just replied to your outreach via ${channel}.
-
-WHO WE ARE:
-${businessBrief(playbook)}
-${knowledge ? `\nREFERENCE (our product docs / FAQs — answer questions ONLY from this and the section above; if the answer isn't here, say our team will confirm):\n${knowledge}\n` : "\nIf they ask something not covered above (price, a feature, a guarantee), don't guess — say our team will confirm.\n"}
-Lead Details:
-- Name: ${lead.fullName}
-- Company: ${lead.company || "N/A"}
-${leadCtx.facts}
-${leadCtx.groupGuidance ? `\nHOW TO APPROACH THIS LEAD:\n${leadCtx.groupGuidance}\n` : ""}
-${previousContext}Lead's new incoming message:
-"${clientMessageContent}"
-
-Instructions:
-1. Analyze the entire conversation context and the intent of the incoming message:
-   - What did we offer in our previous message, and what is the lead replying with?
-   - If the message is asking for more information, details, or docs:
-     Set "status" to "replied". Provide a detailed and helpful answer specifically addressing their question.${playbook.docLink ? ` If useful, include our details link: ${playbook.docLink}.` : ""} If this is an ongoing conversation (you and the lead have exchanged 2 or more messages), move towards our goal (${playbook.callGoal || "a short call"}). If this is the very first reply, don't push for it yet.
-   - If the message explicitly agrees to a chat, call, demo or meeting, or shows clear interest:
-     Set "status" to "replied" and move them to our goal: ${playbook.callGoal || "a short call with our team"}.
-   - If they are generally positive but just saying things like "ok", "thanks", or "sounds good":
-     Set "status" to "replied". Acknowledge their response naturally.
-${bookingRule}
-   - If the message is explicitly negative, not interested, requesting to unsubscribe, or rejecting:
-     Set "status" to "closed". Write a very polite, warm, and memorable closing message (1-2 sentences) leaving the door open for the future. Do NOT explicitly tell them "we will stop contacting you", "we are closing communication", or anything robotic. Just wish them well and let them know we are here if they ever need us.
-   - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):
-     Set "status" to "closed". Write a polite 1-sentence response asking if they meant to reply or if they want to clarify, without blindly inviting them to book a calendar slot.
-${fillHelp ? `\n2. ${fillHelp}\n   Put them in a "fields" object (omit the object if the lead revealed nothing).\n` : ""}
-3. Output format:
-   - You MUST return ONLY a valid JSON object.
-   - For email channels, the JSON must contain "status", "subject", and "body".
-   - For other channels (whatsapp, sms, call), the JSON must contain "status" and "body" (no subject).
-   - FORMATTING: Ensure the "body" uses line breaks (\\n\\n) to separate sentences or ideas. Do NOT output a single massive block of text. Put URLs on their own lines.
-
-Return ONLY valid JSON format:
-${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."' : '{"status": "replied" | "closed", "body": "..."'}${fillHelp ? ', "fields": {...}' : ""}}`;
-
-    // 4. Query the workspace's own LLM (provider + key from its settings)
-    const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.3, maxTokens: 500 });
-    const jsonStart = raw.indexOf("{");
-    const jsonEnd = raw.lastIndexOf("}");
-    const parsed = JSON.parse(jsonStart !== -1 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw);
-    if (parsed.body) {
-      parsed.body = parsed.body.replace(/\\n/g, "\n");
-    }
-
-    if (!parsed.body || typeof parsed.body !== "string") throw new Error("LLM returned no reply body");
+    // 2. Write the reply (same function practice mode uses)
+    const parsed = await writeAgentReply(lead, agentId, clientMessageContent, channel);
 
     // 5. Deliver first — only record the reply as sent once the provider accepted it.
     const savedContent = (channel === "email" && parsed.subject)
@@ -178,8 +108,10 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
     }
 
     // 6. Update lead status/pipeline stage (never downgrade a booked meeting)
-    const VALID_STATUSES = ["replied", "meeting_booked", "closed"];
-    const nextStatus = VALID_STATUSES.includes(parsed.status) ? parsed.status : "replied";
+    const VALID_STATUSES = ["replied", "meeting_booked", "closed"] as const;
+    const nextStatus = (VALID_STATUSES as readonly string[]).includes(parsed.status)
+      ? (parsed.status as (typeof VALID_STATUSES)[number])
+      : "replied";
     const leadDoc = await Lead.findById(lead._id);
     if (leadDoc) {
       if (!(leadDoc.status === "meeting_booked" && nextStatus === "replied")) {
@@ -255,4 +187,100 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
       }
     }
   }
+}
+
+export interface AgentReplyDraft {
+  status: string;
+  subject?: string;
+  body: string;
+  fields?: Record<string, unknown>;
+}
+
+/**
+ * Write (don't send) the AI's reply to a lead's message. Used by the live
+ * auto-reply below and by practice mode, so practice answers exactly like the real thing.
+ */
+export async function writeAgentReply(
+  lead: any,
+  agentId: string,
+  clientMessageContent: string,
+  channel: string,
+  opts: { practiceTurns?: { role: "agent" | "lead"; text: string }[] } = {},
+): Promise<AgentReplyDraft> {
+    // 2. Everything the AI should know: this workspace's playbook, the
+    //    knowledge-base passages relevant to the question, and the lead's fields/groups.
+    const calendlyLink = ((await Setting.findOne({ agentId, key: "calendlyLink" }).lean())?.value || "").trim();
+    const [playbook, knowledge, leadCtx, fieldDefs] = await Promise.all([
+      getPlaybook(agentId),
+      findKnowledge(agentId, `${clientMessageContent} ${lead.company || ""}`, 2500).catch(() => ""),
+      leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "", groupNames: [] })),
+      getFieldDefs(agentId).catch(() => []),
+    ]);
+    const fillHelp = aiFillInstructions(fieldDefs);
+
+    // Everything with this lead on every channel (calls, WhatsApp, email, SMS, notes),
+    // not just this channel — the incoming message itself is quoted separately below.
+    // A practice run isn't saved, so its messages are added here instead.
+    const practice = opts.practiceTurns ?? null;
+    const history = await getLeadHistory(lead._id, { maxChars: 4000, skipLatestLeadMessage: !practice }).catch(() => null);
+    let previousContext = history?.hasHistory ? `${historyPromptBlock(history, "Previous Conversation Context (all channels, oldest first)")}\n` : "";
+    if (practice?.length) {
+      previousContext += `Latest messages on ${channel} (oldest first):\n${practice.map((t) => `${t.role === "agent" ? "Us" : "Lead"}: ${t.text}`).join("\n")}\n\n`;
+    }
+
+    const bookingRule = calendlyLink
+      ? `   - CRITICAL RULE FOR CALENDAR LINK: ANY TIME you include the calendar link (${calendlyLink}), you MUST precede it with a variation of this exact text: "If you are interested or need more details, you can schedule a meeting here: " followed by the link. The calendar link MUST be the very last thing in your message. Do NOT add any follow-up questions or text after the calendar link.
+   - CRITICAL RULE ON REPETITION: Read the "Previous Conversation Context" (it covers calls and every channel). If we already provided the calendar link or already asked "Would you be open to a chat?", do NOT loop and ask it again if they just reply "ok". Only send the calendar link again if they explicitly ask for it.`
+      : `   - We have NO booking link. Never invent one. When they want to meet, ask which day and time suits them and say our team will confirm.
+   - CRITICAL RULE ON REPETITION: if we already asked for a time, don't ask again when they just reply "ok".`;
+
+    // 3. Build prompt with relevance classification instructions
+    const prompt = `You are an expert sales representative for ${playbook.brandName}. A lead has just replied to your outreach via ${channel}.
+
+WHO WE ARE:
+${businessBrief(playbook)}
+${knowledge ? `\nREFERENCE (our product docs / FAQs — answer questions ONLY from this and the section above; if the answer isn't here, say our team will confirm):\n${knowledge}\n` : "\nIf they ask something not covered above (price, a feature, a guarantee), don't guess — say our team will confirm.\n"}
+Lead Details:
+- Name: ${lead.fullName}
+- Company: ${lead.company || "N/A"}
+${leadCtx.facts}
+${leadCtx.groupGuidance ? `\nHOW TO APPROACH THIS LEAD:\n${leadCtx.groupGuidance}\n` : ""}
+${previousContext}Lead's new incoming message:
+"${clientMessageContent}"
+
+Instructions:
+1. Analyze the entire conversation context and the intent of the incoming message:
+   - What did we offer in our previous message, and what is the lead replying with?
+   - If the message is asking for more information, details, or docs:
+     Set "status" to "replied". Provide a detailed and helpful answer specifically addressing their question.${playbook.docLink ? ` If useful, include our details link: ${playbook.docLink}.` : ""} If this is an ongoing conversation (you and the lead have exchanged 2 or more messages), move towards our goal (${playbook.callGoal || "a short call"}). If this is the very first reply, don't push for it yet.
+   - If the message explicitly agrees to a chat, call, demo or meeting, or shows clear interest:
+     Set "status" to "replied" and move them to our goal: ${playbook.callGoal || "a short call with our team"}.
+   - If they are generally positive but just saying things like "ok", "thanks", or "sounds good":
+     Set "status" to "replied". Acknowledge their response naturally.
+${bookingRule}
+   - If the message is explicitly negative, not interested, requesting to unsubscribe, or rejecting:
+     Set "status" to "closed". Write a very polite, warm, and memorable closing message (1-2 sentences) leaving the door open for the future. Do NOT explicitly tell them "we will stop contacting you", "we are closing communication", or anything robotic. Just wish them well and let them know we are here if they ever need us.
+   - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):
+     Set "status" to "closed". Write a polite 1-sentence response asking if they meant to reply or if they want to clarify, without blindly inviting them to book a calendar slot.
+${fillHelp ? `\n2. ${fillHelp}\n   Put them in a "fields" object (omit the object if the lead revealed nothing).\n` : ""}
+3. Output format:
+   - You MUST return ONLY a valid JSON object.
+   - For email channels, the JSON must contain "status", "subject", and "body".
+   - For other channels (whatsapp, sms, call), the JSON must contain "status" and "body" (no subject).
+   - FORMATTING: Ensure the "body" uses line breaks (\\n\\n) to separate sentences or ideas. Do NOT output a single massive block of text. Put URLs on their own lines.
+
+Return ONLY valid JSON format:
+${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."' : '{"status": "replied" | "closed", "body": "..."'}${fillHelp ? ', "fields": {...}' : ""}}`;
+
+    // 4. Query the workspace's own LLM (provider + key from its settings)
+    const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.3, maxTokens: 500 });
+    const jsonStart = raw.indexOf("{");
+    const jsonEnd = raw.lastIndexOf("}");
+    const parsed = JSON.parse(jsonStart !== -1 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw);
+    if (parsed.body) {
+      parsed.body = parsed.body.replace(/\\n/g, "\n");
+    }
+
+    if (!parsed.body || typeof parsed.body !== "string") throw new Error("LLM returned no reply body");
+    return parsed as AgentReplyDraft;
 }

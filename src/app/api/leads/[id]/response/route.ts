@@ -8,6 +8,7 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { eventEmitter } from "@/lib/events";
 import { callGroq } from "@/server/services/ai.service";
 import { getPlaybook } from "@/server/services/playbook.service";
+import { getLeadHistory } from "@/server/services/lead-history.service";
 
 async function handleInterested(lead: any, agentId: string) {
   const calendlySetting = await Setting.findOne({ agentId, key: "calendlyLink" }).lean();
@@ -16,6 +17,7 @@ async function handleInterested(lead: any, agentId: string) {
   const cfg = await getEmailConfig(agentId);
   const playbook = await getPlaybook(agentId);
   const senderName = cfg?.fromName || playbook.brandName;
+  const history = await getLeadHistory(lead._id, { maxChars: 2000 }).catch(() => null);
 
   const prompt = `You are a sales rep at ${playbook.brandName} following up with a lead who just clicked "I'm interested" in your previous email.
 What we offer: ${playbook.offerSummary || playbook.businessServices.slice(0, 400) || "see previous email"}
@@ -24,7 +26,7 @@ Lead Name: ${lead.fullName}
 Sender Name: ${senderName}
 ${calendlyLink ? `Booking link: ${calendlyLink}` : "We have NO booking link — never invent one; ask which day and time suits them instead."}
 
-Write a very short (2-3 sentences max) email thanking them for their interest and moving them to our goal${calendlyLink ? " with the booking link" : ""}.
+${history?.hasHistory ? `What already happened with them (don't repeat it):\n${history.timeline}\n\n` : ""}Write a very short (2-3 sentences max) email thanking them for their interest and moving them to our goal${calendlyLink ? " with the booking link" : ""}.
 Return ONLY valid JSON:
 {"subject": "...", "body": "..."}`;
 

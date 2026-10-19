@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { IconMicrophone, IconPlayerStop, IconActivity, IconSend } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
+import PracticeLauncher from "@/components/voice/PracticeLauncher";
 
 export default function VoiceTest() {
   const { activeAgent } = useAppStore();
@@ -198,6 +199,7 @@ export default function VoiceTest() {
   return (
     <div className="p-8 font-sans h-full overflow-y-auto">
       <div className="max-w-6xl mx-auto">
+        <PracticeLauncher />
         <div className="flex items-center gap-3 mb-8">
           <IconMicrophone size={24} className="text-blue-500" />
           <h1 className="text-2xl font-bold" style={{ color: "var(--color-text)" }}>Real-Time Voice AI</h1>

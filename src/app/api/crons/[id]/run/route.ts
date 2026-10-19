@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { CronJob } from "@/lib/models/CronJob";
 import { computeNextRun } from "@/lib/utils/cron";
-import { executeCronJob } from "@/server/services/cron.service";
+import { runCronJob } from "@/server/services/cron.service";
 import { getAppBaseUrl } from "@/server/services/settings.service";
 import { authorizeRecord } from "@/server/auth/access";
 import { Types } from "mongoose";
@@ -28,7 +28,7 @@ export async function POST(
   const now = new Date();
 
   try {
-    ({ ok, detail } = await executeCronJob(job, getAppBaseUrl(req)));
+    ({ ok, detail } = await runCronJob(job, getAppBaseUrl(req), "manual"));
   } catch (err) {
     detail = err instanceof Error ? err.message : String(err);
   }

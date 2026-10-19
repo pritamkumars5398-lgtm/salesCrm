@@ -18,6 +18,8 @@ export interface OutreachLeadInfo {
   facts?: string;
   /** guidance from the lead's groups */
   groupGuidance?: string;
+  /** everything that already happened with this lead on any channel (prompt block, "" if none) */
+  history?: string;
 }
 
 async function fetchWebsiteText(url: string): Promise<string | null> {
@@ -64,6 +66,14 @@ function leadFactsBlock(lead: OutreachLeadInfo, sourcePhrase: string): string {
 
 function groupGuidanceBlock(lead: OutreachLeadInfo): string {
   return lead.groupGuidance ? `\nHOW TO APPROACH THIS LEAD (from the groups they're in):\n${lead.groupGuidance}\n` : "";
+}
+
+/** Prior contact on any channel: turn a cold message into a natural continuation. */
+function historyBlock(lead: OutreachLeadInfo): string {
+  if (!lead.history) return "";
+  return `\n${lead.history}
+IMPORTANT: we've already been in touch with this lead. Write a natural follow-up that continues from the last interaction — NOT a cold introduction. Where the opener rules below talk about introducing ourselves or how we found them, ignore them.
+`;
 }
 
 export async function callGroq(
@@ -137,7 +147,7 @@ Sender name: ${lead.senderName || "our team"}
 
 WHO WE'RE WRITING TO (personalize using these exact facts):
 ${facts}
-${groupGuidanceBlock(lead)}
+${groupGuidanceBlock(lead)}${historyBlock(lead)}
 PERSONALIZATION (most important):
 - Open by referring to THEIR specific business by name (${lead.company || "their business"})${lead.location ? ` in ${lead.location}` : ""} and what they do (${lead.jobTitle || "their line of work"}). The first line must be unique to this business, not reusable for anyone else.
 - Connect what we offer to what a business like theirs would actually care about.
@@ -203,7 +213,7 @@ Sender name: ${lead.senderName || "our team"}
 
 WHO WE'RE MESSAGING (personalize with these exact facts):
 ${facts}
-${websiteAnalysisContext}${groupGuidanceBlock(lead)}
+${websiteAnalysisContext}${groupGuidanceBlock(lead)}${historyBlock(lead)}
 RULES FOR HUMAN-LIKE WRITING:
 - NO AI BUZZWORDS. BANNED WORDS: "elevate", "leverage", "seamlessly", "tailored", "unlock", "synergy", "testament", "delve", "comprehensive", "innovative".
 - NEVER start with a generic "I noticed your business". Vary your openings. Example openings: "Hey [Name], came across [Company]...", "Was just looking at [Company]'s profile...", "Quick question about [Company]...".
@@ -294,7 +304,7 @@ Return ONLY valid JSON: {"summary":"...","sentiment":"...","outcome":"...","what
  */
 export async function generateCallFollowUpWhatsApp(
   agentId: string,
-  input: { leadName: string; company?: string; topic: string; language: string; senderName: string }
+  input: { leadName: string; company?: string; topic: string; language: string; senderName: string; history?: string }
 ): Promise<string> {
   const playbook = await getPlaybook(agentId);
   const lang = input.language === "English"
@@ -303,6 +313,7 @@ export async function generateCallFollowUpWhatsApp(
   const prompt = `Write a short WhatsApp message (max 60 words) to ${input.leadName}${input.company && input.company !== input.leadName ? ` of ${input.company}` : ""}, sent right after a phone call with them.
 
 What it should cover: ${input.topic || "a thank-you and our details, as discussed on the call"}
+${input.history ? `\nEarlier contact with them (don't repeat what they already know):\n${input.history}\n` : ""}
 We are ${playbook.brandName}. What we offer (pick only what fits the topic): ${[playbook.offerSummary, playbook.businessServices].filter(Boolean).join(" — ").replace(/\s*\n\s*/g, ", ").slice(0, 700)}
 
 Rules:

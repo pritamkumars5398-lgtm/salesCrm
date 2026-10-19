@@ -95,7 +95,7 @@ export function aiFillInstructions(defs: LeadFieldDef[]): string {
               : "short text";
     return `  - "${d.key}" (${d.label}${d.description ? ` — ${d.description}` : ""}): ${kind}`;
   });
-  return `Fields to fill ONLY from what the lead clearly said (omit a field when unsure — never guess):\n${lines.join("\n")}`;
+  return `Fields to fill ONLY from what the LEAD themselves clearly said — never from our own messages, assumptions or the business type (omit a field when unsure — never guess):\n${lines.join("\n")}`;
 }
 
 /**

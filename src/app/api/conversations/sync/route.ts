@@ -15,6 +15,7 @@ import { authorizeLead } from "@/server/auth/access";
 import { platformEnv } from "@/server/services/platform-credentials";
 import { generateFollowUpEmail } from "@/server/services/ai.service";
 import { leadAiContext } from "@/server/services/playbook.service";
+import { getLeadHistory } from "@/server/services/lead-history.service";
 
 function cleanEmailBody(body: string): string {
   if (!body) return "";
@@ -86,7 +87,11 @@ async function anotherWorkspaceOwnsThread(lead: { _id: unknown; agentId: unknown
 
 async function sendAutomatedFollowUp(lead: any, agentId: string, followUpNum: number, convo: any) {
   try {
-    const conversationHistory = convo.messages.map((m: any) => `${m.role === "agent" ? "Agent" : "Lead"}: ${m.content}`).join("\n\n");
+    // Every channel, not only this email thread — a call or WhatsApp chat in between changes what to say.
+    const history = await getLeadHistory(lead._id, { maxChars: 5000 }).catch(() => null);
+    const conversationHistory = history?.hasHistory
+      ? `${history.overview}\n${history.timeline}`
+      : convo.messages.map((m: any) => `${m.role === "agent" ? "Agent" : "Lead"}: ${m.content}`).join("\n\n");
     const leadCtx = await leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" }));
     const parsed = await generateFollowUpEmail(agentId, {
       leadName: lead.fullName,

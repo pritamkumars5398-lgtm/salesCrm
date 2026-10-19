@@ -11,6 +11,7 @@ import WAConvo from "./WAConvo";
 import EmailConvo from "./EmailConvo";
 import SMSConvo from "./SMSConvo";
 import CallConvo from "./CallConvo";
+import PracticeChatModal from "@/components/practice/PracticeChatModal";
 
 const CHANNEL_TABS: { id: Channel; label: string; Icon: React.ElementType; color: string }[] = [
   { id: "whatsapp", label: "WhatsApp", Icon: IconBrandWhatsapp, color: "#22c97a" },
@@ -54,6 +55,7 @@ export default function ConversationDrawer() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [callsRefreshKey, setCallsRefreshKey] = useState(0);
+  const [practicing, setPracticing] = useState(false);
   const [agentTyping, setAgentTyping] = useState(false);
   const [leadTyping, setLeadTyping] = useState(false);
 
@@ -502,6 +504,28 @@ export default function ConversationDrawer() {
               );
             })}
           </div>
+
+          {/* Practice this channel with the AI — nothing is sent (calls have their own Practice button) */}
+          {channel !== "call" && (
+            <div className="flex items-center gap-2 border-b px-4 py-1.5 text-[11.5px]" style={{ borderColor: "var(--color-bg4)", color: "var(--color-text3)" }}>
+              <span className="flex-1 truncate">Test how the AI handles this lead on {channel === "sms" ? "SMS" : channel === "email" ? "email" : "WhatsApp"} — nothing is sent.</span>
+              <button
+                onClick={() => setPracticing(true)}
+                className="rounded-md border px-2.5 py-1 font-semibold"
+                style={{ borderColor: "var(--color-bg4)", color: "var(--color-text2)" }}
+              >
+                Practice
+              </button>
+            </div>
+          )}
+          {practicing && channel !== "call" && (
+            <PracticeChatModal
+              leadId={lead._id}
+              leadName={lead.fullName || lead.company || "Lead"}
+              channel={channel}
+              onClose={() => setPracticing(false)}
+            />
+          )}
 
           {/* Conversation body */}
           <div className="flex-1 overflow-hidden">

@@ -275,8 +275,10 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   </p>
                   <p style={{ fontSize: 12.5, color: "var(--color-text2)", margin: 0, lineHeight: 1.5 }}>
                     {isPublished
-                      ? "Your agent is Published. Automated schedules and outreach are active."
-                      : "Your agent is in Draft. Outreach runs are paused."}
+                      ? (cronJobs.some((c) => c.enabled)
+                        ? "Published — your schedules run automatically and the AI replies to leads by itself."
+                        : "Published — the AI replies to leads by itself. No schedule is on, so it won't contact new leads on its own; add one in Schedules.")
+                      : "Draft — nothing runs automatically (no schedules, no AI auto-replies). Manual actions still work."}
                   </p>
                 </div>
 
@@ -335,7 +337,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-green)", flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-text)", margin: "0 0 1px" }}>Publish Agent</p>
-                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Go live & start outreach</p>
+                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Schedules & AI auto-replies run by themselves</p>
                   </div>
                   {isPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-green)" }}>Active</span>}
                 </button>
@@ -364,7 +366,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-text4)", flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-text)", margin: "0 0 1px" }}>Unpublish (Draft)</p>
-                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Pause all campaigns & crons</p>
+                    <p style={{ fontSize: 11, color: "var(--color-text3)", margin: 0 }}>Nothing runs by itself — you work manually</p>
                   </div>
                   {!isPublished && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text4)" }}>Draft</span>}
                 </button>

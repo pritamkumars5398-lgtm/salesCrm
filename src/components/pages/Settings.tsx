@@ -15,6 +15,7 @@ import ApifySources from "@/components/pages/ApifySources";
 import LlmSources from "@/components/pages/LlmSources";
 import { useRouter, useSearchParams } from "next/navigation";
 import ElevenLabsSetupPanel from "@/components/settings/ElevenLabsSetupPanel";
+import ElevenLabsVoiceStudio from "@/components/settings/ElevenLabsVoiceStudio";
 
 export default function Settings() {
   const { activeAgent, showToast, agents, updateAgent } = useAppStore();
@@ -538,7 +539,7 @@ export default function Settings() {
           </p>
         )}
         {isApifySourcesPage ? (
-          <ApifySources />
+          <ApifySources agentId={activeAgent?._id} />
         ) : isLlmSourcesPage ? (
           <LlmSources />
         ) : workspacePage ? (
@@ -1110,6 +1111,13 @@ export default function Settings() {
                 apiKey={values["voiceApiKey"] || ""}
                 onAgentIdChange={(id) => setValues((p) => ({ ...p, elevenLabsAgentId: id }))}
               />
+            )}
+
+            {/* Brain (LLM) + voice picker with samples, saved on the ElevenLabs agent */}
+            {activeCard.key === "voice" && activeAgent && !readOnly && values["elevenLabsAgentId"] && (
+              <div className="mt-6">
+                <ElevenLabsVoiceStudio key={`${activeAgent._id}-${values["elevenLabsAgentId"]}`} agentId={activeAgent._id} greeting={values["callGreeting"] || ""} />
+              </div>
             )}
 
             {/* Voice call preview panel */}

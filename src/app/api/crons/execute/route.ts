@@ -12,8 +12,12 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { CronJob } from "@/lib/models/CronJob";
 import { computeNextRun } from "@/lib/utils/cron";
-import { executeCronJob, resumeUnfinishedCampaigns } from "@/server/services/cron.service";
+import { runCronJob, resumeUnfinishedCampaigns } from "@/server/services/cron.service";
 import { getAppBaseUrl } from "@/server/services/settings.service";
+
+declare global {
+  var __schedulerLastTick: number | undefined;
+}
 
 function isAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
@@ -29,6 +33,8 @@ export async function POST(req: Request) {
   }
 
   await connectDB();
+  // Heartbeat: lets the Schedules page tell "about to run" from "nobody is triggering schedules".
+  globalThis.__schedulerLastTick = Date.now();
 
   const now = new Date();
   const baseUrl = getAppBaseUrl(req);
@@ -56,7 +62,7 @@ export async function POST(req: Request) {
     let ok = false;
     let detail: string | undefined;
     try {
-      ({ ok, detail } = await executeCronJob(job, baseUrl));
+      ({ ok, detail } = await runCronJob(job, baseUrl, "schedule"));
     } catch (err) {
       detail = err instanceof Error ? err.message : String(err);
     }

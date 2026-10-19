@@ -2,6 +2,7 @@ import type { ILead } from "@/lib/models/Lead";
 import type { VoiceConfig } from "./settings.service";
 import { getPlaybook, businessBrief, leadAiContext } from "./playbook.service";
 import { findKnowledge } from "./knowledge.service";
+import { getLeadHistory, LeadHistory } from "./lead-history.service";
 
 /**
  * Instructions for the voice agent, built when the call is placed so a call
@@ -15,11 +16,15 @@ const LANGUAGE_RULES: Record<string, string> = {
   English: "Speak clear, simple Indian English. If the person prefers Hindi, switch to Hindi (Devanagari).",
 };
 
-function defaultGreeting(language: string, persona: string, brand: string): string {
+function defaultGreeting(language: string, persona: string, brand: string, returning: boolean): string {
   if (language === "Hindi" || language === "Hinglish") {
-    return `नमस्ते! मैं ${persona} बोल रही हूँ, ${brand} से। क्या मेरी बात {{company}} से हो रही है?`;
+    return returning
+      ? `नमस्ते! मैं ${persona} बोल रही हूँ, ${brand} से — हमारी पहले बात हुई थी। क्या मेरी बात {{company}} से हो रही है?`
+      : `नमस्ते! मैं ${persona} बोल रही हूँ, ${brand} से। क्या मेरी बात {{company}} से हो रही है?`;
   }
-  return `Hello! This is ${persona} from ${brand}. Am I speaking with {{company}}?`;
+  return returning
+    ? `Hello! This is ${persona} from ${brand} — we've been in touch before. Am I speaking with {{company}}?`
+    : `Hello! This is ${persona} from ${brand}. Am I speaking with {{company}}?`;
 }
 
 export interface LeadVars {
@@ -64,17 +69,21 @@ export async function buildCallInstructions(
   const vars = buildLeadVars(lead, to);
   const playbook = await getPlaybook(agentId);
   const persona = playbook.aiPersonaName || "Priya";
-  const [leadCtx, knowledge] = await Promise.all([
+  const noHistory: LeadHistory = { hasHistory: false, overview: "", timeline: "", channels: [] };
+  const [leadCtx, knowledge, history] = await Promise.all([
     lead ? leadAiContext(agentId, lead).catch(() => ({ facts: "", groupGuidance: "" })) : Promise.resolve({ facts: "", groupGuidance: "" }),
     // A call has no question yet: pick passages about this kind of business and our goal.
     findKnowledge(agentId, `${vars.business_type} ${playbook.callGoal} pricing price features`, 1500).catch(() => ""),
+    // Calls are short and the prompt is read before every reply, so keep the history tighter than for text.
+    lead ? getLeadHistory(lead._id, { maxChars: 2500 }).catch(() => noHistory) : Promise.resolve(noHistory),
   ]);
 
   const base = cfg.callScript
     ? fillTemplate(cfg.callScript, vars)
     : `You are ${persona}, a friendly and professional sales representative from ${playbook.brandName}, calling ${playbook.targetCustomer || "a business owner"}.`;
 
-  const notes = (lead?.notes ?? []).slice(-3).map((n) => n?.text).filter(Boolean);
+  // Notes are part of the history timeline when there is one.
+  const notes = history.hasHistory ? [] : (lead?.notes ?? []).slice(-3).map((n) => n?.text).filter(Boolean);
   const parts: (string | null)[] = [
     base,
     "## The business you are calling",
@@ -88,6 +97,14 @@ export async function buildCallInstructions(
     "## Who we are",
     businessBrief(playbook, { detailChars: 1200 }),
   ];
+  if (history.hasHistory) {
+    parts.push(
+      "## What already happened with this lead (every channel, oldest first)",
+      history.overview,
+      history.timeline,
+      "- You have been in touch before: do NOT pitch as if this were the first contact. Open by referring to the last interaction (e.g. the WhatsApp chat or the previous call), continue from where it left off, keep any promise we made, and never ask for something they already told us.",
+    );
+  }
   if (leadCtx.groupGuidance) parts.push("## How to approach this lead", leadCtx.groupGuidance);
   if (knowledge) parts.push("## Reference — product facts and FAQs (answer questions only from this; if it isn't here, say the team will confirm)", knowledge);
   parts.push(
@@ -103,7 +120,7 @@ export async function buildCallInstructions(
   );
   if (cfg.callLanguage && LANGUAGE_RULES[cfg.callLanguage]) parts.push("## Language", LANGUAGE_RULES[cfg.callLanguage]);
 
-  const greeting = cfg.callGreeting || defaultGreeting(cfg.callLanguage || "English", persona, playbook.brandName);
+  const greeting = cfg.callGreeting || defaultGreeting(cfg.callLanguage || "English", persona, playbook.brandName, history.hasHistory);
   return {
     prompt: parts.filter(Boolean).join("\n"),
     firstMessage: fillTemplate(greeting, vars),

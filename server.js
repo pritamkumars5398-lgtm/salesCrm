@@ -94,5 +94,39 @@ app.prepare().then(() => {
     console.log(`📞 Plivo Telephony Bridge active on ws://${hostname}:${port}/ws/plivo`);
     console.log(`🤖 ElevenLabs Conversational AI integration active`);
     console.log(`====================================================`);
+    startScheduler();
   });
 });
+
+/**
+ * Schedules only run when something calls /api/crons/execute. This server is
+ * long-running, so it does that itself once a minute (the route claims each
+ * due job atomically, so an external cron calling it too can't double-run).
+ * Set DISABLE_INTERNAL_SCHEDULER=true when a hosted cron already calls it.
+ */
+function startScheduler() {
+  if (process.env.DISABLE_INTERNAL_SCHEDULER === "true") return;
+  let running = false;
+  const tick = async () => {
+    if (running) return; // a slow run (outreach batch) is still going
+    running = true;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/crons/execute`, {
+        method: "POST",
+        headers: process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {},
+        signal: AbortSignal.timeout(10 * 60 * 1000),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) console.error(`[Scheduler] /api/crons/execute answered ${res.status}`);
+      else if (body.ran > 0 || body.resumedCampaigns?.length) console.log("[Scheduler]", JSON.stringify(body.results ?? []), body.resumedCampaigns ?? []);
+    } catch (err) {
+      console.error("[Scheduler] tick failed:", err.message);
+    } finally {
+      running = false;
+    }
+  };
+  // First tick after the app has warmed up, then every minute.
+  setTimeout(tick, 15000);
+  setInterval(tick, 60000);
+  console.log("⏰ Scheduler running — due schedules are checked every minute");
+}

@@ -142,7 +142,8 @@ async function loadSettings(agentId) {
   const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
     plivoAuthId: m.plivoAuthId || process.env.PLIVO_AUTH_ID || "",
-    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" ? m.callApiKey : "") || process.env.PLIVO_AUTH_TOKEN || "",
+    // Same rule as getVoiceConfig: a legacy callApiKey only counts if it looks like a Plivo token.
+    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" && /^[A-Za-z0-9]{40}$/.test(m.callApiKey || "") ? m.callApiKey : "") || process.env.PLIVO_AUTH_TOKEN || "",
     elevenAgentId: String(m.elevenLabsAgentId || process.env.ELEVENLABS_AGENT_ID || "").trim(),
     elevenApiKey: String(m.voiceApiKey || process.env.ELEVENLABS_API_KEY || "").trim(),
     callScript: String(m.callScript || "").trim(),
@@ -340,8 +341,11 @@ async function handlePlivoStream(plivoWs, req) {
   let elevenWs = null;
   let elevenReady = false;
   let elevenAttempts = 0;
-  // 2 = prompt + first message + language, 1 = without language, 0 = agent's own config
+  // 3 = prompt + language + first-message override, 2 = prompt + language,
+  // 1 = prompt only, 0 = the agent's own config. Start at 2: the greeting goes
+  // in as the {{greeting}} variable; 3 is only tried for agents without it.
   let overrideLevel = 2;
+  let agentSpoke = false;
   let inputFormat = null;
   let outputFormat = null;
   let outputCarry = Buffer.alloc(0);
@@ -383,15 +387,16 @@ async function handlePlivoStream(plivoWs, req) {
   }
 
   function buildInitiation() {
-    const payload = { type: "conversation_initiation_client_data", dynamic_variables: vars };
+    const greeting = call.aiFirstMessage || fillTemplate(cfg.callGreeting || DEFAULT_GREETING[cfg.language || "English"], vars);
+    // Agents set up by the CRM open with {{greeting}}, so the greeting travels as a
+    // variable — some ElevenLabs accounts refuse a first_message override outright.
+    const payload = { type: "conversation_initiation_client_data", dynamic_variables: { ...vars, greeting } };
     if (overrideLevel > 0) {
-      const greeting = cfg.callGreeting || DEFAULT_GREETING[cfg.language || "English"];
-      // The app builds these from the workspace's playbook when it places the call;
-      // the local builder only covers calls placed before that existed.
-      const agent = {
-        prompt: { prompt: call.aiPrompt || buildCallPrompt(cfg, vars, lead) },
-        first_message: call.aiFirstMessage || fillTemplate(greeting, vars),
-      };
+      // The app builds the prompt from the workspace's playbook when it places the
+      // call; the local builder only covers calls placed before that existed.
+      const agent = { prompt: { prompt: call.aiPrompt || buildCallPrompt(cfg, vars, lead) } };
+      // Older agents with a fixed greeting only change it through the override.
+      if (overrideLevel > 2) agent.first_message = greeting;
       if (overrideLevel > 1 && speechLang) agent.language = speechLang;
       payload.conversation_config_override = { agent };
     }
@@ -487,6 +492,7 @@ async function handlePlivoStream(plivoWs, req) {
           break;
         }
         case "audio": {
+          agentSpoke = true;
           const b64 = data.audio_event && data.audio_event.audio_base_64;
           if (b64 && !endRequested) {
             const mulaw = elevenToPlivo(b64);
@@ -548,10 +554,12 @@ async function handlePlivoStream(plivoWs, req) {
     ws.on("close", (code, reasonBuf) => {
       if (ws !== elevenWs || finished) return;
       const reason = (reasonBuf && reasonBuf.toString()) || lastError || `code ${code}`;
-      if (!elevenReady && overrideLevel > 0 && elevenAttempts < 3) {
-        // Most often: the agent doesn't allow some overrides (ElevenLabs agent →
-        // Security → Overrides). Drop the language override first, then all of them.
-        overrideLevel = overrideLevel === 2 && speechLang ? 1 : 0;
+      // ElevenLabs accepts the session (metadata) and only THEN closes it when an
+      // override isn't allowed — so "rejected" means closed before the agent spoke.
+      if (!agentSpoke && overrideLevel > 0 && elevenAttempts < 3) {
+        // Drop the language override first, then all of them.
+        elevenReady = false;
+        overrideLevel = overrideLevel >= 2 && speechLang ? 1 : 0;
         console.warn(`[TelephonyBridge] ElevenLabs rejected the session (${reason}); retrying with ${overrideLevel ? "prompt/greeting only" : "the agent's own config"}.`);
         bridgeError = overrideLevel
           ? "Call language override was ignored — enable the language override on the ElevenLabs agent (Security tab)."
@@ -559,7 +567,7 @@ async function handlePlivoStream(plivoWs, req) {
         connectEleven();
         return;
       }
-      if (!elevenReady) {
+      if (!agentSpoke) {
         endCall(`ElevenLabs session failed: ${reason}`);
       } else {
         console.log(`[TelephonyBridge] ElevenLabs ended the conversation (${reason}).`);

@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
-import { getSettingsMap } from "./settings.service";
+import { getSettingsMap, isPlivoToken } from "./settings.service";
 import { platformEnv } from "./platform-credentials";
 
 /**
@@ -166,7 +166,8 @@ async function checkElevenLabs(get: Resolver): Promise<IntegrationStatus> {
 async function checkPlivo(get: Resolver): Promise<IntegrationStatus> {
   const id = get("plivoAuthId", "PLIVO_AUTH_ID");
   const tokenSetting = get("plivoAuthToken", "PLIVO_AUTH_TOKEN");
-  const token = tokenSetting.value ? tokenSetting : get("callApiKey");
+  const legacy = get("callApiKey");
+  const token = tokenSetting.value ? tokenSetting : isPlivoToken(legacy.value) ? legacy : tokenSetting;
   const s = base("plivo", "Plivo", "Places the phone calls (and SMS, if Plivo is the SMS provider)", "voice", token);
   if (!id.value || !token.value) {
     s.status = "not_configured";

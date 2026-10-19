@@ -10,6 +10,7 @@ import ConversationDrawer from "@/components/drawer/ConversationDrawer";
 import ToastContainer from "@/components/ui/Toast";
 import AddLeadModal from "@/components/ui/AddLeadModal";
 import SyncPanel from "@/components/ui/SyncPanel";
+import SyncPreviewModal from "@/components/sync/SyncPreviewModal";
 import AssistantPanel from "@/components/assistant/AssistantPanel";
 import type { Agent, OrganizationSummary } from "@/store/types";
 import "@/lib/devFetchLogger";
@@ -47,9 +48,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   } = useAppStore();
   const [mounted, setMounted] = useState(false);
 
+  const [syncPreviewFor, setSyncPreviewFor] = useState<string | null>(null);
+  // A preview is for one workspace — drop it when the user switches.
+  useEffect(() => { setSyncPreviewFor(null); }, [activeAgent?._id]);
+
+  // "Sync Sources" first shows what will run; the sync starts from the preview.
   function handleSyncApify() {
     const agentId = useAppStore.getState().activeAgent?._id;
-    if (!agentId) return;
+    if (agentId) setSyncPreviewFor(agentId);
+  }
+
+  function startSync(agentId: string) {
+    setSyncPreviewFor(null);
     runApifySync(agentId, { onLimitReached: () => router.push(`/plans/${agentId}`) });
   }
 
@@ -206,6 +216,14 @@ function Shell({ children }: { children: React.ReactNode }) {
       </div>
 
       <AddLeadModal open={addLeadOpen} onClose={() => setAddLeadOpen(false)} />
+      {syncPreviewFor && (
+        <SyncPreviewModal
+          agentId={syncPreviewFor}
+          workspaceName={agents.find((a) => a._id === syncPreviewFor)?.name}
+          onStart={() => startSync(syncPreviewFor)}
+          onClose={() => setSyncPreviewFor(null)}
+        />
+      )}
       <SyncPanel
         runs={syncRuns}
         syncing={syncing}

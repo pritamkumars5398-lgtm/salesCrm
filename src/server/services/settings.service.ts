@@ -52,6 +52,11 @@ export interface VoiceConfig {
   maxConcurrentCalls: number;
 }
 
+/** Plivo auth tokens are 40 letters/digits. */
+export function isPlivoToken(value: string | undefined): boolean {
+  return /^[A-Za-z0-9]{40}$/.test(value || "");
+}
+
 function parseHour(v: string | undefined): number | null {
   if (v === undefined || v === null || String(v).trim() === "") return null;
   const n = Number(v);
@@ -71,8 +76,9 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
   return {
     callProvider: provider,
     plivoAuthId: m.plivoAuthId || env("PLIVO_AUTH_ID"),
-    // callApiKey held the Plivo token before plivoAuthToken existed; only trust it for Plivo.
-    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" ? m.callApiKey : "") || env("PLIVO_AUTH_TOKEN"),
+    // callApiKey held the Plivo token before plivoAuthToken existed. Only trust it when it
+    // looks like one — the same field also holds Vapi keys (UUIDs), which Plivo rejects.
+    plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" && isPlivoToken(m.callApiKey) ? m.callApiKey : "") || env("PLIVO_AUTH_TOKEN"),
     callerPhone: m.callerPhone || env("PLIVO_FROM_NUMBER"),
     elevenLabsAgentId: (m.elevenLabsAgentId || env("ELEVENLABS_AGENT_ID")).trim(),
     elevenLabsApiKey: (m.voiceApiKey || env("ELEVENLABS_API_KEY")).trim(),

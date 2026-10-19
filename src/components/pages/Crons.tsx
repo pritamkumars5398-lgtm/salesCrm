@@ -1,12 +1,15 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   IconClock, IconPlus, IconTrash, IconToggleRight, IconToggleLeft,
   IconPlayerPlay, IconRefresh, IconMail, IconRobot, IconChartBar, IconBolt, IconPencil, IconCheck, IconAlertTriangle, IconX,
+  IconChevronDown, IconChevronUp,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CronJob } from "@/store/types";
+import CronRunsPanel from "@/components/crons/CronRunsPanel";
+import NextRunCountdown from "@/components/crons/NextRunCountdown";
 import { formatDistanceToNow } from "date-fns";
 import ScheduleBuilder, { buildCron, parseCron, describeCron, type ScheduleState } from "@/components/crons/ScheduleBuilder";
 
@@ -39,6 +42,7 @@ export default function Crons() {
   const [editForm, setEditForm] = useState({ name: "", action: "start_outreach" });
   const [editSchedule, setEditSchedule] = useState<ScheduleState>(DEFAULT_SCHEDULE);
   const [deleteTarget, setDeleteTarget] = useState<CronJob | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const cronsKey = ["crons", activeAgent?._id];
@@ -49,6 +53,16 @@ export default function Crons() {
     enabled: !!activeAgent,
   });
   useEffect(() => { if (data) setCronJobs(data); }, [data, setCronJobs]);
+  const refreshJobs = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["crons", activeAgent?._id] });
+    queryClient.invalidateQueries({ queryKey: ["cron-runs"] });
+  }, [queryClient, activeAgent?._id]);
+  // Whether anything is triggering schedules (server.js ticks every minute).
+  const { data: scheduler } = useQuery({
+    queryKey: ["scheduler-status"],
+    queryFn: () => fetch("/api/crons/scheduler").then((r) => r.json()) as Promise<{ alive: boolean; lastTickAt: string | null }>,
+    refetchInterval: 30000,
+  });
 
   // Mutations below update the store optimistically; this keeps the query cache
   // from serving a stale list back on the next visit.
@@ -141,6 +155,9 @@ export default function Crons() {
 
   async function runNow(job: CronJob) {
     showToast(`Running "${job.name}" now...`);
+    // Open the run panel so the leads show up live while the run works through them.
+    setExpandedId(job._id);
+    const refreshRuns = setTimeout(() => queryClient.invalidateQueries({ queryKey: ["cron-runs", job._id] }), 1500);
     try {
       const res = await fetch(`/api/crons/${job._id}/run`, { method: "POST" });
       const data = await res.json();
@@ -156,6 +173,9 @@ export default function Crons() {
       }
     } catch {
       showToast("Failed to run schedule", "error");
+    } finally {
+      clearTimeout(refreshRuns);
+      queryClient.invalidateQueries({ queryKey: ["cron-runs", job._id] });
     }
   }
 
@@ -295,8 +315,13 @@ export default function Crons() {
                   <actionCfg.Icon size={18} />
                 </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
+                {/* Info — click to see runs and their leads */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(expandedId === job._id ? null : job._id)}
+                  className="flex-1 min-w-0 text-left cursor-pointer"
+                  title="Show runs and the leads they contacted"
+                >
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[13.5px] font-semibold">{job.name}</span>
                     {!job.enabled && (
@@ -319,11 +344,21 @@ export default function Crons() {
                     {job.nextRunAt && (
                       <>
                         <span>·</span>
-                        <span style={{ color: "#22c97a" }}>Next: {formatDistanceToNow(new Date(job.nextRunAt), { addSuffix: true })}</span>
+                        <NextRunCountdown
+                          nextRunAt={job.nextRunAt}
+                          enabled={job.enabled}
+                          willFire={activeAgent?.status === "active" || job.action === "resume_agent"}
+                          schedulerAlive={scheduler?.alive ?? true}
+                          onDue={refreshJobs}
+                        />
                       </>
                     )}
                   </div>
-                </div>
+                  <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: "var(--color-text3)" }}>
+                    {expandedId === job._id ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+                    {expandedId === job._id ? "Hide runs" : "Show runs & leads"}
+                  </span>
+                </button>
 
                 {/* Stats */}
                 <div className="text-right flex-shrink-0">
@@ -371,6 +406,12 @@ export default function Crons() {
                   </button>
                 </div>
               </div>
+
+              {expandedId === job._id && !isEditing && (
+                <div className="border-t pt-3" style={{ borderColor: "var(--color-bg4)" }}>
+                  <CronRunsPanel jobId={job._id} />
+                </div>
+              )}
 
               {/* Inline edit form */}
               {isEditing && (
