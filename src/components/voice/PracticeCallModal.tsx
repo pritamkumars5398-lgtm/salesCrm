@@ -37,10 +37,22 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
       <div onClick={(e) => e.stopPropagation()} className="flex max-h-[90vh] w-[min(620px,100%)] flex-col overflow-hidden rounded-2xl border border-bg4 bg-bg2 shadow-xl">
         <div className="flex items-start gap-3 border-b border-bg4 px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold text-text">Practice call — {leadName}</p>
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <p className="text-[15px] font-bold text-text">Practice call — {leadName}</p>
+              {(call.voiceName || call.provider) && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold bg-bg3 text-text2 border border-bg4">
+                  Voice: <span className="text-text font-extrabold">{call.voiceName || "Default"}</span> ({call.provider || "AI"})
+                </span>
+              )}
+            </div>
             <p className="text-[12px] leading-relaxed text-text3">
-              The real AI agent of <b>{activeAgent?.name}</b>, briefed exactly as a phone call to this lead. Nobody is dialed.
-              Uses ElevenLabs credits (about 1,000 per minute). Use headphones for voice.
+              The real AI agent of <b>{activeAgent?.name}</b>, briefed exactly as a phone call to this lead. Nobody is dialed.{" "}
+              {call.provider === "Google Gemini" ? (
+                <span className="text-emerald-500 font-medium">Powered by Google Gemini Voice (no ElevenLabs credits required).</span>
+              ) : call.provider === "ElevenLabs" ? (
+                <span>Uses ElevenLabs credits (about 1,000 per minute).</span>
+              ) : null}{" "}
+              Use headphones for voice.
             </p>
           </div>
           <button onClick={close} aria-label="Close" className="text-text3"><IconX size={17} /></button>

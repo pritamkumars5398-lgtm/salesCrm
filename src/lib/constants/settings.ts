@@ -114,24 +114,33 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     iconColor: "#f5a623",
     togglable: true,
     fields: [
-      { label: "Call Provider", key: "callProvider", placeholder: "", options: ["Plivo", "ElevenLabs Conversational AI", "Vapi.ai", "Twilio Voice", "Bland.ai"], hint: "Handles voice routing (Plivo recommended for India)" },
+      // ── 1. Telephony / Call Provider ──
+      { label: "Call Provider", key: "callProvider", placeholder: "", options: ["Plivo", "Twilio Voice", "Vapi.ai", "Bland.ai"], hint: "Telephony provider for placing and receiving phone calls (Plivo recommended for India)" },
       { label: "Plivo Auth ID", key: "plivoAuthId", placeholder: "MAMDE2YTGYZDQTMGFMNS", hint: "Plivo Account Auth ID (from Plivo Console)" },
       { label: "Plivo Auth Token", key: "plivoAuthToken", type: "password", placeholder: "Enter Plivo Auth Token...", hint: "Plivo Account Auth Token" },
-      { label: "Caller Phone Number (Outbound DID)", key: "callerPhone", placeholder: "918065535939", hint: "Outbound DID number (e.g. 918065535939)" },
-      { label: "ElevenLabs ConvAI Agent ID", key: "elevenLabsAgentId", placeholder: "agent_6001m54cz5fbfw78qqx5a8qhb8yg", hint: "Agent ID from ElevenLabs Conversational AI dashboard" },
-      { label: "Voice API Key (ElevenLabs)", key: "voiceApiKey", type: "password", placeholder: "Enter ElevenLabs API key..." },
-      { label: "Voice Name / ID", key: "voiceId", placeholder: "Jessica, Rachel, or Voice ID", hint: "Voice name or ID for speech synthesis" },
+      { label: "Caller Phone Number (Outbound DID)", key: "callerPhone", placeholder: "918065535939", hint: "Outbound DID number registered with your call provider (e.g. 918065535939)" },
       { label: "Call API Key (Vapi / Alternative)", key: "callApiKey", type: "password", placeholder: "Enter API key...", hint: "Used if call provider is Vapi or Bland.ai" },
+
+      // ── 2. Voice / Conversational AI Engine ──
+      { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["Google Gemini", "ElevenLabs", "Deepgram"], hint: "Conversational voice engine for speech synthesis (Gemini Live Audio / ElevenLabs / Deepgram)" },
+      { label: "Gemini API Key", key: "geminiApiKey", type: "password", placeholder: "Enter Gemini API key (or uses GEMINI_API_KEY from .env)...", hint: "Google AI Studio API Key for Gemini Live Voice synthesis" },
+      { label: "Gemini Voice Model", key: "geminiVoiceModel", placeholder: "gemini-2.5-flash-native-audio-preview-12-2025", options: ["gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.0-flash-exp"], hint: "Gemini native audio model" },
+      { label: "ElevenLabs ConvAI Agent ID", key: "elevenLabsAgentId", placeholder: "agent_6001m54cz5fbfw78qqx5a8qhb8yg", hint: "Agent ID from ElevenLabs Conversational AI dashboard" },
+      { label: "Voice API Key (ElevenLabs)", key: "voiceApiKey", type: "password", placeholder: "Enter ElevenLabs API key...", hint: "Your ElevenLabs account API key" },
+      { label: "Voice Name / ID", key: "voiceId", placeholder: "Select an AI voice", hint: "AI Voice personality for speech synthesis" },
+
+      // ── 3. Speech-to-Text & Transcription ──
       { label: "Speech-to-Text Provider", key: "sttProvider", placeholder: "", options: ["Deepgram", "OpenAI Whisper"], hint: "Real-time transcription engine" },
       { label: "STT API Key (Deepgram)", key: "sttApiKey", type: "password", placeholder: "Enter Deepgram API key..." },
-      { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["ElevenLabs", "Deepgram", "PlayHT"], hint: "Text-to-speech engine" },
-      { label: "Call Language", key: "callLanguage", placeholder: "", options: ["Hindi", "Hinglish", "English"], hint: "Language the AI agent speaks on calls (it switches if the lead prefers another). Needs the language override enabled on the ElevenLabs agent." },
+
+      // ── 4. Call Script & Behavior ──
+      { label: "Call Language", key: "callLanguage", placeholder: "", options: ["Hindi", "Hinglish", "English"], hint: "Language the AI agent speaks on calls (it switches if the lead prefers another)." },
       { label: "Call Opening Greeting", key: "callGreeting", type: "textarea", placeholder: "नमस्ते! मैं प्रिया बोल रही हूँ DIFMO से। क्या मेरी बात {{company}} से हो रही है?", hint: "First words the AI agent speaks. Placeholders: {{leadName}}, {{company}}, {{businessType}}, {{location}}. Never hard-code one lead's name here. Empty = a short default greeting in the call language." },
       { label: "Call Script / AI Prompt", key: "callScript", type: "textarea", placeholder: "You are Priya, a business consultant at Acme. Understand how {{company}} gets customers today and offer a free 15-minute call...", hint: "Who the agent is and the goal of the call. Each call automatically adds the lead's business details (name, type, city, website), your Services Offered and the call language — keep this generic, not about one lead." },
       { label: "Max Call Duration (minutes)", key: "callMaxDuration", placeholder: "", options: ["2", "3", "5", "7", "10", "15"], hint: "Call ends automatically after this duration" },
       { label: "Call Window Start (hour, 24h)", key: "callWindowStart", placeholder: "9", hint: "Earliest hour (IST, or CALL_TIMEZONE) AI calls to leads may start, e.g. 9 = 9 AM. Leave both empty for no limit." },
       { label: "Call Window End (hour, 24h)", key: "callWindowEnd", placeholder: "18", hint: "Calls are refused from this hour on, e.g. 18 = 6 PM" },
-      { label: "Max Simultaneous Calls", key: "callConcurrency", placeholder: "", options: ["1", "2", "3", "5"], hint: "Sequence/campaign calls are placed in batches of this size — the next lead is dialed when a call ends. Check your ElevenLabs plan's concurrency limit." },
+      { label: "Max Simultaneous Calls", key: "callConcurrency", placeholder: "", options: ["1", "2", "3", "5"], hint: "Sequence/campaign calls are placed in batches of this size — the next lead is dialed when a call ends." },
       { label: "Record Calls", key: "callRecording", placeholder: "", options: ["On", "Off"], hint: "Saves a recording of each AI call (playable in the lead's Call tab). Tell callees the call is recorded where required." },
       { label: "Voicemail Detection", key: "callVoicemailDetection", placeholder: "", options: ["Off", "Hang up on voicemail"], hint: "Hang up automatically when an answering machine picks up" },
     ],

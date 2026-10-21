@@ -23,7 +23,8 @@ export const createLeadsSlice: StateCreator<AppState, [], [], LeadsSlice> = (set
     const activeAgent = s.activeAgent && s.activeAgent._id === lead.agentId
       ? { ...s.activeAgent, leadCount: s.activeAgent.leadCount + 1 }
       : s.activeAgent;
-    return { leads: [lead, ...s.leads], agents, activeAgent };
+    const filtered = s.leads.filter((l) => l._id !== lead._id);
+    return { leads: [lead, ...filtered], agents, activeAgent };
   }),
   addLeads: (newLeads) => set((s) => {
     if (newLeads.length === 0) return {};
@@ -34,7 +35,9 @@ export const createLeadsSlice: StateCreator<AppState, [], [], LeadsSlice> = (set
     const activeAgent = s.activeAgent && s.activeAgent._id === agentId
       ? { ...s.activeAgent, leadCount: s.activeAgent.leadCount + newLeads.length }
       : s.activeAgent;
-    return { leads: [...newLeads, ...s.leads], agents, activeAgent };
+    const idSet = new Set(newLeads.map((l) => l._id));
+    const filtered = s.leads.filter((l) => !idSet.has(l._id));
+    return { leads: [...newLeads, ...filtered], agents, activeAgent };
   }),
   removeLeads: (ids) => set((s) => {
     const idSet = new Set(ids);

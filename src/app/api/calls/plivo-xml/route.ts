@@ -43,8 +43,11 @@ async function handleAnswer(req: Request) {
 
     const cfg = await getVoiceConfig(String(call.agentId));
     const baseUrl = getPublicAppUrl(req);
+    const hasVoiceKey = cfg.voiceProvider === "Google Gemini"
+      ? !!(cfg.geminiApiKey || process.env.GEMINI_API_KEY)
+      : !!(cfg.elevenLabsAgentId && cfg.elevenLabsApiKey);
     const problem =
-      !cfg.elevenLabsAgentId || !cfg.elevenLabsApiKey ? "ElevenLabs Agent ID / API key not configured."
+      !hasVoiceKey ? (cfg.voiceProvider === "Google Gemini" ? "Gemini API key not configured." : "ElevenLabs Agent ID / API key not configured.")
       : !isBridgeRunning() ? "Telephony bridge is not running (start the app with server.js)."
       : !baseUrl ? "No public URL to reach the media bridge (set PUBLIC_APP_URL)."
       : null;

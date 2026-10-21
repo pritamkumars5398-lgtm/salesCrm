@@ -10,6 +10,7 @@ import PaymentHistory, { type PaymentRow } from "@/components/billing/PaymentHis
 
 interface BillingData {
   enabled: boolean;
+  mode?: "real" | "fake";
   canPay: boolean;
   plan: BillingPlan | null;
   payments: PaymentRow[];
@@ -55,7 +56,7 @@ function UsageMeter({ label, used, limit, color }: { label: string; used: number
 }
 
 function PlanCard({
-  planId, currentPlanId, onSelect, busy, canPay, paymentsEnabled,
+  planId, currentPlanId, onSelect, busy, canPay, paymentsEnabled, isFake,
 }: {
   planId: PlanId;
   currentPlanId: PlanId;
@@ -63,16 +64,19 @@ function PlanCard({
   busy: boolean;
   canPay: boolean;
   paymentsEnabled: boolean;
+  isFake?: boolean;
 }) {
   const plan = PLANS[planId];
   const Icon = PLAN_ICONS[planId];
   const isCurrent = planId === currentPlanId;
   const isDowngrade = Object.keys(PLANS).indexOf(planId) < Object.keys(PLANS).indexOf(currentPlanId);
   const blocked = !canPay || (planId !== "free" && !paymentsEnabled);
-  const label = busy ? "Opening…"
+  const label = busy ? (isFake ? "Activating…" : "Opening…")
     : planId === "free" ? "Switch to Free"
-      : isCurrent ? `Extend 30 days · ₹${plan.priceINR.toLocaleString("en-IN")}`
-        : `${isDowngrade ? "Switch" : "Upgrade"} · Pay ₹${plan.priceINR.toLocaleString("en-IN")}`;
+      : isFake
+        ? (isCurrent ? "Extend 30 days (Direct)" : `${isDowngrade ? "Switch" : "Upgrade"} (Direct / Fake)`)
+        : isCurrent ? `Extend 30 days · ₹${plan.priceINR.toLocaleString("en-IN")}`
+          : `${isDowngrade ? "Switch" : "Upgrade"} · Pay ₹${plan.priceINR.toLocaleString("en-IN")}`;
 
   return (
     <div style={{
@@ -222,7 +226,15 @@ export default function Plans() {
     }
     setBusy(true);
     try {
-      const checkout = await apiPost<CheckoutOrder>("/api/billing/order", { agentId: activeAgent._id, planId });
+      const checkout = await apiPost<CheckoutOrder & { fake?: boolean; planId?: PlanId; periodEnd?: string }>("/api/billing/order", { agentId: activeAgent._id, planId });
+      if (checkout.fake) {
+        const endFormatted = checkout.periodEnd
+          ? new Date(checkout.periodEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+          : "30 days";
+        showToast(`Direct subscription activated (Fake Mode) — ${PLANS[checkout.planId || planId].name} is active until ${endFormatted}.`, "success");
+        load();
+        return;
+      }
       const result = await openRazorpayCheckout(checkout, (reason) => showToast(`Payment failed: ${reason} — you can try again in the same window.`, "error"));
       if (!result) {
         showToast("Payment window closed — nothing was charged.");
@@ -278,6 +290,23 @@ export default function Plans() {
       {billing && !billing.enabled && (
         <p className="mb-4 text-[12px] text-text3">Online payments aren&apos;t set up yet — add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the server&apos;s .env.</p>
       )}
+      {billing?.mode === "fake" && (
+        <div style={{
+          marginBottom: 20,
+          padding: "10px 16px",
+          borderRadius: 10,
+          background: "rgba(16, 185, 129, 0.1)",
+          border: "1px solid rgba(16, 185, 129, 0.3)",
+          color: "#10b981",
+          fontSize: 13,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <span>⚡</span>
+          <span><strong>Fake Payment Mode Active (.env):</strong> Clicking any plan will directly activate the 30-day subscription without Razorpay.</span>
+        </div>
+      )}
 
       {/* Usage meters */}
       <div style={{
@@ -323,6 +352,7 @@ export default function Plans() {
             busy={busy}
             canPay={billing?.canPay ?? false}
             paymentsEnabled={billing?.enabled ?? false}
+            isFake={billing?.mode === "fake"}
           />
         ))}
       </div>

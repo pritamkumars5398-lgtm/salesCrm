@@ -19,6 +19,7 @@ const WebSocket = require("ws");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 const liveListen = require("./live-listen");
+const { GoogleGenAI } = require("@google/genai");
 
 const ELEVEN_API = "https://api.elevenlabs.io/v1/convai";
 const ELEVEN_CONNECT_TIMEOUT_MS = 15000;
@@ -97,6 +98,25 @@ function samplesToPcmBuffer(samples) {
   return buf;
 }
 
+function pcmToWav(samples, sampleRate = 8000) {
+  const pcmBuf = samplesToPcmBuffer(samples);
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcmBuf.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcmBuf.length, 40);
+  return Buffer.concat([header, pcmBuf]);
+}
+
 /** "pcm_16000" → { codec: "pcm", rate: 16000 }; "ulaw_8000" → { codec: "ulaw", rate: 8000 } */
 function parseAudioFormat(name) {
   const m = /^(pcm|ulaw)_(\d+)$/.exec(String(name || ""));
@@ -135,12 +155,18 @@ function tokenMatches(expected, given) {
 }
 
 async function loadSettings(agentId) {
-  const rows = await col("settings").find({ agentId }).toArray();
+  const agentOid = mongoose.Types.ObjectId.isValid(agentId) ? new mongoose.Types.ObjectId(agentId) : agentId;
+  const rows = await col("settings").find({ $or: [{ agentId: agentOid }, { agentId: String(agentId) }] }).toArray();
   const m = {};
   for (const r of rows) m[r.key] = r.value;
   const provider = m.callProvider || "Plivo";
+  const voiceProvider = m.voiceProvider || "Google Gemini";
   const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
+    voiceProvider,
+    geminiApiKey: m.geminiApiKey || process.env.GEMINI_API_KEY || "",
+    geminiVoice: m.voiceId || "Puck",
+    geminiModel: m.geminiVoiceModel || "gemini-2.5-flash-native-audio-preview-12-2025",
     plivoAuthId: m.plivoAuthId || process.env.PLIVO_AUTH_ID || "",
     // Same rule as getVoiceConfig: a legacy callApiKey only counts if it looks like a Plivo token.
     plivoAuthToken: m.plivoAuthToken || (provider === "Plivo" && /^[A-Za-z0-9]{40}$/.test(m.callApiKey || "") ? m.callApiKey : "") || process.env.PLIVO_AUTH_TOKEN || "",
@@ -250,12 +276,18 @@ const LANGUAGE_RULES = {
   Hindi: "Speak in natural, conversational Hindi as spoken in India, written in Devanagari script. Keep everyday English business words in English (website, app, online booking, WhatsApp, Google). If the person replies in English, switch to simple English.",
   Hinglish: "Speak natural Hinglish — mostly Hindi with common English words, the way Indian business owners talk on the phone. Write Hindi words in Devanagari. Mirror the language the person uses.",
   English: "Speak clear, simple Indian English. If the person prefers Hindi, switch to Hindi (Devanagari).",
+  Tamil: "Speak in natural, polite Tanglish (conversational Tamil mixed with common English business words like appointment, booking, WhatsApp, demo, software). If the person speaks English, switch to English.",
+  Telugu: "Speak in natural, polite Telugu-English (conversational Telugu mixed with common English business words like appointment, booking, WhatsApp, demo). If the person speaks English, switch to English.",
+  Kannada: "Speak in natural, polite Kanglish (conversational Kannada mixed with common English business words). If the person speaks English, switch to English.",
 };
 
 const DEFAULT_GREETING = {
-  Hindi: "नमस्ते! मैं प्रिया बोल रही हूँ। क्या मेरी बात {{company}} से हो रही है?",
-  Hinglish: "नमस्ते! मैं प्रिया बोल रही हूँ। क्या मेरी बात {{company}} से हो रही है?",
-  English: "Hello! This is Priya. Am I speaking with {{company}}?",
+  Hindi: "नमस्ते! क्या मेरी बात {{company}} के ओनर या मैनेजर से हो रही है?",
+  Hinglish: "नमस्ते! क्या मेरी बात {{company}} के ओनर या मैनेजर से हो रही है?",
+  English: "Hello! Good afternoon. Am I speaking with the manager or owner of {{company}}?",
+  Tamil: "Vanakkam! Good afternoon. Am I speaking with the manager or owner of {{company}}?",
+  Telugu: "Namaskaram andi! Good afternoon. Am I speaking with the manager or owner of {{company}}?",
+  Kannada: "Namaskara! Good afternoon. Am I speaking with the manager or owner of {{company}}?",
 };
 
 /**
@@ -341,6 +373,11 @@ async function handlePlivoStream(plivoWs, req) {
   let elevenWs = null;
   let elevenReady = false;
   let elevenAttempts = 0;
+  let geminiActive = false;
+  let geminiAi = null;
+  let userAudioChunks = [];
+  let userSilenceTimer = null;
+  let isGenerating = false;
   // 3 = prompt + language + first-message override, 2 = prompt + language,
   // 1 = prompt only, 0 = the agent's own config. Start at 2: the greeting goes
   // in as the {{greeting}} variable; 3 is only tried for agents without it.
@@ -357,7 +394,7 @@ async function handlePlivoStream(plivoWs, req) {
   const transcript = Array.isArray(call.transcript) ? [...call.transcript] : [];
   const timers = [];
 
-  const speechLang = cfg.language === "English" ? "en" : cfg.language ? "hi" : null;
+  const speechLang = cfg.language === "English" ? "en" : cfg.language === "Tamil" ? "ta" : cfg.language === "Telugu" ? "te" : cfg.language === "Kannada" ? "kn" : cfg.language ? "hi" : null;
 
   function sendToPlivo(msg) {
     if (plivoWs.readyState === WebSocket.OPEN) plivoWs.send(JSON.stringify(msg));
@@ -398,7 +435,8 @@ async function handlePlivoStream(plivoWs, req) {
       // Older agents with a fixed greeting only change it through the override.
       if (overrideLevel > 2) agent.first_message = greeting;
       if (overrideLevel > 1 && speechLang) agent.language = speechLang;
-      payload.conversation_config_override = { agent };
+      const tts = cfg.geminiVoice ? { voice_id: cfg.geminiVoice } : {};
+      payload.conversation_config_override = { agent, ...(Object.keys(tts).length ? { tts } : {}) };
     }
     return payload;
   }
@@ -440,7 +478,7 @@ async function handlePlivoStream(plivoWs, req) {
       bridgeError = errorMessage;
       console.error(`[TelephonyBridge] Ending call ${callId}: ${errorMessage}`);
     }
-    if (!elevenReady) {
+    if (!elevenReady && !geminiActive) {
       // The callee heard nothing from the agent — apologize instead of hanging up on silence.
       const hindi = speechLang === "hi";
       plivoSpeak(
@@ -583,10 +621,139 @@ async function handlePlivoStream(plivoWs, req) {
     }, ELEVEN_CONNECT_TIMEOUT_MS));
   }
 
+  async function speakGemini(text) {
+    if (!text || finished || endRequested) return;
+    try {
+      if (!geminiAi) geminiAi = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+      const promptText = `Speak in a natural, conversational sales tone in ${speechLang === "hi" ? "Hindi" : "English"}: ${text}`;
+      const response = await geminiAi.models.generateContent({
+        model: cfg.geminiModel || "gemini-2.5-flash-native-audio-preview-12-2025",
+        contents: [{ role: "user", parts: [{ text: promptText }] }],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: cfg.geminiVoice || "Puck",
+              },
+            },
+          },
+        },
+      });
+
+      const part = response?.candidates?.[0]?.content?.parts?.find(
+        (p) => p.inlineData && p.inlineData.mimeType && p.inlineData.mimeType.startsWith("audio/")
+      );
+      if (!part || !part.inlineData || !part.inlineData.data) {
+        console.warn("[TelephonyBridge] No Gemini audio returned.");
+        return;
+      }
+
+      const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
+      const pcmSamples = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.byteLength / 2);
+      const resampled = resample(pcmSamples, 24000, 8000);
+      const mulaw = pcmToMulaw(resampled).toString("base64");
+
+      agentSpoke = true;
+      sendToPlivo({ event: "playAudio", media: { contentType: "audio/x-mulaw", sampleRate: 8000, payload: mulaw } });
+      liveListen.broadcastAudio(callId, liveListen.CHANNEL_AGENT, Buffer.from(mulaw, "base64"));
+      addTurn("agent", text);
+    } catch (err) {
+      console.error("[TelephonyBridge] Gemini audio generation error:", err.message);
+    }
+  }
+
+  async function handleUserAudio() {
+    if (userAudioChunks.length === 0 || finished || endRequested || isGenerating) return;
+    isGenerating = true;
+    const combinedMulaw = Buffer.concat(userAudioChunks);
+    userAudioChunks = [];
+
+    const pcmSamples = mulawToPcm(combinedMulaw);
+    const wav = pcmToWav(pcmSamples, 8000);
+
+    try {
+      if (!geminiAi) geminiAi = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+      const historyText = transcript.map((t) => `${t.role === "agent" ? "Agent" : "User"}: ${t.content}`).join("\n");
+      const prompt = `You are an AI sales voice agent representing this company on a live phone call.
+System Context & Guidelines:
+${systemPrompt}
+
+Conversation History so far:
+${historyText}
+
+The attached audio contains the caller speaking.
+1. Transcribe what they said.
+2. If it is only background noise, cough, breathe, or silence, respond with: [SILENCE]
+3. Otherwise, give a natural, concise, helpful 1-2 sentence response suitable for a phone conversation.
+
+Format your response exactly as:
+TRANSCRIPT: <transcription of caller speech>
+RESPONSE: <your response to caller>`;
+
+      const res = await geminiAi.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "audio/wav",
+                  data: wav.toString("base64"),
+                },
+              },
+              { text: prompt },
+            ],
+          },
+        ],
+      });
+
+      const replyText = res?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const transcriptMatch = replyText.match(/TRANSCRIPT:\s*(.+)/i);
+      const responseMatch = replyText.match(/RESPONSE:\s*(.+)/is);
+
+      const userTranscript = transcriptMatch ? transcriptMatch[1].trim() : "";
+      const agentResponse = responseMatch ? responseMatch[1].trim() : (replyText.includes("[SILENCE]") ? "" : replyText.trim());
+
+      if (userTranscript && !userTranscript.includes("[SILENCE]")) {
+        addTurn("lead", userTranscript);
+      }
+
+      if (agentResponse && !agentResponse.includes("[SILENCE]")) {
+        await speakGemini(agentResponse);
+      }
+    } catch (err) {
+      console.error("[TelephonyBridge] Gemini turn error:", err.message);
+    } finally {
+      isGenerating = false;
+    }
+  }
+
+  function onGeminiMedia(payload) {
+    if (!payload || finished || endRequested) return;
+    const buf = Buffer.from(payload, "base64");
+    userAudioChunks.push(buf);
+    if (userSilenceTimer) clearTimeout(userSilenceTimer);
+    userSilenceTimer = setTimeout(handleUserAudio, 1200);
+  }
+
+  async function connectGemini() {
+    geminiActive = true;
+    console.log(`[TelephonyBridge] Connecting Google Gemini voice for call ${callId} (Voice: ${cfg.geminiVoice || "Puck"})...`);
+    if (!cfg.geminiApiKey) {
+      endCall("Google Gemini API key not configured (Settings → Voice Calls).");
+      return;
+    }
+    const firstMessage = fillTemplate(cfg.callGreeting || DEFAULT_GREETING, vars);
+    await speakGemini(firstMessage);
+  }
+
   cleanup = async (why) => {
     if (finished) return;
     finished = true;
     timers.forEach(clearTimeout);
+    if (userSilenceTimer) clearTimeout(userSilenceTimer);
     if (elevenWs) { try { elevenWs.close(); } catch {} }
     liveListen.endListeners(callId);
     console.log(`[TelephonyBridge] Call ${callId} stream closed (${why}). Turns: ${transcript.length}`);
@@ -627,6 +794,9 @@ async function handlePlivoStream(plivoWs, req) {
         if (payload && elevenReady && inputFormat && elevenWs && elevenWs.readyState === WebSocket.OPEN) {
           elevenWs.send(JSON.stringify({ user_audio_chunk: plivoToEleven(payload, inputFormat) }));
         }
+        if (payload && geminiActive) {
+          onGeminiMedia(payload);
+        }
         break;
       }
       case "playedStream":
@@ -647,7 +817,11 @@ async function handlePlivoStream(plivoWs, req) {
   }
 
   timers.push(setTimeout(() => endCall(null), cfg.maxDurationMin * 60 * 1000));
-  connectEleven();
+  if (cfg.voiceProvider === "Google Gemini") {
+    connectGemini();
+  } else {
+    connectEleven();
+  }
 }
 
 module.exports = {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
+import { Lead } from "@/lib/models/Lead";
 import { placeAiCall } from "@/server/services/call.service";
 import { authorizeWorkspace } from "@/server/auth/access";
 
@@ -30,13 +31,17 @@ export async function POST(req: Request) {
     const callApiKey   = m.callApiKey || "";
     const callerPhone  = m.callerPhone || "";
     const voiceProvider = m.voiceProvider || "ElevenLabs";
-    const voiceId       = m.voiceId || "Jessica";
+    const voiceId       = m.voiceId || "ch9J8IB6HKlEHQaWQFdk";
     const callGreeting  = m.callGreeting || "Hi, this is a test call.";
     const callScript    = m.callScript || "Be a helpful assistant.";
     const maxDuration   = parseInt(m.callMaxDuration || "2", 10) || 2;
 
+    const lead = body.leadId 
+      ? await Lead.findById(body.leadId) 
+      : await Lead.findOne({ agentId, phone: { $regex: String(testNumber).replace(/[^0-9]/g, "").slice(-10) } });
+
     if (callProvider === "Plivo" || callProvider === "ElevenLabs Conversational AI") {
-      const result = await placeAiCall({ agentId, toNumber: String(testNumber), isTest: true, req });
+      const result = await placeAiCall({ agentId, lead, toNumber: String(testNumber), isTest: true, req });
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
       return NextResponse.json({ success: true, callId: result.call?._id, provider: "Plivo" });
     }

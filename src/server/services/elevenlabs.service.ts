@@ -4,8 +4,8 @@
  */
 
 const API = "https://api.elevenlabs.io/v1";
-/** Built-in "Jessica" voice — available on every ElevenLabs account. */
-const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
+/** Priya / Surabhi voice — warm Indian tone approved for all production calls. */
+const DEFAULT_VOICE_ID = "ch9J8IB6HKlEHQaWQFdk";
 
 export type Permission = "convai_read" | "convai_write" | "voices_read";
 
@@ -295,6 +295,7 @@ export interface VoiceOption {
   publicOwnerId?: string;
   /** library voices: usable on ElevenLabs' free plan */
   freeUsersAllowed?: boolean;
+  category?: string;
   source: "account" | "library";
 }
 
@@ -349,8 +350,16 @@ export async function listAccountVoices(apiKey: string): Promise<VoiceOption[]> 
   const r = await el(apiKey, "/voices");
   if (r.status !== 200) elFail(r, "Couldn't load your voices");
   return (r.data?.voices ?? []).map((v: any) => ({
-    voiceId: v.voice_id, name: v.name, gender: v.labels?.gender, accent: v.labels?.accent, age: v.labels?.age,
-    description: v.labels?.descriptive ?? v.description ?? "", previewUrl: v.preview_url ?? null, source: "account" as const,
+    voiceId: v.voice_id,
+    name: v.name,
+    gender: v.labels?.gender,
+    accent: v.labels?.accent,
+    age: v.labels?.age,
+    description: v.labels?.descriptive ?? v.description ?? "",
+    previewUrl: v.preview_url ?? null,
+    source: "account" as const,
+    category: v.category,
+    freeUsersAllowed: v.category === "premade",
   }));
 }
 

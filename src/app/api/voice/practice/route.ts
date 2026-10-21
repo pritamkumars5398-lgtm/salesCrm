@@ -21,9 +21,7 @@ export async function POST(req: Request) {
   if (!access.ok) return access.response;
 
   const cfg = await getVoiceConfig(access.agentId);
-  if (!cfg.elevenLabsApiKey || !cfg.elevenLabsAgentId) {
-    return NextResponse.json({ error: "ElevenLabs isn't set up for this workspace (Settings → Voice Calls)." }, { status: 400 });
-  }
+  const isGemini = (cfg.voiceProvider || "Google Gemini") === "Google Gemini";
 
   let lead = null;
   if (body.leadId) {
@@ -34,6 +32,46 @@ export async function POST(req: Request) {
 
   const { prompt, firstMessage } = await buildCallInstructions(access.agentId, cfg, lead, lead?.phone || "");
 
+  const VOICE_NAMES: Record<string, string> = {
+    "ch9J8IB6HKlEHQaWQFdk": "Priya (Warm Indian Female)",
+    "cgSgspJ2msm6clMCkdW9": "Jessica",
+    "EXAVITQu4vr4xnSDxMaL": "Sarah",
+    "Xb7hH8MSUJpSbSDYk0k2": "Alice",
+    "FGY2WhTYpPnrIDTdsKH5": "Laura",
+    "pNInz6obpgDQGcFmaJgB": "Adam",
+    "IKne3meq5aSn9XLyUdCD": "Charlie",
+    "mg9npuuaf8WJphS6E0Rt": "Aisha",
+    "H6QPv2pQZDcGqLwDTIJQ": "Kanika",
+  };
+
+  if (isGemini) {
+    const geminiKey = cfg.geminiApiKey || process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      return NextResponse.json({ error: "Google Gemini API key not configured (Settings → Voice Calls).", provider: "Google Gemini" }, { status: 400 });
+    }
+    return NextResponse.json({
+      provider: "Google Gemini",
+      greeting: firstMessage,
+      prompt,
+      voiceId: cfg.voiceId || "Puck",
+      voiceName: cfg.voiceId || "Puck",
+      preview: { greeting: firstMessage, prompt, leadName: lead?.fullName || "Sample lead" },
+    });
+  }
+
+  if (!cfg.elevenLabsApiKey || !cfg.elevenLabsAgentId) {
+    return NextResponse.json({ error: "ElevenLabs isn't set up for this workspace (Settings → Voice Calls).", provider: "ElevenLabs" }, { status: 400 });
+  }
+
+  // Ensure ElevenLabs agent entity on ElevenLabs servers matches the selected voice
+  if (cfg.voiceId) {
+    await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(cfg.elevenLabsAgentId)}`, {
+      method: "PATCH",
+      headers: { "xi-api-key": cfg.elevenLabsApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_config: { tts: { voice_id: cfg.voiceId } } }),
+    }).catch(() => {});
+  }
+
   const res = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(cfg.elevenLabsAgentId)}`,
     { headers: { "xi-api-key": cfg.elevenLabsApiKey }, signal: AbortSignal.timeout(10000) },
@@ -41,7 +79,7 @@ export async function POST(req: Request) {
   const signed = res ? await res.json().catch(() => ({})) : {};
   if (!res?.ok || !signed.signed_url) {
     const reason = signed?.detail?.message || signed?.detail || `HTTP ${res?.status ?? "no answer"}`;
-    return NextResponse.json({ error: `ElevenLabs refused to start a session: ${typeof reason === "string" ? reason : JSON.stringify(reason)}` }, { status: 502 });
+    return NextResponse.json({ error: `ElevenLabs refused to start a session: ${typeof reason === "string" ? reason : JSON.stringify(reason)}`, provider: "ElevenLabs" }, { status: 502 });
   }
 
   const company = lead?.company || lead?.fullName || "your business";
@@ -49,7 +87,13 @@ export async function POST(req: Request) {
   const lang = SPEECH_LANG[cfg.callLanguage];
   if (lang) agentOverride.language = lang;
 
+  const ttsOverride: Record<string, unknown> = {};
+  if (cfg.voiceId) ttsOverride.voice_id = cfg.voiceId;
+
   return NextResponse.json({
+    provider: "ElevenLabs",
+    voiceId: cfg.voiceId,
+    voiceName: VOICE_NAMES[cfg.voiceId] || cfg.voiceId || "Selected Voice",
     signedUrl: signed.signed_url,
     // Same payload shape the phone bridge sends, so the practice run behaves like a real call.
     initiation: {
@@ -61,7 +105,10 @@ export async function POST(req: Request) {
         business_type: lead?.jobTitle || "business",
         location: lead?.location || "",
       },
-      conversation_config_override: { agent: agentOverride },
+      conversation_config_override: {
+        agent: agentOverride,
+        ...(Object.keys(ttsOverride).length ? { tts: ttsOverride } : {}),
+      },
     },
     preview: { greeting: firstMessage, prompt, leadName: lead?.fullName || "Sample lead" },
   });

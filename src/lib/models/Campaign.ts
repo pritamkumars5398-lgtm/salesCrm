@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { defineModel } from "./define-model";
 
-export type CampaignStatus = "pending" | "running" | "completed" | "failed";
+export type CampaignStatus = "pending" | "running" | "completed" | "failed" | "stopped";
 
 export interface ICampaignError {
   leadId: Types.ObjectId;
@@ -31,7 +31,7 @@ const CampaignSchema = new Schema<ICampaign>(
   {
     agentId: { type: Schema.Types.ObjectId, ref: "Agent", required: true },
     trigger: { type: String, enum: ["publish", "cron", "manual", "retry"], default: "manual" },
-    status:  { type: String, enum: ["pending", "running", "completed", "failed"], default: "pending" },
+    status:  { type: String, enum: ["pending", "running", "completed", "failed", "stopped"], default: "pending" },
     total:   { type: Number, default: 0 },
     sent:    { type: Number, default: 0 },
     failed:  { type: Number, default: 0 },

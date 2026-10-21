@@ -1,0 +1,67 @@
+[
+  {
+    "id": "6ad8998d72e19501706e624d",
+    "company": "The Aesthetic Edge",
+    "phone": "917795426464",
+    "category": "clinic",
+    "offer": "24/7 WhatsApp Appointment Booking & Patient CRM",
+    "request_uuid": "a806f912-9e1c-4b78-b051-f8439d0c66a5",
+    "status": "queued",
+    "state": "ANSWER",
+    "duration": 20,
+    "hangup": "Normal Hangup",
+    "recordingUrl": "https://aps1.media.plivo.com/v1/Account/MAMDE2YTGYZDQTMGFMNS/Recording/b5a96e88-ad54-478e-b9ac-968bb0cfb8ae.mp3"
+  },
+  {
+    "id": "6ad8998d72e19501706e6251",
+    "company": "Excellence Dental",
+    "phone": "919686039281",
+    "category": "clinic",
+    "offer": "Patient Booking App & Automated Recall Bot",
+    "request_uuid": "597925bf-6d1c-4b04-88d3-4d8df6f897bb",
+    "status": "queued",
+    "state": "EARLY MEDIA",
+    "duration": 0,
+    "hangup": "Ring Timeout Reached",
+    "recordingUrl": null
+  },
+  {
+    "id": "6ad8998d72e19501706e6255",
+    "company": "Esperto Car Care",
+    "phone": "919663262526",
+    "category": "auto_detailing",
+    "offer": "Service Slot Booking App & Ceramic Maintenance Bot",
+    "request_uuid": "bd795edd-5b1d-4ff2-8345-d3d9789db38d",
+    "status": "queued",
+    "state": "EARLY MEDIA",
+    "duration": 0,
+    "hangup": "Busy Line",
+    "recordingUrl": null
+  },
+  {
+    "id": "6ad8998e72e19501706e6259",
+    "company": "The Detailing Mafia Koramangala",
+    "phone": "919035370777",
+    "category": "auto_detailing",
+    "offer": "Digital Warranty Card & Booking System",
+    "request_uuid": "b56ef85d-274a-454f-a76d-ed4834a0ff81",
+    "status": "queued",
+    "state": "ANSWER",
+    "duration": 17,
+    "hangup": "Normal Hangup",
+    "recordingUrl": "https://aps1.media.plivo.com/v1/Account/MAMDE2YTGYZDQTMGFMNS/Recording/c7d1c3de-3cde-4f9b-b91f-ec89fbd6cd1a.mp3"
+  },
+  {
+    "id": "6ad8998e72e19501706e625d",
+    "company": "Mantra Cargo Packers",
+    "phone": "919572515050",
+    "category": "logistics",
+    "offer": "Instant WhatsApp Quotation Bot & Web Engine",
+    "request_uuid": "4aa54f54-2de5-4558-97c8-395d48391c26",
+    "status": "queued",
+    "state": "EARLY MEDIA",
+    "duration": 0,
+    "hangup": "Ring Timeout Reached",
+    "recordingUrl": null
+  }
+]

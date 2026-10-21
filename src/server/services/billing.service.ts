@@ -24,10 +24,41 @@ export class BillingError extends Error {
   }
 }
 
+export function isFakePayment(): boolean {
+  const mode = (process.env.PAYMENT_MODE || "").toLowerCase().trim();
+  return mode === "fake" || mode === "mock" || mode === "test";
+}
+
 export function razorpayConfig() {
   const keyId = process.env.RAZORPAY_KEY_ID || "";
   const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
-  return { keyId, keySecret, webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || "", enabled: !!(keyId && keySecret) };
+  const fake = isFakePayment();
+  return {
+    keyId,
+    keySecret,
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || "",
+    enabled: fake || !!(keyId && keySecret),
+    mode: fake ? ("fake" as const) : ("real" as const),
+  };
+}
+
+export async function applyFakeSubscription(organizationId: string, userId: string, planId: PlanId) {
+  if (planId === "free" || !PLANS[planId]) throw new BillingError(400, "Pick a paid plan.");
+  const amount = PLANS[planId].priceINR * 100;
+  const fakeOrderId = `fake_order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const fakePaymentId = `fake_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const record = await Payment.create({
+    organizationId,
+    userId,
+    planId,
+    amount,
+    currency: "INR",
+    razorpayOrderId: fakeOrderId,
+    status: "created",
+  });
+
+  return applyPayment(record, fakePaymentId);
 }
 
 async function razorpay<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {

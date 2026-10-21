@@ -221,7 +221,7 @@ export async function processCampaignSlice(
   opts: OutreachOptions & { maxLeads?: number } = {}
 ): Promise<{ remaining: number; campaign: ICampaign | null }> {
   const campaign = await Campaign.findById(campaignId);
-  if (!campaign || campaign.status === "completed" || campaign.status === "failed") {
+  if (!campaign || campaign.status === "completed" || campaign.status === "failed" || campaign.status === "stopped") {
     return { remaining: 0, campaign };
   }
 
@@ -243,6 +243,10 @@ export async function processCampaignSlice(
     opts.ignoreAgentStatus ?? (campaign.trigger === "manual" || campaign.trigger === "retry");
 
   await runPool(pending, async (lead) => {
+    // Abort lead dispatch if campaign was stopped while this slice was in-flight
+    const freshCampaign = await Campaign.findById(campaignId).select("status").lean();
+    if (freshCampaign?.status === "stopped") return;
+
     const result = await sendOutreachToLead(String(lead._id), {
       senderName: opts.senderName,
       baseUrl: opts.baseUrl,
@@ -265,6 +269,11 @@ export async function processCampaignSlice(
     }
     await Campaign.findByIdAndUpdate(campaignId, { $inc: inc, ...update });
   });
+
+  const checkCampaign = await Campaign.findById(campaignId).select("status").lean();
+  if (checkCampaign?.status === "stopped") {
+    return { remaining: 0, campaign: await Campaign.findById(campaignId) };
+  }
 
   const remaining = await Lead.countDocuments({
     _id: { $in: campaign.leadIds },
@@ -335,4 +344,30 @@ export async function findResumableCampaigns(): Promise<ICampaign[]> {
       { status: "running", lastProgressAt: { $lt: stalledBefore } },
     ],
   });
+}
+
+/** Stop/cancel an in-flight campaign and release any pending leads back to uncontacted. */
+export async function stopCampaign(campaignId: string): Promise<ICampaign | null> {
+  const campaign = await Campaign.findById(campaignId);
+  if (!campaign) return null;
+  if (campaign.status === "completed" || campaign.status === "failed" || campaign.status === "stopped") {
+    return campaign;
+  }
+
+  const updated = await Campaign.findByIdAndUpdate(
+    campaignId,
+    {
+      status: "stopped",
+      finishedAt: new Date(),
+    },
+    { new: true }
+  );
+
+  // Release any leads still in "pending" status back to "none" so they aren't stuck
+  await Lead.updateMany(
+    { _id: { $in: campaign.leadIds }, outreachStatus: "pending" },
+    { outreachStatus: "none" }
+  );
+
+  return updated;
 }

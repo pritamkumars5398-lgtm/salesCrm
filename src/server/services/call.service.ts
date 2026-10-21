@@ -82,11 +82,17 @@ async function expireStaleCalls(filter: Record<string, unknown>, maxDurationMin:
 
 function voiceConfigError(cfg: VoiceConfig): string | null {
   if (!PLIVO_PROVIDERS.includes(cfg.callProvider)) {
-    return `AI calls run on Plivo + ElevenLabs. Switch Call Provider to "Plivo" in Settings → Voice Calls (current: ${cfg.callProvider}).`;
+    return `AI calls run on Plivo. Switch Call Provider to "Plivo" in Settings → Voice Calls (current: ${cfg.callProvider}).`;
   }
   if (!cfg.plivoAuthId || !cfg.plivoAuthToken) return "Plivo Auth ID / Auth Token are not configured (Settings → Voice Calls).";
-  if (!cfg.elevenLabsAgentId || !cfg.elevenLabsApiKey) {
-    return "ElevenLabs Agent ID / API key are not configured (Settings → Voice Calls) — the call would connect to silence.";
+  if (cfg.voiceProvider === "Google Gemini") {
+    if (!cfg.geminiApiKey) {
+      return "Gemini API key is not configured (Settings → Voice Calls).";
+    }
+  } else {
+    if (!cfg.elevenLabsAgentId || !cfg.elevenLabsApiKey) {
+      return "ElevenLabs Agent ID / API key are not configured (Settings → Voice Calls) — the call would connect to silence.";
+    }
   }
   return null;
 }

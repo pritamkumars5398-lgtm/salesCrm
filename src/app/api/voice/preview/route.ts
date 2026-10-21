@@ -3,10 +3,11 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { authorizeWorkspace } from "@/server/auth/access";
 import { platformEnv } from "@/server/services/platform-credentials";
+import { generateGeminiSpeech } from "@/server/services/gemini-voice.service";
 
 export async function POST(req: Request) {
   try {
-    const { agentId: requestedAgentId, text, voiceId: reqVoiceId } = await req.json();
+    const { agentId: requestedAgentId, text, voiceId: reqVoiceId, voiceProvider: reqVoiceProvider, provider: reqProvider } = await req.json();
     await connectDB();
     const access = await authorizeWorkspace(req, requestedAgentId);
     if (!access.ok) return access.response;
@@ -15,14 +16,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "text (up to 1000 characters) is required" }, { status: 400 });
     }
     const env = await platformEnv(agentId);
-    const rows = await Setting.find({ agentId, key: { $in: ["voiceApiKey", "voiceId", "voiceProvider"] } }).lean();
+    const rows = await Setting.find({ agentId, key: { $in: ["voiceApiKey", "voiceId", "voiceProvider", "geminiApiKey", "geminiVoiceModel"] } }).lean();
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const apiKey = m.voiceApiKey || env("ELEVENLABS_API_KEY");
-    const voiceId = reqVoiceId || m.voiceId || "Jessica";
-    const provider = m.voiceProvider || "ElevenLabs";
+    const provider = reqVoiceProvider || reqProvider || m.voiceProvider || "Google Gemini";
+    const voiceId = reqVoiceId || m.voiceId || (provider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk");
 
+    if (provider === "Google Gemini" || provider === "Gemini") {
+      const geminiKey = m.geminiApiKey || process.env.GEMINI_API_KEY || "AIzaSyDNxEE27Hh8agf_bZuTktgHvNRMcNoPMyo";
+      if (!geminiKey) {
+        return NextResponse.json({ error: "Gemini API key not configured — set GEMINI_API_KEY or save in Settings." }, { status: 400 });
+      }
+      const audioBuffer = await generateGeminiSpeech(text, {
+        apiKey: geminiKey,
+        voice: voiceId,
+        model: m.geminiVoiceModel || "gemini-2.5-flash-native-audio-preview-12-2025",
+      });
+      return new Response(new Uint8Array(audioBuffer), {
+        headers: {
+          "Content-Type": "audio/wav",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    const apiKey = m.voiceApiKey || env("ELEVENLABS_API_KEY");
     if (!apiKey) {
       return NextResponse.json({ error: "Voice API key not configured — save your settings first." }, { status: 400 });
     }

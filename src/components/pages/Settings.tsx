@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { GENERAL_CARDS, INTEGRATION_CARDS, WORKSPACE_CARDS, type SettingsCard } from "@/lib/constants/settings";
@@ -16,6 +16,7 @@ import LlmSources from "@/components/pages/LlmSources";
 import { useRouter, useSearchParams } from "next/navigation";
 import ElevenLabsSetupPanel from "@/components/settings/ElevenLabsSetupPanel";
 import ElevenLabsVoiceStudio from "@/components/settings/ElevenLabsVoiceStudio";
+import GeminiVoiceStudio from "@/components/settings/GeminiVoiceStudio";
 
 export default function Settings() {
   const { activeAgent, showToast, agents, updateAgent } = useAppStore();
@@ -32,8 +33,8 @@ export default function Settings() {
   const [sendingTestSms, setSendingTestSms] = useState(false);
   const [smsStatusLabel, setSmsStatusLabel] = useState("");
   const [testSmsResult, setTestSmsResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [testSentence, setTestSentence] = useState("Hi, welcome to SalesAgent! I am Pritam, your AI sales assistant. How can I help you automate your cold outreach and manage your CRM leads today?");
-  const [testVoice, setTestVoice] = useState("Bella");
+  const [testSentence, setTestSentence] = useState("Hi, welcome to SalesAgent! I am Priya, your AI sales assistant. How can I help you automate your cold outreach and manage your CRM leads today?");
+  const [testVoice, setTestVoice] = useState("Aoede");
   const [playingTest, setPlayingTest] = useState(false);
   const [testPhoneNumber, setTestPhoneNumber] = useState("");
   const [callingReal, setCallingReal] = useState(false);
@@ -67,8 +68,9 @@ export default function Settings() {
       showToast("Set a Call Opening Greeting first", "error");
       return;
     }
-    if (!values["voiceApiKey"]) {
-      showToast("Save your Voice API key in settings first", "error");
+    const currentVoiceProvider = values["voiceProvider"] || "Google Gemini";
+    if (currentVoiceProvider === "ElevenLabs" && !values["voiceApiKey"]) {
+      showToast("Save your ElevenLabs Voice API key in settings first", "error");
       return;
     }
     setPlayingPreview(true);
@@ -77,7 +79,12 @@ export default function Settings() {
       const res = await fetch("/api/voice/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: activeAgent._id, text: sampleText }),
+        body: JSON.stringify({
+          agentId: activeAgent._id,
+          text: sampleText,
+          voiceProvider: currentVoiceProvider,
+          voiceId: values["voiceId"] || (currentVoiceProvider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk"),
+        }),
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: "" }));
@@ -86,7 +93,7 @@ export default function Settings() {
         return;
       }
       const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.onended = () => { URL.revokeObjectURL(url); setPlayingPreview(false); };
       audio.onerror = () => { URL.revokeObjectURL(url); setPlayingPreview(false); showToast("Audio playback failed", "error"); };
@@ -109,10 +116,10 @@ export default function Settings() {
 
   async function playTestSentence() {
     if (!testSentence.trim() || playingTest) return;
-    
-    const apiKey = values["voiceApiKey"];
-    if (!apiKey) {
-      showToast("Save your Voice API key in settings first", "error");
+
+    const currentVoiceProvider = values["voiceProvider"] || "Google Gemini";
+    if (currentVoiceProvider === "ElevenLabs" && !values["voiceApiKey"]) {
+      showToast("Save your ElevenLabs Voice API key in settings first", "error");
       return;
     }
 
@@ -121,15 +128,16 @@ export default function Settings() {
       const res = await fetch("/api/voice/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          agentId: activeAgent?._id, 
+        body: JSON.stringify({
+          agentId: activeAgent?._id,
           text: testSentence,
-          voiceId: testVoice 
+          voiceProvider: currentVoiceProvider,
+          voiceId: testVoice || (currentVoiceProvider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk"),
         }),
       });
       if (res.ok) {
         const blob = await res.blob();
-        const url  = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audio.onended = () => { URL.revokeObjectURL(url); setPlayingTest(false); };
         audio.onerror = () => { URL.revokeObjectURL(url); setPlayingTest(false); showToast("Audio playback failed", "error"); };
@@ -293,7 +301,7 @@ export default function Settings() {
       }
 
       const provider = data.provider as string;
-      const msgId    = (data.uuid || data.sid || data.msgId) as string | undefined;
+      const msgId = (data.uuid || data.sid || data.msgId) as string | undefined;
 
       // MSG91 has no delivery status API — mark sent immediately
       if (provider === "MSG91" || !msgId) {
@@ -354,16 +362,16 @@ export default function Settings() {
         const keysToCopy = activeCard.fields.map((f) => f.key);
         const newValues = { ...values };
         const newToggles = { ...toggles };
-        
+
         keysToCopy.forEach((key) => {
           newValues[key] = sourceData[key] ?? "";
         });
-        
+
         if (activeCard.togglable) {
           const enableKey = `${activeCard.key}Enabled`;
           newToggles[activeCard.key] = sourceData[enableKey] !== "false";
         }
-        
+
         setValues(newValues);
         setToggles(newToggles);
         showToast(`Loaded ${activeCard.title} settings from ${sourceAgent.name}. Click 'Save changes' to apply.`);
@@ -430,6 +438,7 @@ export default function Settings() {
       .then((r) => r.json())
       .then((data) => {
         setValues({ ...data, agentName: activeAgent.name });
+        if (data.voiceId) setTestVoice(data.voiceId);
         const t: Record<string, boolean> = {};
         INTEGRATION_CARDS.filter((c) => c.togglable).forEach((c) => { t[c.key] = data[`${c.key}Enabled`] !== "false"; });
         setToggles(t);
@@ -532,61 +541,62 @@ export default function Settings() {
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 overflow-y-auto" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { maxWidth: active === "keys" ? 960 : 560, padding: "2rem" }}>
-        {readOnly && (
-          <p className="mb-4 rounded-lg border border-bg4 bg-bg2 px-3 py-2 text-[12px] text-text3">
-            You&apos;re a member of this workspace — only admins can change its settings.
-          </p>
-        )}
-        {isApifySourcesPage ? (
-          <ApifySources agentId={activeAgent?._id} />
-        ) : isLlmSourcesPage ? (
-          <LlmSources />
-        ) : workspacePage ? (
-          workspacePage.key === "fields" ? <LeadFieldsPanel readOnly={readOnly} />
-            : workspacePage.key === "groups" ? <LeadGroupsPanel readOnly={readOnly} />
-              : workspacePage.key === "knowledge" ? <KnowledgePanel readOnly={readOnly} />
-                : workspacePage.key === "keys" ? (
-                  readOnly || !activeAgent ? null : (
-                    <IntegrationsPanel
-                      key={activeAgent._id}
-                      endpoint={`/api/integrations/status?agentId=${activeAgent._id}`}
-                      title="API keys & usage"
-                      subtitle="Every service this workspace is connected to — whose key it uses, whether it works right now, and how much is left. Checked live with each provider."
-                      onOpenTab={handleTabChange}
-                    />
+      <div className="flex-1 overflow-y-auto w-full" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { width: "100%", padding: "2rem 2.5rem 5rem" }}>
+        <div className="w-full max-w-[1400px] mx-auto">
+          {readOnly && (
+            <p className="mb-4 rounded-lg border border-bg4 bg-bg2 px-3 py-2 text-[12px] text-text3">
+              You&apos;re a member of this workspace — only admins can change its settings.
+            </p>
+          )}
+          {isApifySourcesPage ? (
+            <ApifySources agentId={activeAgent?._id} />
+          ) : isLlmSourcesPage ? (
+            <LlmSources />
+          ) : workspacePage ? (
+            workspacePage.key === "fields" ? <LeadFieldsPanel readOnly={readOnly} />
+              : workspacePage.key === "groups" ? <LeadGroupsPanel readOnly={readOnly} />
+                : workspacePage.key === "knowledge" ? <KnowledgePanel readOnly={readOnly} />
+                  : workspacePage.key === "keys" ? (
+                    readOnly || !activeAgent ? null : (
+                      <IntegrationsPanel
+                        key={activeAgent._id}
+                        endpoint={`/api/integrations/status?agentId=${activeAgent._id}`}
+                        title="API keys & usage"
+                        subtitle="Every service this workspace is connected to — whose key it uses, whether it works right now, and how much is left. Checked live with each provider."
+                        onOpenTab={handleTabChange}
+                      />
+                    )
                   )
-                )
-                : <TeamPanel />
-        ) : activeCard ? (
-          <>
-            {/* Card header */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 12, background: activeCard.iconBg }}>
-                  <activeCard.Icon size={20} style={{ color: activeCard.iconColor }} />
-                </span>
-                <div>
-                  <h2 className="text-[16px] font-semibold leading-tight" style={{ color: "var(--color-text)" }}>{activeCard.title}</h2>
-                  <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text3)" }}>{activeCard.description}</p>
-                </div>
-              </div>
-              {activeCard.togglable && (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[12px]" style={{ color: "var(--color-text3)" }}>
-                    {toggles[activeCard.key] !== false ? "Enabled" : "Disabled"}
+                    : <TeamPanel />
+          ) : activeCard ? (
+            <>
+              {/* Card header */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 12, background: activeCard.iconBg }}>
+                    <activeCard.Icon size={20} style={{ color: activeCard.iconColor }} />
                   </span>
-                  <SettingsToggle
-                    checked={toggles[activeCard.key] !== false}
-                    onChange={(v) => setToggles((p) => ({ ...p, [activeCard.key]: v }))}
-                  />
+                  <div>
+                    <h2 className="text-[16px] font-semibold leading-tight" style={{ color: "var(--color-text)" }}>{activeCard.title}</h2>
+                    <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text3)" }}>{activeCard.description}</p>
+                  </div>
                 </div>
-              )}
-            </div>
+                {activeCard.togglable && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                      {toggles[activeCard.key] !== false ? "Enabled" : "Disabled"}
+                    </span>
+                    <SettingsToggle
+                      checked={toggles[activeCard.key] !== false}
+                      onChange={(v) => setToggles((p) => ({ ...p, [activeCard.key]: v }))}
+                    />
+                  </div>
+                )}
+              </div>
 
-            <div style={{ height: 1, background: "var(--color-bg4)", marginBottom: 24 }} />
+              <div style={{ height: 1, background: "var(--color-bg4)", marginBottom: 24 }} />
 
-            {/* Copy settings utility (Commented out for single-agent mode)
+              {/* Copy settings utility (Commented out for single-agent mode)
             {isIntegration && agents.length > 1 && (
               <div className="mb-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: "var(--color-bg4)", backgroundColor: "var(--color-bg)" }}>
                 <div>
@@ -626,840 +636,1060 @@ export default function Settings() {
             )}
             */}
 
-            {/* Fields */}
-            <div className="flex flex-col gap-5">
-              {activeCard.fields.map((f) => {
-                let displayLabel = f.label;
-                let displayPlaceholder = f.placeholder;
-                let displayHint = f.hint;
-                let displayOptions: any[] | undefined = f.options;
+              {/* Fields */}
+              {/* Fields */}
+              {(() => {
+                const VOICE_CATEGORIES = [
+                  {
+                    id: "telephony",
+                    title: "CATEGORY 1: TELEPHONY / CALL PROVIDER",
+                    subtitle: "Carrier Routing & Phone Line",
+                    description: "Handles real phone call dialing, carrier network routing, and outbound/inbound caller ID. Plivo is recommended for India.",
+                    badgeBg: "rgba(245,166,35,0.12)",
+                    badgeColor: "#f5a623",
+                    borderColor: "rgba(245,166,35,0.25)",
+                    fields: ["callProvider", "callerPhone", "plivoAuthId", "plivoAuthToken", "callApiKey"],
+                  },
+                  {
+                    id: "voice-engine",
+                    title: "CATEGORY 2: AI VOICE & CONVERSATIONAL ENGINE",
+                    subtitle: "Speech Generation & Voices",
+                    description: "Generates natural human speech. Select Google Gemini for ultra-realistic native live audio (Puck, Charon, Aoede, Fenrir, Kore) or ElevenLabs.",
+                    badgeBg: "rgba(34,201,122,0.12)",
+                    badgeColor: "#22c97a",
+                    borderColor: "rgba(34,201,122,0.25)",
+                    fields: ["voiceProvider", "geminiVoiceModel", "elevenLabsAgentId", "geminiApiKey", "voiceApiKey", "voiceId"],
+                  },
+                  {
+                    id: "stt",
+                    title: "CATEGORY 3: SPEECH-TO-TEXT & TRANSCRIPTION",
+                    subtitle: "Live Callee Transcription",
+                    description: "Transcribes the callee's speech into text in real time during live calls.",
+                    badgeBg: "rgba(77,171,247,0.12)",
+                    badgeColor: "#4dabf7",
+                    borderColor: "rgba(77,171,247,0.25)",
+                    fields: ["sttProvider", "sttApiKey"],
+                  },
+                  {
+                    id: "script-rules",
+                    title: "CATEGORY 4: CALL SCRIPT & BEHAVIOR RULES",
+                    subtitle: "Greeting, Prompt & Safeguards",
+                    description: "Configure language, first greeting, AI conversation instructions, and operating hours.",
+                    badgeBg: "rgba(204,153,255,0.12)",
+                    badgeColor: "#cc99ff",
+                    borderColor: "rgba(204,153,255,0.25)",
+                    fields: ["callLanguage", "callMaxDuration", "callWindowStart", "callWindowEnd", "callConcurrency", "callRecording", "callVoicemailDetection", "callGreeting", "callScript"],
+                  },
+                ];
 
-                if (activeCard.key === "sms") {
-                  const currentProvider = values["smsProvider"] || "Twilio SMS";
-                  
-                  if (currentProvider === "MSG91" && f.key === "smsAccountSid") {
-                    return null;
-                  }
+                const renderSingleField = (f: any) => {
+                  let displayLabel = f.label;
+                  let displayPlaceholder = f.placeholder;
+                  let displayHint = f.hint;
+                  let displayOptions: any[] | undefined = f.options;
 
-                  if (currentProvider !== "Twilio SMS" && f.key === "smsWebhookUrl") {
-                    return null;
-                  }
-
-                  if (currentProvider === "Twilio SMS") {
-                    if (f.key === "smsWebhookUrl") {
+                  if (activeCard.key === "sms") {
+                    const currentProvider = values["smsProvider"] || "Twilio SMS";
+                    if (currentProvider === "MSG91" && f.key === "smsAccountSid") return null;
+                    if (currentProvider !== "Twilio SMS" && f.key === "smsWebhookUrl") return null;
+                    if (currentProvider === "Twilio SMS" && f.key === "smsWebhookUrl") {
                       displayHint = "Copy this and paste into your Twilio Sandbox or Phone Number Webhook settings to receive SMS replies.";
                     }
                   }
-                }
 
-                if (activeCard.key === "whatsapp") {
-                  const currentProvider = values["waProvider"] || "WireWeb";
-                  if (currentProvider !== "Meta Cloud API" && f.key === "waVerifyToken") {
-                    return null;
-                  }
-                  
-                  if (currentProvider !== "Twilio" && f.key === "twilioPhoneNumber") {
-                    return null;
-                  }
-
-                  if (currentProvider === "Meta Cloud API") {
-                    if (f.key === "waApiKey") {
-                      displayLabel = "Meta Access Token";
-                      displayPlaceholder = "EAAG...";
-                      displayHint = "Permanent System User Access Token";
-                    } else if (f.key === "waSessionId") {
-                      displayLabel = "Phone Number ID";
-                      displayPlaceholder = "e.g. 106394879201934";
-                      displayHint = "The unique ID for your Meta WhatsApp phone number";
-                    } else if (f.key === "waWebhookUrl") {
-                      displayHint = "Copy this and paste as the Callback URL in your Meta App Webhook settings";
-                    }
-                  } else if (currentProvider === "Twilio") {
-                    if (f.key === "waApiKey") {
-                      displayLabel = "Twilio Auth Token";
-                      displayPlaceholder = "Enter Twilio Auth Token";
-                      displayHint = "Your Twilio Account Auth Token";
-                    } else if (f.key === "waSessionId") {
-                      displayLabel = "Twilio Account SID";
-                      displayPlaceholder = "AC...";
-                      displayHint = "Your Twilio Account SID";
-                    } else if (f.key === "waWebhookUrl") {
-                      displayHint = "Copy this and paste into your Twilio Sandbox or Phone Number Webhook settings";
-                    }
-                  } else {
-                    if (f.key === "waWebhookUrl") {
-                      displayHint = "Copy this and paste in your WireWeb dashboard";
+                  if (activeCard.key === "whatsapp") {
+                    const currentProvider = values["waProvider"] || "WireWeb";
+                    if (currentProvider !== "Meta Cloud API" && f.key === "waVerifyToken") return null;
+                    if (currentProvider !== "Twilio" && f.key === "twilioPhoneNumber") return null;
+                    if (currentProvider === "Meta Cloud API") {
+                      if (f.key === "waApiKey") {
+                        displayLabel = "Meta Access Token";
+                        displayPlaceholder = "EAAG...";
+                        displayHint = "Permanent System User Access Token";
+                      } else if (f.key === "waSessionId") {
+                        displayLabel = "Phone Number ID";
+                        displayPlaceholder = "e.g. 106394879201934";
+                        displayHint = "The unique ID for your Meta WhatsApp phone number";
+                      } else if (f.key === "waWebhookUrl") {
+                        displayHint = "Copy this and paste as the Callback URL in your Meta App Webhook settings";
+                      }
+                    } else if (currentProvider === "Twilio") {
+                      if (f.key === "waApiKey") {
+                        displayLabel = "Twilio Auth Token";
+                        displayPlaceholder = "Enter Twilio Auth Token";
+                        displayHint = "Your Twilio Account Auth Token";
+                      } else if (f.key === "waSessionId") {
+                        displayLabel = "Twilio Account SID";
+                        displayPlaceholder = "AC...";
+                        displayHint = "Your Twilio Account SID";
+                      } else if (f.key === "waWebhookUrl") {
+                        displayHint = "Copy this and paste into your Twilio Sandbox or Phone Number Webhook settings";
+                      }
+                    } else {
+                      if (f.key === "waWebhookUrl") {
+                        displayHint = "Copy this and paste in your WireWeb dashboard";
+                      }
                     }
                   }
-                }
 
-                if (activeCard.key === "llm") {
-                  const currentLlmProvider = values["llmProvider"] || "Groq (Llama 3)";
-                  if (f.key === "llmApiKey") {
-                    if (currentLlmProvider.includes("Groq")) {
-                      displayLabel = "Groq API Key (starts with gsk_)";
-                      displayPlaceholder = "gsk_...";
-                      displayHint = "From console.groq.com";
-                    } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
-                      displayLabel = "OpenAI API Key (starts with sk-)";
-                      displayPlaceholder = "sk-...";
-                      displayHint = "From platform.openai.com";
-                    } else if (currentLlmProvider.includes("Claude") || currentLlmProvider.includes("Anthropic")) {
-                      displayLabel = "Anthropic API Key (starts with sk-ant-)";
-                      displayPlaceholder = "sk-ant-...";
-                      displayHint = "From console.anthropic.com";
-                    } else if (currentLlmProvider.includes("Gemini")) {
-                      displayLabel = "Google Gemini API Key";
-                      displayPlaceholder = "AIzaSy...";
-                      displayHint = "From aistudio.google.com";
+                  if (activeCard.key === "llm") {
+                    const currentLlmProvider = values["llmProvider"] || "Groq (Llama 3)";
+                    if (f.key === "llmApiKey") {
+                      if (currentLlmProvider.includes("Groq")) {
+                        displayLabel = "Groq API Key (starts with gsk_)";
+                        displayPlaceholder = "gsk_...";
+                        displayHint = "From console.groq.com";
+                      } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
+                        displayLabel = "OpenAI API Key (starts with sk-)";
+                        displayPlaceholder = "sk-...";
+                        displayHint = "From platform.openai.com";
+                      } else if (currentLlmProvider.includes("Claude") || currentLlmProvider.includes("Anthropic")) {
+                        displayLabel = "Anthropic API Key (starts with sk-ant-)";
+                        displayPlaceholder = "sk-ant-...";
+                        displayHint = "From console.anthropic.com";
+                      } else if (currentLlmProvider.includes("Gemini")) {
+                        displayLabel = "Google Gemini API Key";
+                        displayPlaceholder = "AIzaSy...";
+                        displayHint = "From aistudio.google.com";
+                      }
+                    } else if (f.key === "llmModel") {
+                      if (currentLlmProvider.includes("Groq")) {
+                        displayPlaceholder = "openai/gpt-oss-120b";
+                        displayHint = "e.g. openai/gpt-oss-120b (default), qwen/qwen3.8-27b";
+                      } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
+                        displayPlaceholder = "gpt-4o-mini";
+                        displayHint = "e.g. gpt-4o-mini, gpt-4o";
+                      } else if (currentLlmProvider.includes("Claude")) {
+                        displayPlaceholder = "claude-3-5-sonnet-20241022";
+                        displayHint = "e.g. claude-3-5-sonnet-20241022, claude-3-haiku-20240307";
+                      } else if (currentLlmProvider.includes("Gemini")) {
+                        displayPlaceholder = "gemini-1.5-pro";
+                        displayHint = "e.g. gemini-1.5-pro, gemini-1.5-flash";
+                      }
                     }
-                  } else if (f.key === "llmModel") {
-                    if (currentLlmProvider.includes("Groq")) {
-                      displayPlaceholder = "openai/gpt-oss-120b";
-                      displayHint = "e.g. openai/gpt-oss-120b (default), qwen/qwen3.8-27b";
-                    } else if (currentLlmProvider.includes("OpenAI") || currentLlmProvider.includes("GPT")) {
-                      displayPlaceholder = "gpt-4o-mini";
-                      displayHint = "e.g. gpt-4o-mini, gpt-4o";
-                    } else if (currentLlmProvider.includes("Claude")) {
-                      displayPlaceholder = "claude-3-5-sonnet-20241022";
-                      displayHint = "e.g. claude-3-5-sonnet-20241022, claude-3-haiku-20240307";
-                    } else if (currentLlmProvider.includes("Gemini")) {
-                      displayPlaceholder = "gemini-1.5-pro";
-                      displayHint = "e.g. gemini-1.5-pro, gemini-1.5-flash";
+                  }
+
+                  if (activeCard.key === "voice") {
+                    const currentCallProvider = values["callProvider"] || "Plivo";
+                    const currentVoiceProvider = values["voiceProvider"] || "Google Gemini";
+
+                    const usesPlivo = currentCallProvider === "Plivo" || currentCallProvider === "ElevenLabs Conversational AI";
+                    if (usesPlivo) {
+                      if (f.key === "callApiKey") return null;
+                    } else {
+                      if (f.key === "plivoAuthId" || f.key === "plivoAuthToken") return null;
                     }
-                  }
-                }
 
-                if (activeCard.key === "voice") {
-                  const currentCallProvider = values["callProvider"] || "Plivo";
-                  const currentVoiceProvider = values["voiceProvider"] || "ElevenLabs";
-
-                  // Conditional visibility based on Call Provider ("ElevenLabs Conversational AI" also dials through Plivo)
-                  const usesPlivo = currentCallProvider === "Plivo" || currentCallProvider === "ElevenLabs Conversational AI";
-                  if (usesPlivo) {
-                    if (f.key === "callApiKey") return null; // plivoAuthToken is used
-                  } else {
-                    if (f.key === "plivoAuthId" || f.key === "plivoAuthToken") return null;
-                  }
-
-                  if (currentCallProvider !== "Vapi.ai" && currentCallProvider !== "Bland.ai" && f.key === "callApiKey") {
-                    return null;
-                  }
-
-                  if (f.key === "voiceApiKey") {
-                    if (currentVoiceProvider === "Deepgram" && !usesPlivo) {
-                      // Deepgram Aura uses the STT API Key, no need for a separate Voice API Key
+                    if (currentCallProvider !== "Vapi.ai" && currentCallProvider !== "Bland.ai" && f.key === "callApiKey") {
                       return null;
-                    } else if (currentVoiceProvider === "ElevenLabs" || usesPlivo) {
-                      displayLabel = "Voice API Key (ElevenLabs)";
-                      displayPlaceholder = "Enter ElevenLabs API key...";
-                    } else {
-                      displayLabel = `Voice API Key (${currentVoiceProvider})`;
-                      displayPlaceholder = `Enter ${currentVoiceProvider} API key...`;
                     }
-                  } else if (f.key === "voiceId") {
-                    if (currentVoiceProvider === "Deepgram") {
-                      displayHint = "Select a Deepgram Aura voice";
-                      displayOptions = [
-                        { label: "Asteria (Female, Friendly)", value: "aura-asteria-en" },
-                        { label: "Luna (Female, Professional)", value: "aura-luna-en" },
-                        { label: "Stella (Female, Bright)", value: "aura-stella-en" },
-                        { label: "Orion (Male, Clear)", value: "aura-orion-en" },
-                        { label: "Arcas (Male, Deep)", value: "aura-arcas-en" }
-                      ];
+
+                    if (currentVoiceProvider === "Google Gemini") {
+                      if (f.key === "elevenLabsAgentId" || f.key === "voiceApiKey") return null;
+                      if (f.key === "geminiApiKey") {
+                        displayLabel = "Gemini API Key (Google AI Studio)";
+                        displayPlaceholder = "Enter Gemini API key (or uses GEMINI_API_KEY from .env)...";
+                        displayHint = "Google AI Studio API Key for Gemini Live Voice synthesis";
+                      } else if (f.key === "geminiVoiceModel") {
+                        displayLabel = "Gemini Voice Model";
+                        displayHint = "Gemini native audio model";
+                      } else if (f.key === "voiceId") {
+                        displayLabel = "Gemini AI Voice (Female & Male)";
+                        displayHint = "Select below or browse in the Gemini Voice Studio";
+                        displayOptions = [
+                          { label: "Aoede (Female · Warm, Breezy & Melodious)", value: "Aoede" },
+                          { label: "Kore (Female · Calm, Firm & Professional)", value: "Kore" },
+                          { label: "Leda (Female · Expressive & Lively)", value: "Leda" },
+                          { label: "Despina (Female · Smooth & Natural)", value: "Despina" },
+                          { label: "Callirrhoe (Female · Bright & Confident)", value: "Callirrhoe" },
+                          { label: "Puck (Male · Energetic & Upbeat)", value: "Puck" },
+                          { label: "Charon (Male · Deep & Steady)", value: "Charon" },
+                          { label: "Fenrir (Male · Dynamic & Authoritative)", value: "Fenrir" },
+                          { label: "Zephyr (Male · Modern & Crisp)", value: "Zephyr" },
+                          { label: "Orus (Male · Friendly & Approachable)", value: "Orus" },
+                        ];
+                      }
                     } else if (currentVoiceProvider === "ElevenLabs") {
-                      displayHint = "Select a standard ElevenLabs voice";
-                      displayOptions = [
-                        { label: "Jessica (Expressive, Friendly)", value: "cgSgspJ2msm6clMCkdW9" },
-                        { label: "Rachel (Calm, Professional)", value: "21m00Tcm4TlvDq8ikWAM" },
-                        { label: "Bella (Soft, Warm)", value: "EXAVITQu4vr4xnSDxMaL" },
-                        { label: "Adam (Deep, Professional)", value: "pNInz6obpgDQGcFmaJgB" },
-                        { label: "Antoni (Well-rounded)", value: "ErXwobaYiN019PkySvjV" },
-                        { label: "Josh (Deep, Authoritative)", value: "TxGEqnHWrfWFTfGW9XjX" }
-                      ];
-                    } else {
-                      displayPlaceholder = `Voice ID for ${currentVoiceProvider}`;
-                      displayHint = `Exact voice name or ID from ${currentVoiceProvider}`;
+                      if (f.key === "geminiApiKey" || f.key === "geminiVoiceModel") return null;
+                      if (f.key === "voiceApiKey") {
+                        displayLabel = "Voice API Key (ElevenLabs)";
+                        displayPlaceholder = "Enter ElevenLabs API key...";
+                        displayHint = "Your ElevenLabs account API key";
+                      } else if (f.key === "elevenLabsAgentId") {
+                        displayLabel = "ElevenLabs ConvAI Agent ID";
+                        displayPlaceholder = "agent_...";
+                        displayHint = "Agent ID from ElevenLabs Conversational AI dashboard";
+                      } else if (f.key === "voiceId") {
+                        displayLabel = "ElevenLabs Voice";
+                        displayHint = "Select a standard ElevenLabs voice";
+                        displayOptions = [
+                          { label: "Priya (Warm Indian Female) — ⭐ Recommended", value: "ch9J8IB6HKlEHQaWQFdk" },
+                          { label: "Jessica (Expressive, Friendly) — ⚡ FREE", value: "cgSgspJ2msm6clMCkdW9" },
+                          { label: "Sarah (Warm, Reassuring) — ⚡ FREE", value: "EXAVITQu4vr4xnSDxMaL" },
+                          { label: "Alice (Clear, Professional) — ⚡ FREE", value: "Xb7hH8MSUJpSbSDYk0k2" },
+                          { label: "Laura (Friendly, Natural) — ⚡ FREE", value: "FGY2WhTYpPnrIDTdsKH5" },
+                          { label: "Adam (Deep, Professional) — ⚡ FREE", value: "pNInz6obpgDQGcFmaJgB" },
+                          { label: "Charlie (Confident, Dynamic) — ⚡ FREE", value: "IKne3meq5aSn9XLyUdCD" }
+                        ];
+                      }
+                    } else if (currentVoiceProvider === "Deepgram") {
+                      if (f.key === "geminiApiKey" || f.key === "geminiVoiceModel" || f.key === "elevenLabsAgentId" || f.key === "voiceApiKey") {
+                        return null;
+                      }
+                      if (f.key === "voiceId") {
+                        displayLabel = "Deepgram Aura Voice";
+                        displayHint = "Select a Deepgram Aura voice";
+                        displayOptions = [
+                          { label: "Asteria (Female, Friendly)", value: "aura-asteria-en" },
+                          { label: "Luna (Female, Professional)", value: "aura-luna-en" },
+                          { label: "Stella (Female, Bright)", value: "aura-stella-en" },
+                          { label: "Orion (Male, Clear)", value: "aura-orion-en" },
+                          { label: "Arcas (Male, Deep)", value: "aura-arcas-en" }
+                        ];
+                      }
                     }
                   }
-                }
 
-                if (f.key === "leadLocation") {
-                  const rawLocs = values["leadLocations"] || "";
-                  let locs: { name: string; active: boolean }[] = [];
-                  try {
-                    if (rawLocs) {
-                      locs = JSON.parse(rawLocs);
-                    } else if (values["leadLocation"]) {
-                      locs = [{ name: values["leadLocation"], active: true }];
+                  if (f.key === "leadLocation") {
+                    const rawLocs = values["leadLocations"] || "";
+                    let locs: { name: string; active: boolean }[] = [];
+                    try {
+                      if (rawLocs) {
+                        locs = JSON.parse(rawLocs);
+                      } else if (values["leadLocation"]) {
+                        locs = [{ name: values["leadLocation"], active: true }];
+                      }
+                    } catch (e) {
+                      locs = [];
                     }
-                  } catch (e) {
-                    locs = [];
-                  }
 
-                  const handleAddLoc = (name: string) => {
-                    const cleanName = name.trim();
-                    if (!cleanName) return;
-                    if (locs.some((l) => l.name.toLowerCase() === cleanName.toLowerCase())) {
-                      showToast("Location already exists", "error");
-                      return;
-                    }
-                    const updated = [...locs, { name: cleanName, active: true }];
-                    updateLocationsSetting(updated);
-                  };
+                    const handleAddLoc = (name: string) => {
+                      const cleanName = name.trim();
+                      if (!cleanName) return;
+                      if (locs.some((l) => l.name.toLowerCase() === cleanName.toLowerCase())) {
+                        showToast("Location already exists", "error");
+                        return;
+                      }
+                      const updated = [...locs, { name: cleanName, active: true }];
+                      updateLocationsSetting(updated);
+                    };
 
-                  const handleToggleLoc = (index: number) => {
-                    const updated = locs.map((l, idx) =>
-                      idx === index ? { ...l, active: !l.active } : l
+                    const handleToggleLoc = (index: number) => {
+                      const updated = locs.map((l, idx) =>
+                        idx === index ? { ...l, active: !l.active } : l
+                      );
+                      updateLocationsSetting(updated);
+                    };
+
+                    const handleDeleteLoc = (index: number) => {
+                      const updated = locs.filter((_, idx) => idx !== index);
+                      updateLocationsSetting(updated);
+                    };
+
+                    const updateLocationsSetting = (updatedLocs: any[]) => {
+                      const serialized = JSON.stringify(updatedLocs);
+                      const firstActive = updatedLocs.find(l => l.active)?.name || updatedLocs[0]?.name || "";
+                      setValues((prev) => ({
+                        ...prev,
+                        leadLocations: serialized,
+                        leadLocation: firstActive
+                      }));
+                    };
+
+                    return (
+                      <div key={f.key} className="col-span-1 md:col-span-2 flex flex-col gap-2.5 p-4 rounded-xl border w-full" style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>Target Locations (Apify Scraping)</label>
+                          <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                          {locs.length === 0 ? (
+                            <div className="text-[11.5px] text-text3 italic py-1">No locations added. Add one below.</div>
+                          ) : (
+                            locs.map((loc, index) => (
+                              <div key={index} className="flex items-center justify-between bg-bg2 dark:bg-slate-900 px-3 py-1.5 rounded-lg border text-[12.5px]" style={{ borderColor: "var(--color-bg4)" }}>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={loc.active}
+                                    onChange={() => handleToggleLoc(index)}
+                                    className="cursor-pointer"
+                                  />
+                                  <span className="text-[12px]" style={{ color: loc.active ? "var(--color-text)" : "var(--color-text3)", textDecoration: loc.active ? "none" : "line-through" }}>
+                                    {loc.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${loc.active ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10 dark:bg-emerald-950/20" : "bg-bg3 text-text3 border border-slate-500/10 dark:bg-slate-800"
+                                    }`}>
+                                    {loc.active ? "Active" : "Inactive"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLoc(index)}
+                                    className="text-red-500 hover:text-red-600 bg-transparent border-none cursor-pointer flex items-center p-0.5"
+                                  >
+                                    <IconTrash size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <LocationAdder onAdd={handleAddLoc} />
+                      </div>
                     );
-                    updateLocationsSetting(updated);
-                  };
+                  }
 
-                  const handleDeleteLoc = (index: number) => {
-                    const updated = locs.filter((_, idx) => idx !== index);
-                    updateLocationsSetting(updated);
-                  };
-
-                  const updateLocationsSetting = (updatedLocs: any[]) => {
-                    const serialized = JSON.stringify(updatedLocs);
-                    const firstActive = updatedLocs.find(l => l.active)?.name || updatedLocs[0]?.name || "";
-                    setValues((prev) => ({
-                      ...prev,
-                      leadLocations: serialized,
-                      leadLocation: firstActive
-                    }));
-                  };
+                  const isFullWidth = f.type === "textarea" || f.type === "webhook-url" || f.key === "callScript" || f.key === "callGreeting" || f.key === "businessServices" || f.key === "businessWebsite" || f.key === "customPrompt";
 
                   return (
-                    <div key={f.key} className="flex flex-col gap-2.5 p-4 rounded-xl border w-full" style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}>
+                    <div key={f.key} className={`flex flex-col gap-1.5 ${isFullWidth ? "col-span-1 md:col-span-2" : "col-span-1"}`}>
                       <div className="flex items-center justify-between">
-                        <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>Target Locations (Apify Scraping)</label>
-                        <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>
+                        <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>{displayLabel}</label>
+                        {displayHint && <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>}
                       </div>
-                      
-                      <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto pr-1">
-                        {locs.length === 0 ? (
-                          <div className="text-[11.5px] text-text3 italic py-1">No locations added. Add one below.</div>
-                        ) : (
-                          locs.map((loc, index) => (
-                            <div key={index} className="flex items-center justify-between bg-bg2 dark:bg-slate-900 px-3 py-1.5 rounded-lg border text-[12.5px]" style={{ borderColor: "var(--color-bg4)" }}>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={loc.active}
-                                  onChange={() => handleToggleLoc(index)}
-                                  className="cursor-pointer"
-                                />
-                                <span className="text-[12px]" style={{ color: loc.active ? "var(--color-text)" : "var(--color-text3)", textDecoration: loc.active ? "none" : "line-through" }}>
-                                  {loc.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
-                                  loc.active ? "bg-emerald-50 text-emerald-600 border border-emerald-500/10 dark:bg-emerald-950/20" : "bg-bg3 text-text3 border border-slate-500/10 dark:bg-slate-800"
-                                }`}>
-                                  {loc.active ? "Active" : "Inactive"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteLoc(index)}
-                                  className="text-red-500 hover:text-red-600 bg-transparent border-none cursor-pointer flex items-center p-0.5"
-                                >
-                                  <IconTrash size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      {f.type === "password" ? (
+                        <div className="relative w-full flex items-center">
+                          <input
+                            className="form-input pr-9"
+                            type={showPasswords[f.key] ? "text" : "password"}
+                            placeholder={displayPlaceholder}
+                            value={values[f.key] ?? ""}
+                            onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswords((p) => ({ ...p, [f.key]: !p[f.key] }))}
+                            className="absolute right-2 p-1 rounded-md transition-colors text-text3 hover:text-text2 flex items-center justify-center border-none bg-transparent cursor-pointer"
+                          >
+                            {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+                          </button>
+                        </div>
+                      ) : displayOptions ? (
+                        <select
+                          className="form-input"
+                          value={values[f.key] ?? (typeof displayOptions[0] === "string" ? displayOptions[0] : displayOptions[0]?.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setValues((p: Record<string, string>) => {
+                              const newVals: Record<string, string> = { ...p, [f.key]: val };
+                              if (f.key === "voiceProvider") {
+                                if (val === "Google Gemini") {
+                                  newVals["voiceId"] = "Puck";
+                                } else if (val === "Deepgram") {
+                                  newVals["voiceId"] = "aura-asteria-en";
+                                } else if (val === "ElevenLabs") {
+                                  newVals["voiceId"] = "ch9J8IB6HKlEHQaWQFdk";
+                                }
+                              }
+                              return newVals;
+                            });
+                          }}
+                        >
+                          {displayOptions.map((o, idx) => {
+                            if (typeof o === "string") {
+                              return <option key={idx} value={o}>{o}</option>;
+                            }
+                            return <option key={idx} value={o.value}>{o.label}</option>;
+                          })}
+                        </select>
+                      ) : f.type === "textarea" ? (
+                        <textarea
+                          className="form-input"
+                          style={{ minHeight: "100px", padding: "8px 12px", resize: "vertical" }}
+                          placeholder={displayPlaceholder}
+                          value={values[f.key] ?? ""}
+                          onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                        />
+                      ) : f.type === "webhook-url" ? (
+                        <div className="w-full flex items-start gap-2">
+                          <div
+                            className="form-input bg-bg3 dark:bg-slate-900/50 cursor-default flex-1"
+                            style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
+                          >
+                            {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = `${window.location.origin}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`;
+                              navigator.clipboard.writeText(url);
+                              showToast("Webhook URL copied to clipboard!");
+                            }}
+                            className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-text3 hover:text-text2"
+                            style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+                            title="Copy to clipboard"
+                          >
+                            <IconCopy size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          className="form-input"
+                          type={f.type ?? "text"}
+                          placeholder={displayPlaceholder}
+                          value={values[f.key] ?? ""}
+                          onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+                        />
+                      )}
+                    </div>
+                  );
+                };
 
-                      <LocationAdder onAdd={handleAddLoc} />
+                if (activeCard.key === "voice") {
+                  return (
+                    <div className="flex flex-col gap-6 w-full">
+                      {VOICE_CATEGORIES.map((cat) => {
+                        const catFields = activeCard.fields.filter((f) => cat.fields.includes(f.key));
+                        return (
+                          <div
+                            key={cat.id}
+                            className="rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm"
+                            style={{
+                              background: "var(--color-bg2)",
+                              borderColor: "var(--color-bg4)",
+                            }}
+                          >
+                            <div
+                              className="px-6 py-4.5 border-b flex flex-col gap-1.5"
+                              style={{
+                                borderColor: "var(--color-bg4)",
+                                background: `linear-gradient(90deg, ${cat.badgeBg} 0%, transparent 100%)`,
+                                borderLeft: `4px solid ${cat.badgeColor}`,
+                              }}
+                            >
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span
+                                  className="px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider"
+                                  style={{ background: cat.badgeBg, color: cat.badgeColor, border: `1px solid ${cat.borderColor}` }}
+                                >
+                                  {cat.title}
+                                </span>
+                                <span className="text-[13.5px] font-bold text-text">{cat.subtitle}</span>
+                              </div>
+                              <p className="text-[12px] text-text3 mt-1 mb-0 leading-relaxed">
+                                {cat.description}
+                              </p>
+                            </div>
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                              {catFields.map((f) => renderSingleField(f))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 }
 
                 return (
-                  <div key={f.key} className="flex key-wrapper flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[12px] font-semibold" style={{ color: "var(--color-text2)" }}>{displayLabel}</label>
-                      {displayHint && <span className="text-[10.5px]" style={{ color: "var(--color-text3)" }}>{displayHint}</span>}
+                  <div
+                    className="rounded-2xl border p-6 transition-all duration-200 shadow-sm"
+                    style={{
+                      background: "var(--color-bg2)",
+                      borderColor: "var(--color-bg4)",
+                    }}
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
+                      {activeCard.fields.map((f) => renderSingleField(f))}
                     </div>
-                    {f.type === "password" ? (
-                      <div className="relative w-full flex items-center">
-                        <input
-                          className="form-input pr-9"
-                          type={showPasswords[f.key] ? "text" : "password"}
-                          placeholder={displayPlaceholder}
-                          value={values[f.key] ?? ""}
-                          onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPasswords((p) => ({ ...p, [f.key]: !p[f.key] }))}
-                          className="absolute right-2 p-1 rounded-md transition-colors text-text3 hover:text-text2 flex items-center justify-center border-none bg-transparent cursor-pointer"
-                        >
-                          {showPasswords[f.key] ? <IconEyeOff size={15} /> : <IconEye size={15} />}
-                        </button>
-                      </div>
-                    ) : displayOptions ? (
-                      <select
-                        className="form-input"
-                        value={values[f.key] ?? (typeof displayOptions[0] === "string" ? displayOptions[0] : displayOptions[0]?.value)}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setValues((p) => {
-                            const newVals = { ...p, [f.key]: val };
-                            if (f.key === "voiceProvider") {
-                              if (val === "Deepgram") {
-                                newVals.voiceId = "aura-asteria-en";
-                              } else if (val === "ElevenLabs") {
-                                newVals.voiceId = "pNInz6obpgDQGcFmaJgB";
-                              }
-                            }
-                            return newVals;
-                          });
-                        }}
-                      >
-                        {displayOptions.map((o, idx) => {
-                          if (typeof o === "string") {
-                            return <option key={idx} value={o}>{o}</option>;
-                          }
-                          return <option key={idx} value={o.value}>{o.label}</option>;
-                        })}
-                      </select>
-                    ) : f.type === "textarea" ? (
-                      <textarea
-                        className="form-input"
-                        style={{ minHeight: "100px", padding: "8px 12px", resize: "vertical" }}
-                        placeholder={displayPlaceholder}
-                        value={values[f.key] ?? ""}
-                        onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                      />
-                    ) : f.type === "webhook-url" ? (
-                      <div className="w-full flex items-start gap-2">
-                        <div
-                          className="form-input bg-bg3 dark:bg-slate-900/50 cursor-default flex-1"
-                          style={{ height: "auto", minHeight: "38px", wordBreak: "break-all", paddingTop: "8px", paddingBottom: "8px", lineHeight: "1.4" }}
-                        >
-                          {`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const url = `${window.location.origin}/api/webhooks/${activeCard.key === "sms" ? "sms" : "whatsapp"}?agentId=${activeAgent?._id || ""}`;
-                            navigator.clipboard.writeText(url);
-                            showToast("Webhook URL copied to clipboard!");
-                          }}
-                          className="shrink-0 flex items-center justify-center rounded-md border transition-colors cursor-pointer text-text3 hover:text-text2"
-                          style={{ width: "38px", height: "38px", borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
-                          title="Copy to clipboard"
-                        >
-                          <IconCopy size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <input
-                        className="form-input"
-                        type={f.type ?? "text"}
-                        placeholder={displayPlaceholder}
-                        value={values[f.key] ?? ""}
-                        onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
-                      />
-                    )}
                   </div>
                 );
-              })}
-            </div>
+              })()}
 
 
-            {/* WhatsApp send test panel */}
-            {activeCard.key === "whatsapp" && (
-              <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
-                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
-                  <IconMessage size={15} style={{ color: "#22c97a" }} />
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Send a Test WhatsApp</span>
-                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
-                </div>
-                <div className="p-5 flex flex-col gap-3">
-                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
-                    Sends a real test message to verify your WhatsApp credentials. Save settings first.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      value={testWaTo}
-                      onChange={(e) => { setTestWaTo(e.target.value); setTestWaResult(null); }}
-                      placeholder="+91xxxxxxxxxx"
-                      className="flex-1 text-[13px] rounded-lg px-3 py-2 outline-none"
-                      style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
-                    />
-                    <button
-                      onClick={sendTestWa}
-                      disabled={sendingTestWa || !values["waApiKey"]}
-                      className="flex items-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
-                      style={{
-                        padding: "8px 16px",
-                        background: sendingTestWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
-                        color: !values["waApiKey"] ? "var(--color-text3)" : "#22c97a",
-                        border: "1px solid rgba(34,201,122,0.3)",
-                        cursor: (sendingTestWa || !values["waApiKey"]) ? "not-allowed" : "pointer",
-                        opacity: !values["waApiKey"] ? 0.55 : 1,
-                        whiteSpace: "nowrap",
-                      }}
-                      title={!values["waApiKey"] ? "Save your API key first" : "Send test WhatsApp"}
-                    >
-                      {sendingTestWa ? (
-                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> {waStatusLabel}</>
-                      ) : (
-                        <><IconMessage size={13} /> Send Test</>
-                      )}
-                    </button>
+              {/* WhatsApp send test panel */}
+              {activeCard.key === "whatsapp" && (
+                <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
+                  <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
+                    <IconMessage size={15} style={{ color: "#22c97a" }} />
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Send a Test WhatsApp</span>
+                    <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
                   </div>
-                  {testWaResult && (
-                    testWaResult.ok ? (
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)" }}>
+                  <div className="p-5 flex flex-col gap-3">
+                    <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                      Sends a real test message to verify your WhatsApp credentials. Save settings first.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={testWaTo}
+                        onChange={(e) => { setTestWaTo(e.target.value); setTestWaResult(null); }}
+                        placeholder="+91xxxxxxxxxx"
+                        className="flex-1 text-[13px] rounded-lg px-3 py-2 outline-none"
+                        style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                      />
+                      <button
+                        onClick={sendTestWa}
+                        disabled={sendingTestWa || !values["waApiKey"]}
+                        className="flex items-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                        style={{
+                          padding: "8px 16px",
+                          background: sendingTestWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
+                          color: !values["waApiKey"] ? "var(--color-text3)" : "#22c97a",
+                          border: "1px solid rgba(34,201,122,0.3)",
+                          cursor: (sendingTestWa || !values["waApiKey"]) ? "not-allowed" : "pointer",
+                          opacity: !values["waApiKey"] ? 0.55 : 1,
+                          whiteSpace: "nowrap",
+                        }}
+                        title={!values["waApiKey"] ? "Save your API key first" : "Send test WhatsApp"}
+                      >
+                        {sendingTestWa ? (
+                          <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> {waStatusLabel}</>
+                        ) : (
+                          <><IconMessage size={13} /> Send Test</>
+                        )}
+                      </button>
+                    </div>
+                    {testWaResult && (
+                      testWaResult.ok ? (
+                        <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)" }}>
+                          <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
+                            <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <IconCheck size={13} style={{ color: "#fff" }} />
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Message sent successfully!</span>
+                          </div>
+                          <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
+                            <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
+                              Delivered to {testWaTo}
+                            </p>
+                            <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
+                              SalesAgent test: Your WhatsApp integration is working!
+                            </div>
+                            <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
+                              {testWaResult.msg}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 text-[12px] px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
+                          <IconAlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span>{testWaResult.msg}</span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* WhatsApp receive test panel */}
+              {activeCard.key === "whatsapp" && (
+                <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
+                  <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
+                    <IconMessage size={15} style={{ color: "#22c97a" }} />
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test WhatsApp Message</span>
+                    <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
+                  </div>
+                  <div className="p-5 flex flex-col gap-3">
+                    <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                      Fetch the last received WhatsApp message to verify your webhook is working.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={checkReceivedWa}
+                        disabled={checkingWa || !activeAgent}
+                        className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all w-full"
+                        style={{
+                          padding: "8px 16px",
+                          background: checkingWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
+                          color: "#22c97a",
+                          border: "1px solid rgba(34,201,122,0.3)",
+                          cursor: checkingWa ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {checkingWa ? (
+                          <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
+                        ) : (
+                          <><IconMessage size={13} /> Check Last Received Message</>
+                        )}
+                      </button>
+                    </div>
+                    {lastReceivedWa && (
+                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
                         <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
                           <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                             <IconCheck size={13} style={{ color: "#fff" }} />
                           </span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Message sent successfully!</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
                         </div>
                         <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
                           <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
-                            Delivered to {testWaTo}
+                            From: {lastReceivedWa.senderName} ({lastReceivedWa.senderPhone})
                           </p>
                           <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
-                            SalesAgent test: Your WhatsApp integration is working!
+                            {lastReceivedWa.text}
                           </div>
                           <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
-                            {testWaResult.msg}
+                            Received at: {new Date(lastReceivedWa.timestamp).toLocaleString()}
                           </p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-start gap-2 text-[12px] px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
-                        <IconAlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>{testWaResult.msg}</span>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* WhatsApp receive test panel */}
-            {activeCard.key === "whatsapp" && (
-              <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
-                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
-                  <IconMessage size={15} style={{ color: "#22c97a" }} />
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test WhatsApp Message</span>
-                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>Live</span>
-                </div>
-                <div className="p-5 flex flex-col gap-3">
-                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
-                    Fetch the last received WhatsApp message to verify your webhook is working.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={checkReceivedWa}
-                      disabled={checkingWa || !activeAgent}
-                      className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all w-full"
-                      style={{
-                        padding: "8px 16px",
-                        background: checkingWa ? "rgba(34,201,122,0.08)" : "rgba(34,201,122,0.15)",
-                        color: "#22c97a",
-                        border: "1px solid rgba(34,201,122,0.3)",
-                        cursor: checkingWa ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {checkingWa ? (
-                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
-                      ) : (
-                        <><IconMessage size={13} /> Check Last Received Message</>
-                      )}
-                    </button>
+                    )}
                   </div>
-                  {lastReceivedWa && (
-                    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
-                      <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
-                        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <IconCheck size={13} style={{ color: "#fff" }} />
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
+                </div>
+              )}
+
+              {/* Google Gemini Native Voice Engine Status & Controls */}
+              {activeCard.key === "voice" && (values["voiceProvider"] || "Google Gemini") === "Google Gemini" && (
+                <div
+                  className="mt-6 rounded-2xl border p-5 sm:p-6 transition-all duration-200 shadow-sm"
+                  style={{
+                    borderColor: "rgba(34,201,122,0.3)",
+                    background: "var(--color-bg2)",
+                    borderLeft: "4px solid #22c97a",
+                  }}
+                >
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[14px]" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>
+                        ✦
                       </div>
-                      <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
-                        <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
-                          From: {lastReceivedWa.senderName} ({lastReceivedWa.senderPhone})
-                        </p>
-                        <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
-                          {lastReceivedWa.text}
+                      <div>
+                        <div className="text-[13.5px] font-bold text-text flex items-center gap-2">
+                          Google Gemini Native Voice Engine
+                          <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold" style={{ background: "rgba(34,201,122,0.15)", color: "#22c97a" }}>
+                            Active Voice Engine
+                          </span>
                         </div>
-                        <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
-                          Received at: {new Date(lastReceivedWa.timestamp).toLocaleString()}
+                        <p className="text-[11.5px] text-text3 m-0">
+                          Live conversational speech synthesis with sub-second latency for Plivo calls
                         </p>
                       </div>
                     </div>
+                    <div>
+                      <span className="text-[11px] font-mono px-2.5 py-1 rounded-md bg-bg3 text-text2 border border-border/40">
+                        {values["geminiVoiceModel"] || "gemini-2.5-flash-native-audio-preview-12-2025"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t" style={{ borderColor: "var(--color-bg4)" }}>
+                    <div className="p-3 rounded-xl bg-bg3/60">
+                      <span className="text-[11px] text-text3 uppercase tracking-wider font-semibold">Active AI Voice</span>
+                      <p className="text-[13px] font-bold text-text mt-1 mb-0">{values["voiceId"] || "Puck"} (Google Native)</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-bg3/60">
+                      <span className="text-[11px] text-text3 uppercase tracking-wider font-semibold">Telephony Provider</span>
+                      <p className="text-[13px] font-bold text-text mt-1 mb-0">{values["callProvider"] || "Plivo"} (Carrier Routing)</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-bg3/60">
+                      <span className="text-[11px] text-text3 uppercase tracking-wider font-semibold">API Key Status</span>
+                      <p className="text-[13px] font-bold text-emerald-400 mt-1 mb-0">✓ Configured & Ready</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ElevenLabs key / agent diagnostics with one-click fixes */}
+              {activeCard.key === "voice" && activeAgent && values["voiceProvider"] === "ElevenLabs" && (
+                <ElevenLabsSetupPanel
+                  agentId={activeAgent._id}
+                  apiKey={values["voiceApiKey"] || ""}
+                  onAgentIdChange={(id) => setValues((p) => ({ ...p, elevenLabsAgentId: id }))}
+                />
+              )}
+
+              {/* Brain (LLM) + voice picker with samples, saved on the ElevenLabs agent */}
+              {activeCard.key === "voice" && activeAgent && !readOnly && values["elevenLabsAgentId"] && values["voiceProvider"] === "ElevenLabs" && (
+                <div className="mt-6">
+                  <ElevenLabsVoiceStudio key={`${activeAgent._id}-${values["elevenLabsAgentId"]}`} agentId={activeAgent._id} greeting={values["callGreeting"] || ""} />
+                </div>
+              )}
+
+              {/* Google Gemini Native Voice Studio — Browse, Test Samples & Set Female and Male voices */}
+              {activeCard.key === "voice" && activeAgent && (values["voiceProvider"] || "Google Gemini") === "Google Gemini" && (
+                <div className="mt-6">
+                  <GeminiVoiceStudio
+                    key={`${activeAgent._id}-${values["voiceId"] || "Puck"}`}
+                    agentId={activeAgent._id}
+                    currentVoiceId={values["voiceId"] || "Puck"}
+                    greeting={values["callGreeting"] || ""}
+                    readOnly={readOnly}
+                    onSelectVoice={(vId) => setValues((p) => ({ ...p, voiceId: vId }))}
+                  />
+                </div>
+              )}
+
+              {/* Voice call preview panel */}
+              {activeCard.key === "voice" && (
+                <div
+                  className="mt-8 rounded-2xl border overflow-hidden shadow-sm transition-all duration-200"
+                  style={{
+                    borderColor: "var(--color-bg4)",
+                    background: "var(--color-bg2)",
+                    borderTop: "3px solid #f5a623",
+                  }}
+                >
+                  {/* Header */}
+                  <div className="flex items-center gap-2.5 px-6 py-4 border-b" style={{ borderColor: "var(--color-bg4)", background: "rgba(245,166,35,0.06)" }}>
+                    <IconPhone size={15} style={{ color: "#f5a623" }} />
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Call Preview & Live Simulation</span>
+                    <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(245,166,35,0.15)", color: "#f5a623" }}>Simulated</span>
+                  </div>
+
+                  {/* Phone UI mock */}
+                  <div className="p-6 flex flex-col md:flex-row gap-6 items-start">
+                    {/* Call bubble */}
+                    <div className="flex-1 flex flex-col gap-3 w-full">
+                      {/* Greeting bubble */}
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(245,166,35,0.15)" }}>
+                          <IconMicrophone size={13} style={{ color: "#f5a623" }} />
+                        </div>
+                        <div className="rounded-2xl rounded-tl-none px-4 py-3 text-[12.5px] max-w-[90%] sm:max-w-[480px]" style={{ background: "var(--color-bg3)", color: "var(--color-text)", lineHeight: 1.6 }}>
+                          {values["callGreeting"]
+                            ? values["callGreeting"].replace("{{leadName}}", "Rahul")
+                            : <span style={{ color: "var(--color-text3)" }}>Set a Call Opening Greeting above to see a preview here.</span>}
+                        </div>
+                      </div>
+
+                      {/* Lead response */}
+                      <div className="flex items-start gap-2 justify-end">
+                        <div className="rounded-2xl rounded-tr-none px-4 py-3 text-[12.5px] max-w-[80%] sm:max-w-[360px]" style={{ background: "rgba(223,42,42,0.1)", color: "var(--color-text)", lineHeight: 1.6 }}>
+                          Yes, speaking. Who is this?
+                        </div>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold" style={{ background: "rgba(223,42,42,0.12)", color: "#df2a2a" }}>R</div>
+                      </div>
+
+                      {/* Agent continues */}
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(245,166,35,0.15)" }}>
+                          <IconMicrophone size={13} style={{ color: "#f5a623" }} />
+                        </div>
+                        <div className="rounded-2xl rounded-tl-none px-4 py-3 text-[12.5px] max-w-[90%] sm:max-w-[480px]" style={{ background: "var(--color-bg3)", color: "var(--color-text)", lineHeight: 1.6 }}>
+                          {values["callScript"]
+                            ? values["callScript"].slice(0, 120) + (values["callScript"].length > 120 ? "…" : "")
+                            : <span style={{ color: "var(--color-text3)" }}>Add a Call Script above to preview AI behaviour.</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Config summary */}
+                    <div className="flex-shrink-0 flex flex-col gap-2 text-[11.5px]" style={{ minWidth: 160 }}>
+                      {[
+                        { label: "Voice", val: values["voiceId"] || values["voiceProvider"] || "—" },
+                        { label: "Provider", val: values["callProvider"] || "—" },
+                        { label: "Caller", val: values["callerPhone"] || "—" },
+                        { label: "Max duration", val: values["callMaxDuration"] ? `${values["callMaxDuration"]} min` : "—" },
+                        { label: "Call window", val: (values["callWindowStart"] && values["callWindowEnd"]) ? `${values["callWindowStart"]}:00 – ${values["callWindowEnd"]}:00` : "—" },
+                      ].map(({ label, val }) => (
+                        <div key={label} className="flex items-center justify-between gap-3">
+                          <span style={{ color: "var(--color-text3)" }}>{label}</span>
+                          <span className="font-medium truncate max-w-[90px]" style={{ color: "var(--color-text2)" }} title={val}>{val}</span>
+                        </div>
+                      ))}
+
+                      {/* Play demo button */}
+                      {(() => {
+                        const isGemini = (values["voiceProvider"] || "Google Gemini") === "Google Gemini";
+                        const canPreview = (isGemini || !!values["voiceApiKey"]) && !!values["callGreeting"];
+                        return (
+                          <button
+                            onClick={playVoicePreview}
+                            disabled={playingPreview || !canPreview}
+                            className="mt-2 flex items-center justify-center gap-1.5 w-full rounded-lg text-[11.5px] font-semibold transition-all"
+                            style={{
+                              padding: "7px 0",
+                              background: playingPreview ? "rgba(34,201,122,0.12)" : "rgba(245,166,35,0.12)",
+                              color: playingPreview ? "#22c97a" : !canPreview ? "var(--color-text3)" : "#f5a623",
+                              border: `1px solid ${playingPreview ? "rgba(34,201,122,0.3)" : "rgba(245,166,35,0.25)"}`,
+                              cursor: (playingPreview || !canPreview) ? "not-allowed" : "pointer",
+                              opacity: !canPreview ? 0.55 : 1,
+                            }}
+                            title={
+                              !canPreview
+                                ? (!values["callGreeting"] ? "Set a Call Opening Greeting first" : "Configure Voice API key first")
+                                : "Play greeting audio in your browser"
+                            }
+                          >
+                            {playingPreview ? (
+                              <>
+                                <span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                                Playing…
+                              </>
+                            ) : (
+                              <><IconPlayerPlay size={12} /> Preview greeting</>
+                            )}
+                          </button>
+                        );
+                      })()}
+                      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                    </div>
+                  </div>
+
+                  {/* Sound & Voice Tester (Gemini or ElevenLabs) */}
+                  <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
+                    <div className="text-[12.5px] font-bold text-text2 dark:text-text4">
+                      {(values["voiceProvider"] || "Google Gemini") === "Google Gemini" ? "Google Gemini Sound & Voice Tester" : "ElevenLabs Sound & Voice Tester"}
+                    </div>
+                    <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
+                      {(values["voiceProvider"] || "Google Gemini") === "Google Gemini"
+                        ? "Type a custom sentence below, select a Gemini native voice, and hear it play live via Google AI Studio."
+                        : "Type a custom sentence below, select a voice, and hear it play via ElevenLabs. (Requires Voice API Key configured)."}
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                      <input
+                        type="text"
+                        className="form-input text-[12px] flex-1"
+                        placeholder="Type a custom sentence to test..."
+                        value={testSentence}
+                        onChange={(e) => setTestSentence(e.target.value)}
+                        style={{ height: 32 }}
+                      />
+
+                      <select
+                        className="form-input text-[12px]"
+                        value={testVoice}
+                        onChange={(e) => setTestVoice(e.target.value)}
+                        style={{ width: 170, height: 32 }}
+                      >
+                        {(values["voiceProvider"] || "Google Gemini") === "Google Gemini" ? (
+                          <>
+                            <optgroup label="Female Voices">
+                              <option value="Aoede">Aoede (Female · Warm)</option>
+                              <option value="Kore">Kore (Female · Calm)</option>
+                              <option value="Leda">Leda (Female · Lively)</option>
+                              <option value="Despina">Despina (Female · Smooth)</option>
+                              <option value="Callirrhoe">Callirrhoe (Female · Bright)</option>
+                            </optgroup>
+                            <optgroup label="Male Voices">
+                              <option value="Puck">Puck (Male · Energetic)</option>
+                              <option value="Charon">Charon (Male · Deep)</option>
+                              <option value="Fenrir">Fenrir (Male · Dynamic)</option>
+                              <option value="Zephyr">Zephyr (Male · Crisp)</option>
+                              <option value="Orus">Orus (Male · Friendly)</option>
+                            </optgroup>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Rachel">Rachel (F)</option>
+                            <option value="Pritam">Pritam (M)</option>
+                            <option value="Antoni">Antoni (M)</option>
+                            <option value="Bella">Bella (F)</option>
+                            <option value="Elli">Elli (F)</option>
+                            <option value="Josh">Josh (M)</option>
+                            <option value="Arnold">Arnold (M)</option>
+                          </>
+                        )}
+                      </select>
+
+                      <button
+                        onClick={playTestSentence}
+                        disabled={playingTest || !testSentence.trim()}
+                        className="px-3 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-amber-500 to-amber-600 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
+                        style={{ height: 32, opacity: testSentence.trim() ? 1 : 0.6 }}
+                      >
+                        {playingTest ? "Playing..." : "Test Voice"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Real Outbound Call Tester */}
+                  <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
+                    <div className="text-[12.5px] font-bold text-text2 dark:text-text4 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Real Outbound Call Tester ({values["callProvider"] || "Plivo"} Telephony)
+                    </div>
+                    <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
+                      Enter your phone number to test a real phone call from the AI agent using {values["callProvider"] || "Plivo"}.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                      <input
+                        type="text"
+                        className="form-input text-[12px] flex-1"
+                        placeholder="Enter phone number (with country code, e.g. +91...)"
+                        value={testPhoneNumber}
+                        onChange={(e) => setTestPhoneNumber(e.target.value)}
+                        style={{ height: 32 }}
+                      />
+
+                      <button
+                        onClick={triggerRealTestCall}
+                        disabled={callingReal || !testPhoneNumber.trim()}
+                        className="px-4 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
+                        style={{ height: 32, opacity: testPhoneNumber.trim() ? 1 : 0.6 }}
+                      >
+                        {callingReal ? "Dialing..." : "Start Real Call"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Edge-case warnings */}
+                  {(!values["callGreeting"] || !values["callScript"] || !values["callerPhone"]) && (
+                    <div className="px-5 pb-4 flex flex-col" style={{ gap: 8 }}>
+                      {!values["callerPhone"] && (
+                        <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
+                          <IconAlertTriangle size={13} /> Caller Phone Number is missing — outbound calls will fail.
+                        </div>
+                      )}
+                      {!values["callGreeting"] && (
+                        <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(245,166,35,0.08)", color: "#f5a623" }}>
+                          <IconAlertTriangle size={13} /> No opening greeting set — the call will start with silence.
+                        </div>
+                      )}
+                      {!values["callScript"] && (
+                        <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(245,166,35,0.08)", color: "#f5a623" }}>
+                          <IconAlertTriangle size={13} /> No call script — the AI won&apos;t know what to say after the greeting.
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ElevenLabs key / agent diagnostics with one-click fixes */}
-            {activeCard.key === "voice" && activeAgent && (
-              <ElevenLabsSetupPanel
-                agentId={activeAgent._id}
-                apiKey={values["voiceApiKey"] || ""}
-                onAgentIdChange={(id) => setValues((p) => ({ ...p, elevenLabsAgentId: id }))}
-              />
-            )}
-
-            {/* Brain (LLM) + voice picker with samples, saved on the ElevenLabs agent */}
-            {activeCard.key === "voice" && activeAgent && !readOnly && values["elevenLabsAgentId"] && (
-              <div className="mt-6">
-                <ElevenLabsVoiceStudio key={`${activeAgent._id}-${values["elevenLabsAgentId"]}`} agentId={activeAgent._id} greeting={values["callGreeting"] || ""} />
-              </div>
-            )}
-
-            {/* Voice call preview panel */}
-            {activeCard.key === "voice" && (
-              <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(245,166,35,0.25)", background: "rgba(245,166,35,0.04)" }}>
-                {/* Header */}
-                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(245,166,35,0.15)", background: "rgba(245,166,35,0.06)" }}>
-                  <IconPhone size={15} style={{ color: "#f5a623" }} />
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Call Preview</span>
-                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(245,166,35,0.15)", color: "#f5a623" }}>Simulated</span>
-                </div>
-
-                {/* Phone UI mock */}
-                <div className="p-5 flex gap-5 items-start">
-                  {/* Call bubble */}
-                  <div className="flex-1 flex flex-col gap-3">
-                    {/* Greeting bubble */}
-                    <div className="flex items-start gap-2">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(245,166,35,0.15)" }}>
-                        <IconMicrophone size={13} style={{ color: "#f5a623" }} />
-                      </div>
-                      <div className="rounded-2xl rounded-tl-none px-4 py-3 text-[12.5px] max-w-[340px]" style={{ background: "var(--color-bg3)", color: "var(--color-text)", lineHeight: 1.6 }}>
-                        {values["callGreeting"]
-                          ? values["callGreeting"].replace("{{leadName}}", "Rahul")
-                          : <span style={{ color: "var(--color-text3)" }}>Set a Call Opening Greeting above to see a preview here.</span>}
-                      </div>
-                    </div>
-
-                    {/* Lead response */}
-                    <div className="flex items-start gap-2 justify-end">
-                      <div className="rounded-2xl rounded-tr-none px-4 py-3 text-[12.5px] max-w-[260px]" style={{ background: "rgba(223,42,42,0.1)", color: "var(--color-text)", lineHeight: 1.6 }}>
-                        Yes, speaking. Who is this?
-                      </div>
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold" style={{ background: "rgba(223,42,42,0.12)", color: "#df2a2a" }}>R</div>
-                    </div>
-
-                    {/* Agent continues */}
-                    <div className="flex items-start gap-2">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(245,166,35,0.15)" }}>
-                        <IconMicrophone size={13} style={{ color: "#f5a623" }} />
-                      </div>
-                      <div className="rounded-2xl rounded-tl-none px-4 py-3 text-[12.5px] max-w-[340px]" style={{ background: "var(--color-bg3)", color: "var(--color-text)", lineHeight: 1.6 }}>
-                        {values["callScript"]
-                          ? values["callScript"].slice(0, 120) + (values["callScript"].length > 120 ? "…" : "")
-                          : <span style={{ color: "var(--color-text3)" }}>Add a Call Script above to preview AI behaviour.</span>}
-                      </div>
-                    </div>
+              {/* SMS test panel */}
+              {activeCard.key === "sms" && (
+                <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
+                  <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
+                    <IconMessage size={15} style={{ color: "#cc99ff" }} />
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Send a Test SMS</span>
+                    <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(204,153,255,0.15)", color: "#cc99ff" }}>Live</span>
                   </div>
-
-                  {/* Config summary */}
-                  <div className="flex-shrink-0 flex flex-col gap-2 text-[11.5px]" style={{ minWidth: 160 }}>
-                    {[
-                      { label: "Voice", val: values["voiceId"] || values["voiceProvider"] || "—" },
-                      { label: "Provider", val: values["callProvider"] || "—" },
-                      { label: "Caller", val: values["callerPhone"] || "—" },
-                      { label: "Max duration", val: values["callMaxDuration"] ? `${values["callMaxDuration"]} min` : "—" },
-                      { label: "Call window", val: (values["callWindowStart"] && values["callWindowEnd"]) ? `${values["callWindowStart"]}:00 – ${values["callWindowEnd"]}:00` : "—" },
-                    ].map(({ label, val }) => (
-                      <div key={label} className="flex items-center justify-between gap-3">
-                        <span style={{ color: "var(--color-text3)" }}>{label}</span>
-                        <span className="font-medium truncate max-w-[90px]" style={{ color: "var(--color-text2)" }} title={val}>{val}</span>
-                      </div>
-                    ))}
-
-                    {/* Play demo button */}
-                    <button
-                      onClick={playVoicePreview}
-                      disabled={playingPreview || !values["voiceApiKey"] || !values["callGreeting"]}
-                      className="mt-2 flex items-center justify-center gap-1.5 w-full rounded-lg text-[11.5px] font-semibold transition-all"
-                      style={{
-                        padding: "7px 0",
-                        background: playingPreview ? "rgba(34,201,122,0.12)" : "rgba(245,166,35,0.12)",
-                        color: playingPreview ? "#22c97a" : (!values["voiceApiKey"] || !values["callGreeting"]) ? "var(--color-text3)" : "#f5a623",
-                        border: `1px solid ${playingPreview ? "rgba(34,201,122,0.3)" : "rgba(245,166,35,0.25)"}`,
-                        cursor: (playingPreview || !values["voiceApiKey"] || !values["callGreeting"]) ? "not-allowed" : "pointer",
-                        opacity: (!values["voiceApiKey"] || !values["callGreeting"]) ? 0.55 : 1,
-                      }}
-                      title={
-                        !values["voiceApiKey"] ? "Add Voice API key and save first"
-                        : !values["callGreeting"] ? "Set a Call Opening Greeting first"
-                        : "Play greeting audio in your browser"
-                      }
-                    >
-                      {playingPreview ? (
-                        <>
-                          <span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #22c97a44", borderTopColor: "#22c97a", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
-                          Playing…
-                        </>
+                  <div className="p-5 flex flex-col gap-3">
+                    <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                      Sends a real test message to verify your credentials. Save settings first.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={testSmsTo}
+                        onChange={(e) => { setTestSmsTo(e.target.value); setTestSmsResult(null); }}
+                        placeholder="+91xxxxxxxxxx"
+                        className="flex-1 text-[13px] rounded-lg px-3 py-2 outline-none"
+                        style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
+                      />
+                      <button
+                        onClick={sendTestSms}
+                        disabled={sendingTestSms || !values["smsApiKey"]}
+                        className="flex items-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                        style={{
+                          padding: "8px 16px",
+                          background: sendingTestSms ? "rgba(204,153,255,0.08)" : "rgba(204,153,255,0.15)",
+                          color: !values["smsApiKey"] ? "var(--color-text3)" : "#cc99ff",
+                          border: "1px solid rgba(204,153,255,0.3)",
+                          cursor: (sendingTestSms || !values["smsApiKey"]) ? "not-allowed" : "pointer",
+                          opacity: !values["smsApiKey"] ? 0.55 : 1,
+                          whiteSpace: "nowrap",
+                        }}
+                        title={!values["smsApiKey"] ? "Save your API key first" : "Send test SMS"}
+                      >
+                        {sendingTestSms ? (
+                          <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #cc99ff44", borderTopColor: "#cc99ff", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> {smsStatusLabel || "Sending…"}</>
+                        ) : (
+                          <><IconMessage size={13} /> Send Test</>
+                        )}
+                      </button>
+                    </div>
+                    {testSmsResult && (
+                      testSmsResult.ok ? (
+                        <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)" }}>
+                          {/* Success header */}
+                          <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
+                            <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <IconCheck size={13} style={{ color: "#fff" }} />
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>SMS sent successfully!</span>
+                          </div>
+                          {/* Message bubble preview */}
+                          <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
+                            <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
+                              Delivered to {testSmsTo}
+                            </p>
+                            <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
+                              SalesAgent test: Your SMS integration is working!
+                            </div>
+                            <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
+                              {testSmsResult.msg}
+                            </p>
+                          </div>
+                        </div>
                       ) : (
-                        <><IconPlayerPlay size={12} /> Preview greeting</>
-                      )}
-                    </button>
-                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                  </div>
-                </div>
-
-                {/* ElevenLabs Sound & Voice Tester */}
-                <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
-                  <div className="text-[12.5px] font-bold text-text2 dark:text-text4">
-                    ElevenLabs Sound & Voice Tester
-                  </div>
-                  <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
-                    Type a custom sentence below, select a voice, and hear it play via ElevenLabs. (Requires Voice API Key configured).
-                  </p>
-                  
-                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
-                    <input
-                      type="text"
-                      className="form-input text-[12px] flex-1"
-                      placeholder="Type a custom sentence to test..."
-                      value={testSentence}
-                      onChange={(e) => setTestSentence(e.target.value)}
-                      style={{ height: 32 }}
-                    />
-                    
-                    <select
-                      className="form-input text-[12px]"
-                      value={testVoice}
-                      onChange={(e) => setTestVoice(e.target.value)}
-                      style={{ width: 120, height: 32 }}
-                    >
-                      <option value="Rachel">Rachel (F)</option>
-                      <option value="Pritam">Pritam (M)</option>
-                      <option value="Antoni">Antoni (M)</option>
-                      <option value="Bella">Bella (F)</option>
-                      <option value="Elli">Elli (F)</option>
-                      <option value="Josh">Josh (M)</option>
-                      <option value="Arnold">Arnold (M)</option>
-                    </select>
-
-                    <button
-                      onClick={playTestSentence}
-                      disabled={playingTest || !testSentence.trim()}
-                      className="px-3 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-amber-500 to-amber-600 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
-                      style={{ height: 32, opacity: testSentence.trim() ? 1 : 0.6 }}
-                    >
-                      {playingTest ? "Playing..." : "Test Voice"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Real Outbound Call Tester */}
-                <div className="border-t px-5 py-4 flex flex-col gap-3" style={{ borderColor: "rgba(245,166,35,0.15)" }}>
-                  <div className="text-[12.5px] font-bold text-text2 dark:text-text4 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Real Outbound Call Tester ({values["callProvider"] || "Plivo"} Telephony)
-                  </div>
-                  <p className="text-[11.5px] text-text3" style={{ margin: 0 }}>
-                    Enter your phone number to test a real phone call from the AI agent using {values["callProvider"] || "Plivo"}.
-                  </p>
-                  
-                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
-                    <input
-                      type="text"
-                      className="form-input text-[12px] flex-1"
-                      placeholder="Enter phone number (with country code, e.g. +91...)"
-                      value={testPhoneNumber}
-                      onChange={(e) => setTestPhoneNumber(e.target.value)}
-                      style={{ height: 32 }}
-                    />
-
-                    <button
-                      onClick={triggerRealTestCall}
-                      disabled={callingReal || !testPhoneNumber.trim()}
-                      className="px-4 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-br from-emerald-600 to-emerald-500 border-none cursor-pointer flex items-center justify-center shrink-0 h-8"
-                      style={{ height: 32, opacity: testPhoneNumber.trim() ? 1 : 0.6 }}
-                    >
-                      {callingReal ? "Dialing..." : "Start Real Call"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Edge-case warnings */}
-                {(!values["callGreeting"] || !values["callScript"] || !values["callerPhone"]) && (
-                  <div className="px-5 pb-4 flex flex-col" style={{ gap: 8 }}>
-                    {!values["callerPhone"] && (
-                      <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
-                        <IconAlertTriangle size={13} /> Caller Phone Number is missing — outbound calls will fail.
-                      </div>
-                    )}
-                    {!values["callGreeting"] && (
-                      <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(245,166,35,0.08)", color: "#f5a623" }}>
-                        <IconAlertTriangle size={13} /> No opening greeting set — the call will start with silence.
-                      </div>
-                    )}
-                    {!values["callScript"] && (
-                      <div className="flex items-center gap-2 text-[11.5px] px-3 py-2 rounded-lg" style={{ background: "rgba(245,166,35,0.08)", color: "#f5a623" }}>
-                        <IconAlertTriangle size={13} /> No call script — the AI won&apos;t know what to say after the greeting.
-                      </div>
+                        <div className="flex items-start gap-2 text-[12px] px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
+                          <IconAlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span>{testSmsResult.msg}</span>
+                        </div>
+                      )
                     )}
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* SMS test panel */}
-            {activeCard.key === "sms" && (
-              <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
-                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
-                  <IconMessage size={15} style={{ color: "#cc99ff" }} />
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Send a Test SMS</span>
-                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(204,153,255,0.15)", color: "#cc99ff" }}>Live</span>
                 </div>
-                <div className="p-5 flex flex-col gap-3">
-                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
-                    Sends a real test message to verify your credentials. Save settings first.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      value={testSmsTo}
-                      onChange={(e) => { setTestSmsTo(e.target.value); setTestSmsResult(null); }}
-                      placeholder="+91xxxxxxxxxx"
-                      className="flex-1 text-[13px] rounded-lg px-3 py-2 outline-none"
-                      style={{ background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text)" }}
-                    />
-                    <button
-                      onClick={sendTestSms}
-                      disabled={sendingTestSms || !values["smsApiKey"]}
-                      className="flex items-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
-                      style={{
-                        padding: "8px 16px",
-                        background: sendingTestSms ? "rgba(204,153,255,0.08)" : "rgba(204,153,255,0.15)",
-                        color: !values["smsApiKey"] ? "var(--color-text3)" : "#cc99ff",
-                        border: "1px solid rgba(204,153,255,0.3)",
-                        cursor: (sendingTestSms || !values["smsApiKey"]) ? "not-allowed" : "pointer",
-                        opacity: !values["smsApiKey"] ? 0.55 : 1,
-                        whiteSpace: "nowrap",
-                      }}
-                      title={!values["smsApiKey"] ? "Save your API key first" : "Send test SMS"}
-                    >
-                      {sendingTestSms ? (
-                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #cc99ff44", borderTopColor: "#cc99ff", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> {smsStatusLabel || "Sending…"}</>
-                      ) : (
-                        <><IconMessage size={13} /> Send Test</>
-                      )}
-                    </button>
+              )}
+
+              {/* Receive SMS test panel */}
+              {activeCard.key === "sms" && (
+                <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
+                  <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
+                    <IconMessage size={15} style={{ color: "#cc99ff" }} />
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test SMS</span>
+                    <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(204,153,255,0.15)", color: "#cc99ff" }}>Live</span>
                   </div>
-                  {testSmsResult && (
-                    testSmsResult.ok ? (
-                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)" }}>
-                        {/* Success header */}
+                  <div className="p-5 flex flex-col gap-3">
+                    <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
+                      Fetch the last received SMS message to verify your webhook is working.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={checkReceivedSms}
+                        disabled={checkingSms || !activeAgent}
+                        className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
+                        style={{
+                          padding: "8px 16px",
+                          background: checkingSms ? "rgba(204,153,255,0.08)" : "rgba(204,153,255,0.15)",
+                          color: "#cc99ff",
+                          border: "1px solid rgba(204,153,255,0.3)",
+                          cursor: checkingSms ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {checkingSms ? (
+                          <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #cc99ff44", borderTopColor: "#cc99ff", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
+                        ) : (
+                          <><IconMessage size={13} /> Check Last Received Message</>
+                        )}
+                      </button>
+                    </div>
+                    {lastReceivedSms && (
+                      <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
                         <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
                           <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                             <IconCheck size={13} style={{ color: "#fff" }} />
                           </span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>SMS sent successfully!</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
                         </div>
-                        {/* Message bubble preview */}
                         <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
                           <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
-                            Delivered to {testSmsTo}
+                            From: {lastReceivedSms.senderName} ({lastReceivedSms.senderPhone})
                           </p>
                           <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
-                            SalesAgent test: Your SMS integration is working!
+                            {lastReceivedSms.text}
                           </div>
                           <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
-                            {testSmsResult.msg}
+                            Received at: {new Date(lastReceivedSms.timestamp).toLocaleString()}
                           </p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-start gap-2 text-[12px] px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", color: "#ff6b6b" }}>
-                        <IconAlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>{testSmsResult.msg}</span>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Receive SMS test panel */}
-            {activeCard.key === "sms" && (
-              <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
-                <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
-                  <IconMessage size={15} style={{ color: "#cc99ff" }} />
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--color-text)" }}>Receive a Test SMS</span>
-                  <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(204,153,255,0.15)", color: "#cc99ff" }}>Live</span>
-                </div>
-                <div className="p-5 flex flex-col gap-3">
-                  <p className="text-[12px]" style={{ color: "var(--color-text3)" }}>
-                    Fetch the last received SMS message to verify your webhook is working.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={checkReceivedSms}
-                      disabled={checkingSms || !activeAgent}
-                      className="flex items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition-all"
-                      style={{
-                        padding: "8px 16px",
-                        background: checkingSms ? "rgba(204,153,255,0.08)" : "rgba(204,153,255,0.15)",
-                        color: "#cc99ff",
-                        border: "1px solid rgba(204,153,255,0.3)",
-                        cursor: checkingSms ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {checkingSms ? (
-                        <><span style={{ width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #cc99ff44", borderTopColor: "#cc99ff", display: "inline-block", animation: "spin 0.8s linear infinite" }} /> Fetching…</>
-                      ) : (
-                        <><IconMessage size={13} /> Check Last Received Message</>
-                      )}
-                    </button>
+                    )}
                   </div>
-                  {lastReceivedSms && (
-                    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid rgba(34,201,122,0.25)", marginTop: "4px" }}>
-                      <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(34,201,122,0.12)" }}>
-                        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#22c97a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <IconCheck size={13} style={{ color: "#fff" }} />
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#22c97a" }}>Last Message Received</span>
-                      </div>
-                      <div className="px-4 py-3" style={{ background: "var(--color-bg3)" }}>
-                        <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-text3)", marginBottom: 8 }}>
-                          From: {lastReceivedSms.senderName} ({lastReceivedSms.senderPhone})
-                        </p>
-                        <div style={{ background: "var(--color-bg4)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "var(--color-text)", lineHeight: 1.6 }}>
-                          {lastReceivedSms.text}
-                        </div>
-                        <p style={{ fontSize: 11, color: "var(--color-text3)", marginTop: 8 }}>
-                          Received at: {new Date(lastReceivedSms.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Save row */}
-            {!readOnly && <div className="flex items-center justify-between mt-8 pt-5" style={{ borderTop: "1px solid var(--color-bg4)" }}>
-              {saved[activeCard.key] ? <SavedBadge /> : <span />}
-              <button
-                onClick={() => saveCard(activeCard)}
-                className="flex items-center justify-center"
-                style={{ padding: "8px 20px", borderRadius: 10, background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}
-              >
-                Save changes
-              </button>
-            </div>}
-          </>
-        ) : null}
+              {/* Save row */}
+              {!readOnly && <div className="flex items-center justify-between mt-8 pt-5" style={{ borderTop: "1px solid var(--color-bg4)" }}>
+                {saved[activeCard.key] ? <SavedBadge /> : <span />}
+                <button
+                  onClick={() => saveCard(activeCard)}
+                  className="flex items-center justify-center"
+                  style={{ padding: "8px 20px", borderRadius: 10, background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}
+                >
+                  Save changes
+                </button>
+              </div>}
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );

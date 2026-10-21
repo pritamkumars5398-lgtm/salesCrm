@@ -10,7 +10,7 @@ export interface CampaignDto {
   _id: string;
   agentId: string;
   trigger: "publish" | "cron" | "manual" | "retry";
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "stopped";
   total: number;
   sent: number;
   failed: number;
@@ -27,6 +27,8 @@ export const getActiveCampaigns = (agentId: string) =>
   apiGet<CampaignDto[]>(`/api/campaigns?agentId=${agentId}&active=1`);
 
 export const retryCampaign = (id: string) => apiPost<CampaignDto>(`/api/campaigns/${id}/retry`);
+
+export const stopCampaign = (id: string) => apiPost<CampaignDto>(`/api/campaigns/${id}/stop`);
 
 export interface ManualRunResult {
   campaign: CampaignDto;

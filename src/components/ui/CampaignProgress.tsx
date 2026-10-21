@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { IconCheck, IconAlertTriangle, IconRefresh, IconX, IconLoader2 } from "@tabler/icons-react";
+import { IconCheck, IconAlertTriangle, IconRefresh, IconX, IconLoader2, IconPlayerStop } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
-import { getCampaign, retryCampaign } from "@/lib/api/campaigns.api";
+import { getCampaign, retryCampaign, stopCampaign } from "@/lib/api/campaigns.api";
 
 const POLL_MS = 2500;
 
@@ -18,11 +18,29 @@ export default function CampaignProgress() {
   const setPanelOpen = useAppStore((s) => s.setCampaignPanelOpen);
   const showToast = useAppStore((s) => s.showToast);
 
+  const [stopping, setStopping] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const doneToastShown = useRef<string | null>(null);
 
   const isActive = activeCampaign && (activeCampaign.status === "pending" || activeCampaign.status === "running");
+
+  async function handleStop(e?: React.MouseEvent) {
+    if (e) e.stopPropagation();
+    if (!activeCampaign || stopping) return;
+    if (!window.confirm("Stop this outreach run? Any leads not yet contacted will be stopped.")) return;
+    setStopping(true);
+    doneToastShown.current = null;
+    try {
+      const fresh = await stopCampaign(activeCampaign._id);
+      setActiveCampaign(fresh);
+      showToast("Outreach stopped.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not stop outreach", "error");
+    } finally {
+      setStopping(false);
+    }
+  }
 
   // Poll while the campaign is in flight.
   useEffect(() => {
@@ -74,40 +92,74 @@ export default function CampaignProgress() {
     }
   }
 
+  const isStopped = activeCampaign.status === "stopped";
+
   return (
     <div ref={panelRef} className="relative">
-      <button
-        onClick={() => setPanelOpen(!panelOpen)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] sm:text-[11px] font-semibold cursor-pointer transition-all duration-150 bg-bg2 hover:bg-bg3"
-        style={{
-          borderColor: isActive ? "rgba(99,102,241,0.3)" : hasFailures ? "rgba(239,68,68,0.3)" : "rgba(34,201,122,0.3)",
-          color: isActive ? "#6366f1" : hasFailures ? "#ef4444" : "#22c97a",
-        }}
-        title="Outreach campaign status"
-      >
-        {isActive && done < activeCampaign.total ? (
-          <>
-            <IconLoader2 size={12} className="animate-spin" />
-            <span>Sending {done}/{activeCampaign.total}</span>
-            {hasFailures && <span className="text-red-500">· {activeCampaign.failed} failed</span>}
-          </>
-        ) : isActive ? (
-          <>
-            {hasFailures ? <IconAlertTriangle size={12} /> : <IconCheck size={12} />}
-            <span>Wrapping up… {done}/{activeCampaign.total}</span>
-          </>
-        ) : hasFailures ? (
-          <>
-            <IconAlertTriangle size={12} />
-            <span>{activeCampaign.sent} sent · {activeCampaign.failed} failed</span>
-          </>
-        ) : (
-          <>
-            <IconCheck size={12} />
-            <span>{activeCampaign.sent} sent</span>
-          </>
+      <div className="inline-flex items-center gap-1.5">
+        <button
+          onClick={() => setPanelOpen(!panelOpen)}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] sm:text-[11px] font-semibold cursor-pointer transition-all duration-150 bg-bg2 hover:bg-bg3"
+          style={{
+            borderColor: isActive
+              ? "rgba(99,102,241,0.3)"
+              : isStopped
+                ? "rgba(245,158,11,0.3)"
+                : hasFailures
+                  ? "rgba(239,68,68,0.3)"
+                  : "rgba(34,201,122,0.3)",
+            color: isActive
+              ? "#6366f1"
+              : isStopped
+                ? "#f59e0b"
+                : hasFailures
+                  ? "#ef4444"
+                  : "#22c97a",
+          }}
+          title="Outreach campaign status — click for details"
+        >
+          {isActive && done < activeCampaign.total ? (
+            <>
+              <IconLoader2 size={12} className="animate-spin" />
+              <span>Sending {done}/{activeCampaign.total}</span>
+              {hasFailures && <span className="text-red-500">· {activeCampaign.failed} failed</span>}
+            </>
+          ) : isActive ? (
+            <>
+              {hasFailures ? <IconAlertTriangle size={12} /> : <IconCheck size={12} />}
+              <span>Wrapping up… {done}/{activeCampaign.total}</span>
+            </>
+          ) : isStopped ? (
+            <>
+              <IconPlayerStop size={12} />
+              <span>Stopped · {activeCampaign.sent}/{activeCampaign.total}</span>
+            </>
+          ) : hasFailures ? (
+            <>
+              <IconAlertTriangle size={12} />
+              <span>{activeCampaign.sent} sent · {activeCampaign.failed} failed</span>
+            </>
+          ) : (
+            <>
+              <IconCheck size={12} />
+              <span>{activeCampaign.sent} sent</span>
+            </>
+          )}
+        </button>
+
+        {isActive && (
+          <button
+            type="button"
+            onClick={handleStop}
+            disabled={stopping}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-red-500/30 text-[10px] sm:text-[11px] font-bold text-red-500 hover:text-white hover:bg-red-500/90 transition-all cursor-pointer bg-bg2"
+            title="Stop this outreach campaign now"
+          >
+            <IconPlayerStop size={11} />
+            <span>{stopping ? "Stopping…" : "Stop"}</span>
+          </button>
         )}
-      </button>
+      </div>
 
       {panelOpen && (
         <div
@@ -118,7 +170,7 @@ export default function CampaignProgress() {
             <div>
               <p className="text-[12px] font-bold text-text m-0">Outreach campaign</p>
               <p className="text-[11px] text-text3 m-0 mt-0.5">
-                {isActive ? "In progress…" : "Finished"} · {activeCampaign.sent} sent
+                {isActive ? "In progress…" : isStopped ? "Stopped by user" : "Finished"} · {activeCampaign.sent} sent
                 {activeCampaign.failed > 0 && <span className="text-red-500"> · {activeCampaign.failed} failed</span>}
                 {activeCampaign.skipped > 0 && ` · ${activeCampaign.skipped} skipped`}
                 {" of "}{activeCampaign.total}
@@ -140,7 +192,7 @@ export default function CampaignProgress() {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${activeCampaign.total > 0 ? Math.round((done / activeCampaign.total) * 100) : 0}%`,
-                  background: hasFailures ? "linear-gradient(90deg,#6366f1,#ef4444)" : "#6366f1",
+                  background: isStopped ? "#f59e0b" : hasFailures ? "linear-gradient(90deg,#6366f1,#ef4444)" : "#6366f1",
                 }}
               />
             </div>
@@ -158,18 +210,31 @@ export default function CampaignProgress() {
             </div>
           )}
 
-          <div className="px-4 py-3 border-t flex gap-2" style={{ borderColor: "#f1f5f9" }}>
-            {!isActive && hasFailures && (
-              <button
-                onClick={handleRetry}
-                disabled={retrying}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
-                style={{ background: "#df2a2a", opacity: retrying ? 0.7 : 1 }}
-              >
-                <IconRefresh size={13} className={retrying ? "animate-spin" : ""} />
-                Retry {activeCampaign.failed} failed
-              </button>
-            )}
+          <div className="px-4 py-3 border-t flex items-center justify-between gap-2" style={{ borderColor: "#f1f5f9" }}>
+            <div className="flex items-center gap-2">
+              {isActive && (
+                <button
+                  onClick={handleStop}
+                  disabled={stopping}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer bg-red-600 hover:bg-red-700"
+                  style={{ opacity: stopping ? 0.7 : 1 }}
+                >
+                  <IconPlayerStop size={13} />
+                  {stopping ? "Stopping…" : "Stop campaign"}
+                </button>
+              )}
+              {!isActive && hasFailures && (
+                <button
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "#df2a2a", opacity: retrying ? 0.7 : 1 }}
+                >
+                  <IconRefresh size={13} className={retrying ? "animate-spin" : ""} />
+                  Retry {activeCampaign.failed} failed
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setPanelOpen(false)}
               className="px-3 py-1.5 rounded-lg text-[12px] font-semibold border border-bg4 bg-bg2 text-text2 cursor-pointer"

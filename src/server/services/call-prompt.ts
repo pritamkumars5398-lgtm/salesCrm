@@ -13,18 +13,29 @@ import { getLeadHistory, LeadHistory } from "./lead-history.service";
 const LANGUAGE_RULES: Record<string, string> = {
   Hindi: "Speak in natural, conversational Hindi as spoken in India, written in Devanagari script. Keep everyday English business words in English (website, app, software, demo, WhatsApp). If the person replies in English, switch to simple English.",
   Hinglish: "Speak natural Hinglish — mostly Hindi with common English words, the way Indian business owners talk on the phone. Write Hindi words in Devanagari. Mirror the language the person uses.",
-  English: "Speak clear, simple Indian English. If the person prefers Hindi, switch to Hindi (Devanagari).",
+  English: "Speak clear, simple Indian English. If the person prefers Hindi or a regional language, switch naturally.",
+  Tamil: "Speak in natural, polite Tanglish (conversational Tamil mixed with common English business words like appointment, booking, WhatsApp, demo, software). If the person speaks English, switch to English.",
+  Telugu: "Speak in natural, polite Telugu-English (conversational Telugu mixed with common English business words like appointment, booking, WhatsApp, demo). If the person speaks English, switch to English.",
+  Kannada: "Speak in natural, polite Kanglish (conversational Kannada mixed with common English business words). If the person speaks English, switch to English.",
 };
 
-function defaultGreeting(language: string, persona: string, brand: string, returning: boolean): string {
+function defaultGreeting(language: string, persona: string, brand: string, returning: boolean, location?: string): string {
+  const loc = (location || "").toLowerCase();
+  if (language === "Tamil" || loc.includes("tamil") || loc.includes("chennai") || loc.includes("coimbatore")) {
+    return "Vanakkam! Good afternoon. Am I speaking with the manager or owner of {{company}}?";
+  }
+  if (language === "Telugu" || loc.includes("hyderabad") || loc.includes("telangana") || loc.includes("andhra")) {
+    return "Namaskaram andi! Good afternoon. Am I speaking with the manager or owner of {{company}}?";
+  }
+  if (language === "Kannada" || loc.includes("bangalore") || loc.includes("bengaluru") || loc.includes("mysore") || loc.includes("karnataka")) {
+    return "Namaskara! Good afternoon. Am I speaking with the manager or owner of {{company}}?";
+  }
   if (language === "Hindi" || language === "Hinglish") {
     return returning
-      ? `नमस्ते! मैं ${persona} बोल रही हूँ, ${brand} से — हमारी पहले बात हुई थी। क्या मेरी बात {{company}} से हो रही है?`
-      : `नमस्ते! मैं ${persona} बोल रही हूँ, ${brand} से। क्या मेरी बात {{company}} से हो रही है?`;
+      ? `नमस्ते! मैं ${persona} बोल रही हूँ, हमारी पहले बात हुई थी। क्या मेरी बात {{company}} के ओनर या मैनेजर से हो रही है?`
+      : `हेलो, नमस्ते! क्या मेरी बात {{company}} के ओनर या मैनेजर से हो रही है?`;
   }
-  return returning
-    ? `Hello! This is ${persona} from ${brand} — we've been in touch before. Am I speaking with {{company}}?`
-    : `Hello! This is ${persona} from ${brand}. Am I speaking with {{company}}?`;
+  return `Hello! Good afternoon. Am I speaking with the manager or owner of {{company}}?`;
 }
 
 export interface LeadVars {
@@ -118,9 +129,15 @@ export async function buildCallInstructions(
     "- If you hear an automated phone menu, hold music or a recorded greeting (\"Press 1…\", \"Welcome to…\", \"Press 0 for operator\"), do not talk to it — end the call immediately.",
     "- Whenever the conversation is over (goodbye, not interested, wrong number, meeting or callback confirmed), say one short goodbye and then use the end_call tool. Never keep the line open in silence.",
   );
-  if (cfg.callLanguage && LANGUAGE_RULES[cfg.callLanguage]) parts.push("## Language", LANGUAGE_RULES[cfg.callLanguage]);
+  const loc = (vars.location || "").toLowerCase();
+  let langToUse = cfg.callLanguage || "English";
+  if (loc.includes("tamil") || loc.includes("chennai") || loc.includes("coimbatore")) langToUse = "Tamil";
+  else if (loc.includes("hyderabad") || loc.includes("telangana") || loc.includes("andhra")) langToUse = "Telugu";
+  else if (loc.includes("bangalore") || loc.includes("bengaluru") || loc.includes("mysore") || loc.includes("karnataka")) langToUse = "Kannada";
 
-  const greeting = cfg.callGreeting || defaultGreeting(cfg.callLanguage || "English", persona, playbook.brandName, history.hasHistory);
+  if (LANGUAGE_RULES[langToUse]) parts.push("## Language & Code-Switching", LANGUAGE_RULES[langToUse]);
+
+  const greeting = cfg.callGreeting || defaultGreeting(langToUse, persona, playbook.brandName, history.hasHistory, vars.location);
   return {
     prompt: parts.filter(Boolean).join("\n"),
     firstMessage: fillTemplate(greeting, vars),

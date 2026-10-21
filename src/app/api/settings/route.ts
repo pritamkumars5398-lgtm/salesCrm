@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     llmModel: resolveGroqModel(process.env.GROQ_MODEL),
     callProvider: "Plivo",
     voiceProvider: "ElevenLabs",
-    voiceId: "cgSgspJ2msm6clMCkdW9",
+    voiceId: "ch9J8IB6HKlEHQaWQFdk",
     sttProvider: "Deepgram",
     emailProvider: "SMTP",
     smtpHost: "smtp.gmail.com",
@@ -141,5 +141,22 @@ export async function POST(req: Request) {
     },
   }));
   if (ops.length) await Setting.bulkWrite(ops);
+
+  // If voiceId changed for an ElevenLabs agent, sync directly to the ElevenLabs ConvAI agent
+  if (incoming.voiceId) {
+    const provider = incoming.voiceProvider || currentSettings.voiceProvider;
+    if (provider === "ElevenLabs") {
+      const apiKey = incoming.voiceApiKey || currentSettings.voiceApiKey || process.env.ELEVENLABS_API_KEY;
+      const elevenAgentId = incoming.elevenLabsAgentId || currentSettings.elevenLabsAgentId || process.env.ELEVENLABS_AGENT_ID;
+      if (apiKey && elevenAgentId) {
+        fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(elevenAgentId)}`, {
+          method: "PATCH",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ conversation_config: { tts: { voice_id: incoming.voiceId } } }),
+        }).catch((e) => console.error("[Settings] ElevenLabs voice sync error:", e));
+      }
+    }
+  }
+
   return NextResponse.json({ success: true });
 }

@@ -10,9 +10,9 @@ export async function GET(req: Request) {
   await connectDB();
   const access = await authorizeWorkspace(req, new URL(req.url).searchParams.get("agentId"));
   if (!access.ok) return access.response;
-  const { enabled } = razorpayConfig();
+  const { enabled, mode } = razorpayConfig();
   if (!access.organizationId) {
-    return NextResponse.json({ enabled: false, canPay: false, plan: null, payments: [] });
+    return NextResponse.json({ enabled: false, mode, canPay: false, plan: null, payments: [] });
   }
   const [plan, payments] = await Promise.all([
     getOrganizationLimits(access.organizationId),
@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   ]);
   return NextResponse.json({
     enabled,
+    mode,
     canPay: access.role === "owner" || access.role === null,
     periodDays: PLAN_PERIOD_DAYS,
     plan: {

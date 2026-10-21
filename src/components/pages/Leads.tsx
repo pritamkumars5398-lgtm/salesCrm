@@ -1077,10 +1077,10 @@ export default function Leads({ onAddLead }: Props) {
           </thead>
           <tbody>
             {isLoading && page === 1 && Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonTableRow key={i} cols={10} />
+              <SkeletonTableRow key={`skeleton-${i}`} cols={10} />
             ))}
             {!isLoading && leads.length === 0 && (
-              <tr>
+              <tr key="empty-leads-state">
                 <td colSpan={10}>
                   <EmptyState
                     icon={<IconUsers size={24} />}
@@ -1094,7 +1094,7 @@ export default function Leads({ onAddLead }: Props) {
             {leads.map((lead, i) => {
               return (
               <tr
-                key={lead._id}
+                key={lead._id ? `${lead._id}-${i}` : `lead-${i}`}
                 onClick={() => openDrawer(lead, primaryChannel(lead))}
                 className={`cursor-pointer transition-colors ${lead.outreachStatus === "sending" ? "animate-pulse" : ""}`}
                 style={{

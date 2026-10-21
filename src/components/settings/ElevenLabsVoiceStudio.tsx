@@ -150,6 +150,39 @@ export default function ElevenLabsVoiceStudio({ agentId, greeting }: Props) {
     }
   }
 
+  async function handleSelectVoice(v: VoiceOption) {
+    setVoice(v);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/voice/elevenlabs/setup", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId,
+          llm: draft!.llm,
+          temperature: draft!.temperature,
+          ttsModel: draft!.ttsModel,
+          speed: draft!.speed,
+          stability: draft!.stability,
+          similarity: draft!.similarity,
+          voiceId: v.voiceId,
+          voiceName: v.name,
+          publicOwnerId: v.source === "library" ? v.publicOwnerId : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't save voice");
+      setSetup(data.setup);
+      setDraft(data.setup);
+      setVoice(null);
+      showToast(`Voice changed to "${v.name}" and applied to your agent!`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Couldn't apply voice", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const grouped = llms.reduce<Record<string, string[]>>((acc, id) => {
     const key = RECOMMENDED.has(id) ? "Recommended for Hindi/Hinglish calls" : providerOf(id);
     (acc[key] ||= []).push(id);
@@ -181,8 +214,11 @@ export default function ElevenLabsVoiceStudio({ agentId, greeting }: Props) {
       <Slider label="Creativity" hint="0 = sticks closely to the script, 0.5 = more natural variety" value={draft.temperature} min={0} max={1} step={0.05} onChange={(v) => setDraft({ ...draft, temperature: v })} />
 
       <div className="flex flex-col gap-2">
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-text2"><IconVolume size={14} /> Voice — now: <span className="text-text">{voiceName}</span>{voice && <span className="text-amber-500">(not saved yet)</span>}</span>
-        <VoicePicker agentId={agentId} accountVoices={accountVoices} selectedId={voiceId} onSelect={setVoice} />
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-text2">
+          <IconVolume size={14} /> Voice — now: <span className="text-text font-bold">{voiceName}</span>
+          {saving && <span className="text-emerald-500 animate-pulse text-[11px]">(applying...)</span>}
+        </span>
+        <VoicePicker agentId={agentId} accountVoices={accountVoices} selectedId={voiceId} onSelect={handleSelectVoice} />
       </div>
 
       <label className="flex flex-col gap-1">

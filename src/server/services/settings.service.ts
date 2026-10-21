@@ -31,6 +31,10 @@ export async function getLLMConfig(agentId: string): Promise<LLMConfig | null> {
 
 export interface VoiceConfig {
   callProvider: string;
+  voiceProvider: string;
+  voiceId: string;
+  geminiApiKey: string;
+  geminiVoiceModel: string;
   plivoAuthId: string;
   plivoAuthToken: string;
   /** raw configured caller number; validated by the call service */
@@ -66,15 +70,21 @@ function parseHour(v: string | undefined): number | null {
 export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
   const env = await platformEnv(agentId);
   const m = await getSettingsMap(agentId, [
-    "callProvider", "plivoAuthId", "plivoAuthToken", "callApiKey", "callerPhone",
+    "callProvider", "voiceProvider", "voiceId", "geminiApiKey", "geminiVoiceModel",
+    "plivoAuthId", "plivoAuthToken", "callApiKey", "callerPhone",
     "elevenLabsAgentId", "voiceApiKey", "callScript", "callGreeting", "callMaxDuration",
     "callWindowStart", "callWindowEnd", "callRecording", "callVoicemailDetection", "callLanguage", "callConcurrency",
   ]);
   const concurrency = parseInt(m.callConcurrency || "", 10);
   const provider = m.callProvider || "Plivo";
+  const voiceProvider = m.voiceProvider || "Google Gemini";
   const maxDuration = parseInt(m.callMaxDuration || "", 10);
   return {
     callProvider: provider,
+    voiceProvider,
+    voiceId: m.voiceId || (voiceProvider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk"),
+    geminiApiKey: (m.geminiApiKey || process.env.GEMINI_API_KEY || "").trim(),
+    geminiVoiceModel: m.geminiVoiceModel || "gemini-2.5-flash-native-audio-preview-12-2025",
     plivoAuthId: m.plivoAuthId || env("PLIVO_AUTH_ID"),
     // callApiKey held the Plivo token before plivoAuthToken existed. Only trust it when it
     // looks like one — the same field also holds Vapi keys (UUIDs), which Plivo rejects.

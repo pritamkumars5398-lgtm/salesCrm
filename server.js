@@ -5,6 +5,7 @@
  */
 
 require("dotenv").config({ path: ".env" });
+process.env.WS_NO_BUFFER_UTIL = "true";
 // Lets the Next app know the /ws/plivo bridge is being served (set before Next
 // loads so any worker it spawns inherits it). AI calls are refused without it.
 process.env.TELEPHONY_BRIDGE_ACTIVE = "1";
