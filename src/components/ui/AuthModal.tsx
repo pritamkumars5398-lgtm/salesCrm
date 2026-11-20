@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { IconArrowLeft, IconEye, IconEyeOff } from "@tabler/icons-react";
-import { authLogin, authSignup } from "@/lib/auth";
+import { IconArrowLeft, IconEye, IconEyeOff, IconCheck, IconSparkles } from "@tabler/icons-react";
+import { authLogin, authSignup, requestAccess } from "@/lib/auth";
 import Button from "@/components/ui/Button";
 import { HandNote } from "@/components/ui/HandDrawn";
 
@@ -20,7 +20,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Onboarding Wizard steps
+  // Request Access / Onboarding Wizard steps
   const [signupStep, setSignupStep] = useState(1);
   const [businessName, setBusinessName] = useState("");
   const [businessWebsite, setBusinessWebsite] = useState("");
@@ -28,6 +28,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [businessServices, setBusinessServices] = useState("");
   const [docLink, setDocLink] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
 
   async function handleAction(e: React.FormEvent) {
     e.preventDefault();
@@ -48,32 +49,40 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
       return;
     }
 
-    // Sign up flow
+    // Request Access / Onboarding flow (Admin configured model)
     if (signupStep === 1) {
-      if (!name || !email || !password) { setError("Name, Email, and Password are required."); return; }
-      if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+      if (!name || !email) { setError("Name and Email are required."); return; }
       setSignupStep(2);
     } else if (signupStep === 2) {
       if (!businessName) { setError("Please specify your Business Name."); return; }
       setSignupStep(3);
     } else if (signupStep === 3) {
-      // Save onboarding fields to localStorage
-      const onboardingData = {
-        businessName: businessName.trim(),
-        businessWebsite: businessWebsite.trim(),
-        businessPhone: businessPhone.trim(),
-        businessServices: businessServices.trim(),
-        docLink: docLink.trim(),
-        customPrompt: customPrompt.trim(),
-        followUpDays: "3", // default 3 follow-ups
-      };
-      localStorage.setItem("sa_onboarding", JSON.stringify(onboardingData));
-
       setLoading(true);
       try {
-        const result = await authSignup(name, email, password);
-        if (result.error) { setError(result.error); return; }
-        onAuth(name.trim(), email);
+        /*
+        // COMMENTED: Previous self-service registration (direct account creation)
+        // const result = await authSignup(name, email, password);
+        // if (result.error) { setError(result.error); return; }
+        // onAuth(name.trim(), email);
+        */
+
+        const result = await requestAccess({
+          name: name.trim(),
+          email: email.trim(),
+          phone: businessPhone.trim(),
+          businessName: businessName.trim(),
+          businessWebsite: businessWebsite.trim(),
+          businessServices: businessServices.trim(),
+          docLink: docLink.trim(),
+          customPrompt: customPrompt.trim(),
+        });
+
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+
+        setRequestSubmitted(true);
       } catch (err) {
         setError("Something went wrong. Please try again.");
       } finally {
@@ -204,30 +213,66 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
           }}
         >
           <HandNote
-            label={mode === "login" ? "Welcome back!" : "Free to start"}
+            label={mode === "login" ? "Welcome back!" : "Enterprise Setup"}
             rotate={-8}
             style={{ top: -6, left: "calc(100% + 20px)" }}
           />
 
-          {mode === "login" ? (
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px 0", color: "var(--color-text)" }}>Log in to your account</h2>
-              <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.5 }}>Welcome back! Enter your email and password to access the sales platform.</p>
+          {requestSubmitted ? (
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                <IconCheck size={32} className="text-green-500" />
+              </div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 10px 0", color: "var(--color-text)" }}>
+                Setup Request Received!
+              </h2>
+              <p style={{ fontSize: 13.5, color: "var(--color-text2)", margin: "0 0 16px 0", lineHeight: 1.6 }}>
+                Thank you, <strong className="text-text">{name || "there"}</strong>! Our management team will contact you shortly to review your business requirements, configure your dedicated AI voice persona & outreach integrations, and provide your credentials.
+              </p>
+              <div className="p-3.5 rounded-xl border border-bg4 bg-bg3 text-left w-full mb-6">
+                <p className="text-[12px] text-text3 mb-1">Registered Contact Email:</p>
+                <p className="text-[13px] font-semibold text-text truncate">{email}</p>
+                {businessPhone && (
+                  <>
+                    <p className="text-[12px] text-text3 mt-2 mb-1">Contact Phone:</p>
+                    <p className="text-[13px] font-semibold text-text">{businessPhone}</p>
+                  </>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="lg"
+                style={{ width: "100%" }}
+                onClick={() => {
+                  setRequestSubmitted(false);
+                  setMode("login");
+                  setSignupStep(1);
+                }}
+              >
+                Return to Login
+              </Button>
             </div>
           ) : (
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px 0", color: "var(--color-text)" }}>
-                {signupStep === 1 ? "Create your free account" : signupStep === 2 ? "Tell us about your business" : "Personalize your AI assistant"}
-              </h2>
-              <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.5 }}>
-                {signupStep === 1
-                  ? "Start automating your outreach across Email, WhatsApp, and SMS today."
-                  : signupStep === 2
-                    ? "We use your website, services, and phone number to configure your agent brain."
-                    : "Upload a resources brochure link and write custom instructions for your agent."}
-              </p>
-            </div>
-          )}
+            <>
+              {mode === "login" ? (
+                <div style={{ marginBottom: 24 }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px 0", color: "var(--color-text)" }}>Log in to your account</h2>
+                  <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.5 }}>Welcome back! Enter your email and password to access the sales platform.</p>
+                </div>
+              ) : (
+                <div style={{ marginBottom: 24 }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px 0", color: "var(--color-text)" }}>
+                    {signupStep === 1 ? "Request Workspace Setup" : signupStep === 2 ? "Tell us about your business" : "Personalize your AI assistant"}
+                  </h2>
+                  <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.5 }}>
+                    {signupStep === 1
+                      ? "Submit your details. Our admin team will talk with you and configure your dedicated AI sales platform."
+                      : signupStep === 2
+                        ? "We use your website, services, and phone number to configure your agent brain and integrations."
+                        : "Share any brochures, target markets or custom rules for your dedicated AI assistant."}
+                  </p>
+                </div>
+              )}
 
           {mode === "signup" && (
             <div className="flex items-center justify-between mb-4">
@@ -293,43 +338,20 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                       <input disabled={loading} className="form-input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Email address</label>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Work email address</label>
                       <input disabled={loading} className="form-input" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
-                      <div style={{ position: "relative", width: "100%" }}>
-                        <input
-                          disabled={loading}
-                          className="form-input" style={{ paddingRight: 40 }}
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Min. 8 characters"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => setShowPassword(!showPassword)}
-                          style={{
-                            position: "absolute",
-                            right: 12,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none",
-                            border: "none",
-                            cursor: loading ? "not-allowed" : "pointer",
-                            color: "var(--color-text3)",
-                            padding: 4,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                        </button>
-                      </div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Phone number</label>
+                      <input disabled={loading} className="form-input" placeholder="+91 98765 43210" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                     </div>
+                    {/*
+                    // COMMENTED: Password input for self-service signup (Admin now provisions login credentials after consultation)
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)" }}>Password</label>
+                      <input disabled={loading} className="form-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    </div>
+                    */}
                   </>
                 )}
 
@@ -388,14 +410,14 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 {loading
                   ? mode === "login"
                     ? "Logging in..."
-                    : "Creating account..."
+                    : "Submitting request..."
                   : mode === "login"
                     ? "Log in →"
                     : signupStep === 1
                       ? "Next: Business Details →"
                       : signupStep === 2
-                        ? "Next: AI Setup →"
-                        : "Create free account →"}
+                        ? "Next: Requirements →"
+                        : "Submit Setup Request →"}
               </Button>
             </div>
           </form>
@@ -403,7 +425,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
           {mode === "signup" ? (
             <div style={{ marginTop: 28, textAlign: "center" }}>
               <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "0 0 8px 0", lineHeight: 1.6 }}>
-                Already registered your business profile?
+                Already have an account configured by admin?
               </p>
               <button
                 type="button"
@@ -417,7 +439,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
           ) : (
             <div style={{ marginTop: 28, textAlign: "center" }}>
               <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "0 0 8px 0", lineHeight: 1.6 }}>
-                New to SalesAgent? Join hundreds of businesses automating their cold outreach with AI.
+                Need a dedicated AI sales agent configured for your business?
               </p>
               <button
                 type="button"
@@ -425,12 +447,14 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 onClick={() => { setMode("signup"); setError(""); setSignupStep(1); }}
                 style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#df2a2a", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
-                Create your free account →
+                Request Workspace Setup →
               </button>
             </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
+    </div>
+  </div>
 
       {/* Footer */}
       <div

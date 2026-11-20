@@ -117,11 +117,12 @@ Return ONLY a valid JSON array of objects with the following keys for each lead:
 - location`;
 
 function Field({
-  def, value, onChange,
+  def, value, onChange, isMember,
 }: {
   def: ProviderDef["fields"][0];
   value: string;
   onChange: (v: string) => void;
+  isMember?: boolean;
 }) {
   const base: React.CSSProperties = {
     width: "100%", padding: "8px 12px", borderRadius: 9,
@@ -139,7 +140,13 @@ function Field({
           ))}
         </select>
       ) : def.type === "password" ? (
-        <input type="password" value={value} onChange={(e) => onChange(e.target.value)} placeholder={def.placeholder} style={base} />
+        isMember ? (
+          <div style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: "#10b981", fontSize: 12.5, fontWeight: 600 }}>
+            Active · Configured by Administrator
+          </div>
+        ) : (
+          <input type="password" value={value} onChange={(e) => onChange(e.target.value)} placeholder={def.placeholder} style={base} />
+        )
       ) : (
         <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={def.placeholder} style={base} />
       )}
@@ -149,7 +156,7 @@ function Field({
 }
 
 function ProviderCard({
-  def, values, setValues, isEnabled, onToggleEnabled, onSave, savedKey,
+  def, values, setValues, isEnabled, onToggleEnabled, onSave, savedKey, isMember,
 }: {
   def: ProviderDef;
   values: Record<string, string>;
@@ -158,6 +165,7 @@ function ProviderCard({
   onToggleEnabled: (v: boolean) => void;
   onSave: (fields: string[]) => void;
   savedKey: string | null;
+  isMember?: boolean;
 }) {
   const [open, setOpen] = useState(isEnabled);
   const isSaved = savedKey === def.type;
@@ -212,7 +220,7 @@ function ProviderCard({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             {def.fields.map((f) => (
               <div key={f.key} style={f.type === "textarea" ? { gridColumn: "1 / -1" } : {}}>
-                <Field def={f} value={values[f.key] ?? (f.type === "select" && f.options ? f.options[0].value : "")} onChange={(v) => setValues({ [f.key]: v })} />
+                <Field def={f} value={values[f.key] ?? (f.type === "select" && f.options ? f.options[0].value : "")} onChange={(v) => setValues({ [f.key]: v })} isMember={isMember} />
               </div>
             ))}
           </div>
@@ -403,6 +411,7 @@ export default function LlmSources() {
               onToggleEnabled={(v) => toggleEnabled(def.type, isEnabled)}
               onSave={(keys) => handleSaveKeys(keys, def.type)}
               savedKey={savedKey}
+              isMember={activeAgent?.role === "member"}
             />
           );
         })}

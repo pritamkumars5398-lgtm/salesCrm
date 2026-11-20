@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, Fragment } from "react";
-import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain } from "@tabler/icons-react";
+import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain, IconMail } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { GENERAL_CARDS, INTEGRATION_CARDS, WORKSPACE_CARDS, type SettingsCard } from "@/lib/constants/settings";
+import { GEMINI_VOICES } from "@/lib/constants/gemini-voices";
 import LeadFieldsPanel from "@/components/settings/LeadFieldsPanel";
 import LeadGroupsPanel from "@/components/settings/LeadGroupsPanel";
 import KnowledgePanel from "@/components/settings/KnowledgePanel";
@@ -488,13 +489,16 @@ export default function Settings() {
   const isLlmSourcesPage = active === "llm-scraper";
   const isIntegration = INTEGRATION_CARDS.some((c) => c.key === active);
   const workspacePage = WORKSPACE_CARDS.find((c) => c.key === active);
-  // Members can look but not change: the API refuses their writes, so don't offer them.
-  const readOnly = activeAgent?.role === "member";
+  // Members can customize basic profile, sales playbook, and preferred voice persona.
+  // Sensitive API credentials, SMTP passwords & carrier infrastructure remain managed by admins.
+  const isMember = activeAgent?.role === "member";
+  const isBasicEditableTab = active === "profile" || active === "playbook" || active === "voice";
+  const readOnly = isMember && !isBasicEditableTab;
 
   return (
     <div className="flex h-full" style={{ background: "var(--color-bg)" }}>
       {/* Left nav */}
-      <div className="flex flex-col gap-1 p-3 shrink-0" style={{ width: 220, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)", paddingTop: 20 }}>
+      <div className="flex flex-col gap-1 p-3 shrink-0 overflow-y-auto" style={{ width: 220, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)", paddingTop: 20 }}>
         <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>General</p>
         {GENERAL_CARDS.map((card) => (
           <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
@@ -543,10 +547,18 @@ export default function Settings() {
       {/* Right panel */}
       <div className="flex-1 overflow-y-auto w-full" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { width: "100%", padding: "2rem 2.5rem 5rem" }}>
         <div className="w-full max-w-[1400px] mx-auto">
-          {readOnly && (
-            <p className="mb-4 rounded-lg border border-bg4 bg-bg2 px-3 py-2 text-[12px] text-text3">
-              You&apos;re a member of this workspace — only admins can change its settings.
-            </p>
+          {isMember && (
+            <div className="mb-6 flex items-center justify-between p-4 rounded-xl border border-blue-500/25 bg-blue-500/5">
+              <div className="flex items-center gap-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                <p className="text-[12.5px] text-text2 font-medium m-0 leading-relaxed">
+                  Enterprise Managed Workspace — Core LLM, carrier voice telephony & SMTP email are configured by your administrator. You can customize your Business Profile, AI Playbook, and Voice Personas below.
+                </p>
+              </div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/15 border border-blue-500/30 px-2.5 py-1 rounded-md shrink-0 ml-3">
+                User Access
+              </span>
+            </div>
           )}
           {isApifySourcesPage ? (
             <ApifySources agentId={activeAgent?._id} />
@@ -833,10 +845,14 @@ export default function Settings() {
                         ];
                       }
                     } else if (currentVoiceProvider === "Deepgram") {
-                      if (f.key === "geminiApiKey" || f.key === "geminiVoiceModel" || f.key === "elevenLabsAgentId" || f.key === "voiceApiKey") {
+                      if (f.key === "geminiApiKey" || f.key === "geminiVoiceModel" || f.key === "elevenLabsAgentId") {
                         return null;
                       }
-                      if (f.key === "voiceId") {
+                      if (f.key === "voiceApiKey") {
+                        displayLabel = "Deepgram API Key";
+                        displayPlaceholder = "Enter Deepgram API key...";
+                        displayHint = "Your Deepgram API key (or uses STT API Key from Category 3)";
+                      } else if (f.key === "voiceId") {
                         displayLabel = "Deepgram Aura Voice";
                         displayHint = "Select a Deepgram Aura voice";
                         displayOptions = [
@@ -1039,10 +1055,232 @@ export default function Settings() {
                   );
                 };
 
+                if (isMember) {
+                  if (activeCard.key === "llm") {
+                    return (
+                      <div className="flex flex-col gap-6 w-full">
+                        <div className="rounded-2xl border p-6 shadow-sm border-green-500/30 bg-green-500/5">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-green-500/15 flex items-center justify-center shrink-0">
+                              <IconBrain size={26} className="text-green-500" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                                <h3 className="text-[15px] font-bold text-text m-0">AI Brain Connected & Optimized</h3>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-green-400 bg-green-500/15 border border-green-500/30 px-2.5 py-0.5 rounded-full">
+                                  Setup Completed
+                                </span>
+                              </div>
+                              <p className="text-[12.5px] text-text2 leading-relaxed m-0">
+                                Your language model intelligence is managed and optimized by your administrator. High-speed LLM inference and reasoning is active for all outbound calls, emails, and automatic WhatsApp responses.
+                              </p>
+                              <div className="mt-4 pt-3 border-t border-green-500/20 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
+                                <div>
+                                  <span className="text-text3 block text-[11px]">Provider:</span>
+                                  <strong className="text-text">{values["llmProvider"] || "Groq (Llama 3)"}</strong>
+                                </div>
+                                <div>
+                                  <span className="text-text3 block text-[11px]">Engine Model:</span>
+                                  <strong className="text-text">{values["llmModel"] || "Llama 3.3 70B Versatile"}</strong>
+                                </div>
+                                <div>
+                                  <span className="text-text3 block text-[11px]">Integration Status:</span>
+                                  <strong className="text-green-400 font-semibold">Active & Live</strong>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (activeCard.key === "email") {
+                    return (
+                      <div className="flex flex-col gap-6 w-full">
+                        <div className="rounded-2xl border p-6 shadow-sm border-green-500/30 bg-green-500/5">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-green-500/15 flex items-center justify-center shrink-0">
+                              <IconMail size={26} className="text-green-500" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                                <h3 className="text-[15px] font-bold text-text m-0">Email Outreach Connected & Configured</h3>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-green-400 bg-green-500/15 border border-green-500/30 px-2.5 py-0.5 rounded-full">
+                                  Setup Completed
+                                </span>
+                              </div>
+                              <p className="text-[12.5px] text-text2 leading-relaxed m-0">
+                                Your corporate SMTP mail delivery server is fully configured by your administrator. Cold outreach sequences, follow-up drip emails, and lead replies are sent through your verified corporate mailbox.
+                              </p>
+                              <div className="mt-4 pt-3 border-t border-green-500/20 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
+                                <div>
+                                  <span className="text-text3 block text-[11px]">Sender Identity:</span>
+                                  <strong className="text-text">{values["smtpFrom"] || values["smtpUser"] || "Configured by Admin"}</strong>
+                                </div>
+                                <div>
+                                  <span className="text-text3 block text-[11px]">From Name:</span>
+                                  <strong className="text-text">{values["smtpFromName"] || "Sales Team"}</strong>
+                                </div>
+                                <div>
+                                  <span className="text-text3 block text-[11px]">Delivery Verification:</span>
+                                  <strong className="text-green-400 font-semibold">Verified & Operational</strong>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (activeCard.key === "voice") {
+                    return (
+                      <div className="flex flex-col gap-6 w-full">
+                        {/* Top banner: Your Voice is Connected */}
+                        <div className="rounded-2xl border p-5 shadow-sm border-emerald-500/30 bg-emerald-500/5">
+                          <div className="flex items-start gap-3.5">
+                            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0 mt-1" />
+                            <div>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <h3 className="text-[15px] font-bold text-text m-0">Your Voice is Connected</h3>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                                  Telephony Active
+                                </span>
+                              </div>
+                              <p className="text-[12.5px] text-text2 leading-relaxed m-0">
+                                Carrier routing and conversational speech synthesis are configured and managed by your administrator.
+                                Listen to sample voice previews below and select your preferred voice persona for phone calls.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Voice Studio */}
+                        <div className="rounded-2xl border p-6 transition-all duration-200 shadow-sm" style={{ background: "var(--color-bg2)", borderColor: "var(--color-bg4)" }}>
+                          <h4 className="text-[14px] font-bold text-text mb-1">Available Voice Personas</h4>
+                          <p className="text-[12px] text-text3 mb-4">Click Play to listen to sample audio in your browser. Click Select to assign that voice to your sales agent.</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-6">
+                            {GEMINI_VOICES.map((v) => {
+                              const isSelected = (values["voiceId"] || "Puck").toLowerCase() === v.id.toLowerCase();
+                              return (
+                                <div
+                                  key={v.id}
+                                  className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between ${
+                                    isSelected ? "border-amber-500 bg-amber-500/10 shadow-sm" : "border-bg4 bg-bg3 hover:border-text3"
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[13.5px] font-bold text-text">{v.name}</span>
+                                      <span className="text-[10.5px] uppercase font-bold px-1.5 py-0.5 rounded bg-bg4 text-text2">
+                                        {v.gender}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11.5px] text-text3 leading-snug mb-3">{v.desc}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2 pt-2 border-t border-bg4/50">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setTestVoice(v.id);
+                                        const sample = values["callGreeting"] || "नमस्ते! मैं प्रिया बोल रही हूँ। क्या मेरी बात राहुल जी से हो रही है?";
+                                        setTestSentence(sample.replace(/\{\{[^}]+\}\}/g, ""));
+                                        setTimeout(() => playTestSentence(), 50);
+                                      }}
+                                      disabled={playingTest}
+                                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11.5px] font-semibold bg-bg2 border border-bg4 text-text hover:bg-bg1 transition-colors"
+                                    >
+                                      <IconPlayerPlay size={13} className="text-amber-500" />
+                                      <span>Listen</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setValues((p) => ({ ...p, voiceId: v.id, voiceProvider: "Google Gemini" }));
+                                        showToast(`Selected voice: ${v.name}`);
+                                      }}
+                                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11.5px] font-bold transition-colors ${
+                                        isSelected
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-bg2 border border-bg4 text-text2 hover:text-text hover:bg-bg1"
+                                      }`}
+                                    >
+                                      {isSelected ? "Active Voice" : "Select"}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Script & Greeting settings for user */}
+                          <div className="pt-4 border-t border-bg4">
+                            <h4 className="text-[13.5px] font-bold text-text mb-3">Call Greeting & Language Customization</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {renderSingleField({
+                                label: "Call Language",
+                                key: "callLanguage",
+                                options: ["Hindi", "Hinglish", "English"],
+                                hint: "Language the AI agent speaks on calls",
+                              })}
+                              {renderSingleField({
+                                label: "Call Opening Greeting",
+                                key: "callGreeting",
+                                type: "textarea",
+                                placeholder: "नमस्ते! मैं प्रिया बोल रही हूँ। क्या मेरी बात {{leadName}} से हो रही है?",
+                                hint: "First words your AI speaks when a call connects",
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (activeCard.key === "whatsapp" || activeCard.key === "sms" || activeCard.key === "calendly") {
+                    return (
+                      <div className="flex flex-col gap-6 w-full">
+                        <div className="rounded-2xl border p-6 shadow-sm border-blue-500/30 bg-blue-500/5">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
+                              <activeCard.Icon size={26} className="text-blue-500" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                                <h3 className="text-[15px] font-bold text-text m-0">{activeCard.title} Channel Connected</h3>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 rounded-full">
+                                  Setup Completed
+                                </span>
+                              </div>
+                              <p className="text-[12.5px] text-text2 leading-relaxed m-0">
+                                The {activeCard.title} integration credentials and carrier webhooks are managed and maintained by your administrator. Outbound broadcasts and inbound lead replies are routed automatically.
+                              </p>
+                              <div className="mt-4 pt-3 border-t border-blue-500/20 text-[12px]">
+                                <span className="text-text3">Status: </span>
+                                <strong className="text-blue-400 font-semibold">Active & Maintained by Admin</strong>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+
                 if (activeCard.key === "voice") {
+                  const currentVoice = values["voiceProvider"] || "Google Gemini";
+                  // ElevenLabs Conversational AI has its own native end-to-end STT + LLM + TTS, so standalone STT (Category 3) is hidden.
+                  const visibleCategories = currentVoice === "ElevenLabs"
+                    ? VOICE_CATEGORIES.filter((c) => c.id !== "stt")
+                    : VOICE_CATEGORIES;
+
                   return (
                     <div className="flex flex-col gap-6 w-full">
-                      {VOICE_CATEGORIES.map((cat) => {
+                      {visibleCategories.map((cat) => {
                         const catFields = activeCard.fields.filter((f) => cat.fields.includes(f.key));
                         return (
                           <div
@@ -1100,8 +1338,8 @@ export default function Settings() {
               })()}
 
 
-              {/* WhatsApp send test panel */}
-              {activeCard.key === "whatsapp" && (
+              {/* WhatsApp send test panel (Admin only) */}
+              {!isMember && activeCard.key === "whatsapp" && (
                 <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(34,201,122,0.25)", background: "rgba(34,201,122,0.04)" }}>
                   <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(34,201,122,0.15)", background: "rgba(34,201,122,0.06)" }}>
                     <IconMessage size={15} style={{ color: "#22c97a" }} />
@@ -1232,8 +1470,8 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* Google Gemini Native Voice Engine Status & Controls */}
-              {activeCard.key === "voice" && (values["voiceProvider"] || "Google Gemini") === "Google Gemini" && (
+              {/* Google Gemini Native Voice Engine Status & Controls (Admin view) */}
+              {!isMember && activeCard.key === "voice" && (values["voiceProvider"] || "Google Gemini") === "Google Gemini" && (
                 <div
                   className="mt-6 rounded-2xl border p-5 sm:p-6 transition-all duration-200 shadow-sm"
                   style={{
@@ -1542,8 +1780,8 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* SMS test panel */}
-              {activeCard.key === "sms" && (
+              {/* SMS test panel (Admin only) */}
+              {!isMember && activeCard.key === "sms" && (
                 <div className="mt-8 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
                   <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
                     <IconMessage size={15} style={{ color: "#cc99ff" }} />
@@ -1619,8 +1857,8 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* Receive SMS test panel */}
-              {activeCard.key === "sms" && (
+              {/* Receive SMS test panel (Admin only) */}
+              {!isMember && activeCard.key === "sms" && (
                 <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "rgba(204,153,255,0.25)", background: "rgba(204,153,255,0.04)" }}>
                   <div className="flex items-center gap-2.5 px-5 py-3.5 border-b" style={{ borderColor: "rgba(204,153,255,0.15)", background: "rgba(204,153,255,0.06)" }}>
                     <IconMessage size={15} style={{ color: "#cc99ff" }} />

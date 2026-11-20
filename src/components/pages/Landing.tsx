@@ -1827,7 +1827,7 @@ export default function Landing({
                 color: "var(--color-text)",
               }}
             >
-              Create your free account
+              Request Workspace Setup & Onboarding
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <input
@@ -1850,7 +1850,7 @@ export default function Landing({
                 rightIcon={<IconArrowRight size={15} />}
                 onClick={openSignup}
               >
-                Get started — it&apos;s free
+                Request Setup & Consultation →
               </Button>
             </div>
             <div

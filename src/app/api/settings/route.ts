@@ -64,15 +64,74 @@ export async function GET(req: Request) {
       map[s.key] = isSecretSettingKey(s.key) ? maskSecretValue(s.value) : s.value;
     }
   });
+
+  const isMember = !access.canManage && access.role === "member";
+  if (isMember) {
+    // For regular users/members: do not expose raw secrets or masked passwords.
+    // Instead provide explicit setup completion status flags so UI indicates
+    // "Setup has been done by Administrator" rather than confusing masked inputs.
+    map["_llmConfigured"] = (map.llmApiKey || process.env.GROQ_API_KEY) ? "true" : "false";
+    map["_emailConfigured"] = (map.smtpPass || process.env.SMTP_PASS) ? "true" : "false";
+    map["_voiceConfigured"] = (map.plivoAuthToken || process.env.PLIVO_AUTH_TOKEN || map.geminiApiKey || process.env.GEMINI_API_KEY) ? "true" : "false";
+    map["_smsConfigured"] = (map.smsApiKey || process.env.TWILIO_AUTH_TOKEN) ? "true" : "false";
+    map["_whatsappConfigured"] = (map.waApiKey || map.waSessionId) ? "true" : "false";
+    map["_calendlyConfigured"] = (map.calendlyApiToken || process.env.CALENDLY_API_TOKEN) ? "true" : "false";
+    map["_isAdminManaged"] = "true";
+
+    // Strip masked secrets so member browser does not receive password placeholders
+    for (const key of Object.keys(map)) {
+      if (isSecretSettingKey(key)) {
+        map[key] = "";
+      }
+    }
+  }
+
   return NextResponse.json(map);
 }
+
+// Basic settings keys that regular team members/users are permitted to customize
+const MEMBER_ALLOWED_KEYS = new Set([
+  "voiceId",
+  "voiceProvider",
+  "geminiVoiceModel",
+  "callLanguage",
+  "callGreeting",
+  "agentName",
+  "businessType",
+  "industry",
+  "leadLocation",
+  "leadLocations",
+  "targetCompanySize",
+  "businessWebsite",
+  "businessPhone",
+  "followUpDays",
+  "brandName",
+  "aiPersonaName",
+  "offerType",
+  "offerSummary",
+  "targetCustomer",
+  "businessServices",
+  "pricingInfo",
+  "callGoal",
+  "objectionHandling",
+  "docLink",
+  "customPrompt",
+  "gmKeyword",
+  "gmLocation",
+  "linkedinKeyword",
+  "linkedinLocation",
+  "jdKeyword",
+  "jdLocation",
+]);
 
 export async function POST(req: Request) {
   await connectDB();
   const body = await req.json().catch(() => ({})) as { agentId?: string; settings?: Record<string, unknown> };
-  const access = await authorizeWorkspace(req, body.agentId, { minRole: "admin" });
+  const access = await authorizeWorkspace(req, body.agentId);
   if (!access.ok) return access.response;
   const agentId = access.agentId;
+  const isMember = !access.canManage && access.role === "member";
+
   if (!body.settings || typeof body.settings !== "object") {
     return NextResponse.json({ error: "settings object required" }, { status: 400 });
   }
@@ -80,6 +139,8 @@ export async function POST(req: Request) {
   const incoming: Record<string, string> = {};
   for (const [key, value] of Object.entries(body.settings)) {
     if (PROTECTED_KEYS.has(key) || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(key)) continue;
+    // Members are restricted to basic settings (voice persona, script, business profile)
+    if (isMember && !MEMBER_ALLOWED_KEYS.has(key)) continue;
     if (isMaskedValue(value)) continue; // the browser sent back the mask: keep the stored secret
     const str = value === null || value === undefined ? "" : String(value);
     if (str.length > MAX_VALUE_LENGTH) {

@@ -32,13 +32,36 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
 
   const live = call.status === "live";
 
+  // Play a ringtone sound while the call is connecting (waiting for answer)
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (call.status === "connecting") {
+      ringtoneRef.current?.play().catch(() => { });
+    } else {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+    }
+  }, [call.status]);
+
   return createPortal(
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" onClick={close}>
       <div onClick={(e) => e.stopPropagation()} className="flex max-h-[90vh] w-[min(620px,100%)] flex-col overflow-hidden rounded-2xl border border-bg4 bg-bg2 shadow-xl">
-        <div className="flex items-start gap-3 border-b border-bg4 px-5 py-4">
-          <div className="min-w-0 flex-1">
+        {/* Hidden ringtone audio element */}
+        <audio
+          ref={ringtoneRef}
+          src="https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"
+          preload="auto"
+          loop
+          style={{ display: "none" }}
+        />
+
+        {/* -------------------- HEADER -------------------- */}
+        <div className="flex items-start gap-3 border-b border-bg4 px-5 py-4 bg-bg1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <p className="text-[15px] font-bold text-text">Practice call — {leadName}</p>
+              <h2 className="text-[15px] font-bold text-text">Practice call — {leadName}</h2>
               {(call.voiceName || call.provider) && (
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold bg-bg3 text-text2 border border-bg4">
                   Voice: <span className="text-text font-extrabold">{call.voiceName || "Default"}</span> ({call.provider || "AI"})
@@ -55,9 +78,12 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
               Use headphones for voice.
             </p>
           </div>
-          <button onClick={close} aria-label="Close" className="text-text3"><IconX size={17} /></button>
+          <button onClick={close} aria-label="Close" className="text-text3 hover:text-text2 transition-colors">
+            <IconX size={17} />
+          </button>
         </div>
 
+        {/* -------------------- BODY -------------------- */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {call.status === "idle" && (
             <div className="flex flex-col gap-3">
@@ -119,6 +145,7 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
           )}
         </div>
 
+        {/* -------------------- FOOTER -------------------- */}
         {(live || call.status === "ended") && (
           <div className="flex items-center gap-2 border-t border-bg4 px-4 py-3">
             {live ? (
@@ -148,6 +175,6 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
         )}
       </div>
     </div>,
-    document.body,
+    document.body
   );
 }

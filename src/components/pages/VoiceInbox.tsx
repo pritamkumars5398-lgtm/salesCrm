@@ -38,6 +38,7 @@ interface Stats {
 
 const FILTERS = [
   { id: "all", label: "All" },
+  { id: "uncalled", label: "Not called" },
   { id: "live", label: "Live" },
   { id: "answered", label: "Answered" },
   { id: "missed", label: "Not answered" },
@@ -87,6 +88,11 @@ export default function VoiceInbox() {
 
   async function loadCalls(showSpinner = false) {
     if (!agentId) return;
+    if (filter === "uncalled") {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     if (showSpinner) setLoading(true);
     try {
       const qs = new URLSearchParams({ agentId, status: filter });
@@ -130,7 +136,7 @@ export default function VoiceInbox() {
 
   useEffect(() => {
     loadCalls(true);
-    if (filter === "all") loadOthers(1);
+    if (filter === "all" || filter === "uncalled") loadOthers(1);
     else setOthers([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, filter, debouncedSearch]);
@@ -158,7 +164,7 @@ export default function VoiceInbox() {
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
-    if (filter === "all" && othersHasMore && !othersLoading && scrollHeight - scrollTop - clientHeight < 80) {
+    if ((filter === "all" || filter === "uncalled") && othersHasMore && !othersLoading && scrollHeight - scrollTop - clientHeight < 80) {
       loadOthers(othersPage + 1);
     }
   }
@@ -224,10 +230,10 @@ export default function VoiceInbox() {
               <div className="flex items-center justify-center py-10 text-[12px]" style={{ color: "var(--color-text3)" }}>Loading…</div>
             ) : (
               <>
-                {rows.length === 0 && (filter !== "all" || uncalled.length === 0) && (
+                {rows.length === 0 && ((filter !== "all" && filter !== "uncalled") || uncalled.length === 0) && (
                   <div className="flex flex-col items-center justify-center py-14 px-4 text-center gap-1">
                     <p className="text-[12.5px] font-medium" style={{ color: "var(--color-text2)" }}>
-                      {filter === "all" ? "No leads found" : "No calls match this filter"}
+                      {filter === "all" || filter === "uncalled" ? "No uncalled leads found" : "No calls match this filter"}
                     </p>
                     <p className="text-[11px]" style={{ color: "var(--color-text3)" }}>
                       {search ? "Try a different search." : "Calls you place to leads show up here."}
@@ -275,10 +281,11 @@ export default function VoiceInbox() {
                   );
                 })}
 
-                {filter === "all" && uncalled.length > 0 && (
+                {(filter === "all" || filter === "uncalled") && uncalled.length > 0 && (
                   <>
-                    <div className="px-3 pt-3 pb-1.5 text-[10px] font-semibold tracking-widest uppercase" style={{ color: "var(--color-text3)" }}>
-                      Not called yet
+                    <div className="px-3 pt-3 pb-1.5 text-[10px] font-semibold tracking-widest uppercase flex items-center justify-between" style={{ color: "var(--color-text3)" }}>
+                      <span>Not called yet</span>
+                      <span className="text-[9.5px] font-normal lowercase">{uncalled.length} leads</span>
                     </div>
                     {uncalled.map((lead) => {
                       const isSelected = selectedLead?._id === lead._id;

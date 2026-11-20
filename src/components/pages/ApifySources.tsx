@@ -533,53 +533,85 @@ export default function ApifySources({ agentId: propAgentId }: { agentId?: strin
       </div>
 
       <div style={{ opacity: isMasterEnabled ? 1 : 0.4, pointerEvents: isMasterEnabled ? "auto" : "none", transition: "opacity 0.2s" }}>
-      {/* Token card */}
-      <div
-        style={{
-          background: "var(--color-bg2)",
-          border: "1px solid var(--color-bg4)",
+      {currentAgent?.role === "member" ? (
+        <div style={{
+          background: "rgba(16,185,129,0.06)",
+          border: "1px solid rgba(16,185,129,0.25)",
           borderRadius: 14,
-          padding: "18px 20px",
+          padding: "16px 20px",
           marginBottom: 24,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <IconKey size={15} style={{ color: "#df2a2a" }} />
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(16,185,129,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981" }}>
+              <IconCheck size={18} />
+            </span>
+            <div>
+              <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)", margin: "0 0 2px" }}>
+                Lead Scraper Infrastructure Connected
+              </p>
+              <p style={{ fontSize: 12, color: "var(--color-text3)", margin: 0 }}>
+                Managed & configured by your administrator · Enter your target search keywords & locations below
+              </p>
+            </div>
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "4px 10px", borderRadius: 6, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+            Setup Completed
           </span>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Apify API Token</p>
-            <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Shared across all scrapers — get it from apify.com/account/integrations</p>
+        </div>
+      ) : (
+        /* Token card for Admin */
+        <div
+          style={{
+            background: "var(--color-bg2)",
+            border: "1px solid var(--color-bg4)",
+            borderRadius: 14,
+            padding: "18px 20px",
+            marginBottom: 24,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <IconKey size={15} style={{ color: "#df2a2a" }} />
+            </span>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Apify API Token</p>
+              <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Shared across all scrapers — get it from apify.com/account/integrations</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              type="password"
+              value={values.apifyToken ?? ""}
+              onChange={(e) => patchValues({ apifyToken: e.target.value })}
+              placeholder="apify_api_..."
+              style={{
+                flex: 1, padding: "9px 13px", borderRadius: 9,
+                border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
+                color: "var(--color-text)", fontSize: 13, outline: "none", fontFamily: "inherit",
+              }}
+            />
+            <button
+              onClick={handleTokenSave}
+              style={{
+                padding: "9px 18px", borderRadius: 9,
+                background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#df2a2a,#f24444)",
+                border: tokenSaved ? "1px solid rgba(16,185,129,0.3)" : "none",
+                color: tokenSaved ? "#10b981" : "#fff",
+                fontSize: 13, fontWeight: 700, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                transition: "all 0.2s",
+              }}
+            >
+              {tokenSaved ? <><IconCheck size={13} /> Saved</> : "Save"}
+            </button>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <input
-            type="password"
-            value={values.apifyToken ?? ""}
-            onChange={(e) => patchValues({ apifyToken: e.target.value })}
-            placeholder="apify_api_..."
-            style={{
-              flex: 1, padding: "9px 13px", borderRadius: 9,
-              border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
-              color: "var(--color-text)", fontSize: 13, outline: "none", fontFamily: "inherit",
-            }}
-          />
-          <button
-            onClick={handleTokenSave}
-            style={{
-              padding: "9px 18px", borderRadius: 9,
-              background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#df2a2a,#f24444)",
-              border: tokenSaved ? "1px solid rgba(16,185,129,0.3)" : "none",
-              color: tokenSaved ? "#10b981" : "#fff",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 6,
-              transition: "all 0.2s",
-            }}
-          >
-            {tokenSaved ? <><IconCheck size={13} /> Saved</> : "Save"}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Ideal Customer Filter (Brand Exclusions & Quality) */}
       {agentId ? (
