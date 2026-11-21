@@ -1,5 +1,36 @@
 "use client";
-import { IconX, IconRefresh, IconCheck, IconAlertCircle, IconDownload } from "@tabler/icons-react";
+import { IconX, IconRefresh, IconCheck, IconAlertCircle, IconDownload, IconMapPin } from "@tabler/icons-react";
+
+/**
+ * A sync note, laid out: each problem (blocks split by a blank line) shows its reason,
+ * then the searches it hit ("Searches: …" line) in a quieter style.
+ */
+function SyncNote({ text }: { text: string }) {
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "4px 16px 6px" }}>
+      {blocks.map((block, i) => {
+        const lines = block.split("\n");
+        const searches = lines.find((l) => l.startsWith("Searches: "))?.slice(10);
+        const reason = lines.filter((l) => !l.startsWith("Searches: ")).join(" ");
+        return (
+          <div key={i} style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.2)" }}>
+            <IconAlertCircle size={15} style={{ color: "#ff6b6b", flexShrink: 0, marginTop: 2 }} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 12.5, color: "var(--color-text)", margin: 0, lineHeight: 1.5 }}>{reason}</p>
+              {searches && (
+                <p style={{ display: "flex", alignItems: "flex-start", gap: 4, fontSize: 11.5, color: "var(--color-text3)", margin: "6px 0 0", lineHeight: 1.45 }}>
+                  <IconMapPin size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span>{searches}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export interface SyncRun {
   runId: string;
@@ -110,13 +141,12 @@ export default function SyncPanel({ runs, syncing, note, open, onClose, onCancel
 
       {/* Runs list */}
       <div style={{ padding: "10px 0" }}>
-        {runs.length === 0 && (
-          <div style={{ padding: "16px 16px", fontSize: 12.5, color: note ? "#ff6b6b" : "var(--color-text3)", lineHeight: 1.5 }}>
-            {note ?? (syncing ? "Starting scrapers…" : "No scraper ran.")}
+        {note ? (
+          <SyncNote text={note} />
+        ) : runs.length === 0 && (
+          <div style={{ padding: "16px 16px", fontSize: 12.5, color: "var(--color-text3)", lineHeight: 1.5 }}>
+            {syncing ? "Starting lead search…" : "No lead search ran."}
           </div>
-        )}
-        {runs.length > 0 && note && (
-          <div style={{ padding: "8px 16px", fontSize: 12, color: "#ff6b6b", lineHeight: 1.5 }}>{note}</div>
         )}
         {runs.map((run) => {
           const cfg = STATUS_CFG[run.status];

@@ -39,7 +39,7 @@ const OUTREACH_CHANNELS = [
 
 function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed?: boolean }) {
   if (collapsed) {
-    return <div style={{ height: 1, background: "var(--color-bg4)", margin: "16px 8px 8px" }} />;
+    return <div style={{ height: 1, background: "var(--color-bg4)", margin: "10px 8px 6px" }} />;
   }
   return (
     <p
@@ -50,8 +50,8 @@ function SectionLabel({ children, collapsed }: { children: React.ReactNode; coll
         letterSpacing: "0.1em",
         color: "var(--color-text4)",
         padding: "0 12px",
-        marginTop: 20,
-        marginBottom: 4,
+        marginTop: 12,
+        marginBottom: 2,
       }}
     >
       {children}
@@ -84,7 +84,7 @@ function NavItem({
       className={`nav-item ${active ? "active" : ""}`}
       style={{
         marginBottom: 1,
-        padding: collapsed ? "6px 0" : undefined,
+        padding: collapsed ? "4px 0" : "4px 10px",
         justifyContent: collapsed ? "center" : undefined,
         display: "flex",
         alignItems: "center",
@@ -95,8 +95,8 @@ function NavItem({
     >
       <span
         style={{
-          width: 28,
-          height: 28,
+          width: 24,
+          height: 24,
           borderRadius: "var(--radius-md)",
           background: active ? "var(--color-primary-subtle)" : "transparent",
           display: "flex",
@@ -364,8 +364,8 @@ export default function Sidebar() {
               return (
                 <div
                   style={{
-                    margin: "8px 4px",
-                    padding: "10px 12px",
+                    margin: "4px 4px 0",
+                    padding: "8px 10px",
                     borderRadius: "var(--radius-lg)",
                     background: "var(--color-primary-subtle)",
                     border: "1px solid rgba(223,42,42,0.15)",
@@ -432,8 +432,8 @@ export default function Sidebar() {
 
                   {/* Outreach progress bar */}
                   {hasOutreach && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                         <span style={{ fontSize: 9.5, fontWeight: 600, color: "var(--color-green)" }}>
                           {outreachPct >= 100 ? "✓ Outreach done" : `${inOutreachCount} in outreach`}
                         </span>
@@ -538,7 +538,7 @@ export default function Sidebar() {
                       alignItems: "center",
                       justifyContent: collapsed ? "center" : undefined,
                       gap: collapsed ? 0 : 8,
-                      padding: collapsed ? "7px 0" : "7px 10px",
+                      padding: collapsed ? "4px 0" : "4px 10px",
                       borderRadius: "var(--radius-lg)",
                       background: isActive ? "var(--color-primary-subtle)" : enabled ? bg : "transparent",
                       opacity: soon ? 0.6 : enabled ? 1 : 0.45,
@@ -558,8 +558,8 @@ export default function Sidebar() {
                   >
                     <span
                       style={{
-                        width: 26,
-                        height: 26,
+                        width: 24,
+                        height: 24,
                         borderRadius: "var(--radius-md)",
                         background: enabled ? `${bg}` : "var(--color-bg3)",
                         display: "flex",

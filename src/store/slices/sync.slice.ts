@@ -119,7 +119,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
                 note("This month's lead limit is used up — upgrade the plan to sync more.");
                 opts.onLimitReached?.();
               } else {
-                note(`Lead search couldn't start: ${start.error ?? `request failed (${startRes.status})`}`);
+                note(start.error ?? `Lead search couldn't start (error ${startRes.status}). Please try again.`);
               }
               return;
             }
@@ -129,7 +129,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               note("Lead search didn't start — your admin can check the lead sources.");
               return;
             }
-            if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w, "error"));
+            if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w.replace(/\nSearches: /, " — "), "error"));
 
             set((s) => ({
               syncRuns: [

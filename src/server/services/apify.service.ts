@@ -197,6 +197,50 @@ function apifyHeaders(token: string) {
 
 // ─── run lifecycle ────────────────────────────────────────────────────────────
 
+/**
+ * Turn a raw lead-search (Apify) start error into one plain sentence a customer can act on.
+ * The provider's name and JSON never reach the user.
+ */
+export function explainScraperError(status: number, body: string): string {
+  let type = "", message = "";
+  try {
+    const j = JSON.parse(body) as { error?: { type?: string; message?: string } };
+    type = j.error?.type ?? "";
+    message = j.error?.message ?? "";
+  } catch { message = body; }
+  const t = `${type} ${message}`.toLowerCase();
+  if (/usage|billing|credit|limit.*(month|plan)|subscription|paid plan|platform-feature-disabled/.test(t)) {
+    return "The lead-search credit has run out for this month. Your admin needs to top it up or upgrade the lead-search plan.";
+  }
+  if (status === 401 || status === 403 || /token|unauthori[sz]ed|authenticat/.test(t)) {
+    return "The lead-search connection was rejected. Your admin needs to reconnect it.";
+  }
+  if (status === 404 || /not[- ]found/.test(t)) {
+    return "The lead-search tool isn't set up correctly. Your admin needs to check it.";
+  }
+  if (status === 429 || /rate|too many/.test(t)) {
+    return "Too many searches at once. Please try again in a few minutes.";
+  }
+  if (status >= 500) return "The lead-search service is having trouble right now. Please try again later.";
+  const short = message.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 160);
+  return short ? `Lead search said: ${short}` : "Lead search couldn't start.";
+}
+
+/** "Hotels in Lucknow" + "Hotels in Noida" → "Hotels in Lucknow, Noida". */
+function joinSearches(labels: string[]): string {
+  const parts = labels.map((l) => { const i = l.lastIndexOf(" in "); return i > 0 ? [l.slice(0, i), l.slice(i + 4)] : [l, ""]; });
+  const what = parts[0][0];
+  if (parts.every(([w, place]) => w === what && place)) return `${what} in ${parts.map(([, place]) => place).join(", ")}`;
+  return labels.join("; ");
+}
+
+/** Group failed starts by reason: "reason\nSearches: …" blocks, one per reason. */
+function describeStartFailures(failed: { reason: string; search: string }[]): string[] {
+  const byReason = new Map<string, string[]>();
+  for (const f of failed) byReason.set(f.reason, [...(byReason.get(f.reason) ?? []), f.search]);
+  return [...byReason].map(([reason, searches]) => `${reason}\nSearches: ${joinSearches(searches)}`);
+}
+
 /** Start all enabled scraper runs in parallel. */
 export async function startApifyRuns(agentId: string, opts: SyncTarget = {}): Promise<{
   started: StartedRun[];
@@ -204,10 +248,10 @@ export async function startApifyRuns(agentId: string, opts: SyncTarget = {}): Pr
 }> {
   const configs = await getAllConfigs(agentId, opts);
   if (!configs.length) {
-    throw new Error("No enabled scrapers configured. Go to Settings → Apify Scrapers.");
+    throw new Error("No lead source is turned on yet. Your admin needs to set one up.");
   }
   if (configs.every((c) => !c.token)) {
-    throw new Error("Add your Apify API token in Settings → Apify Scrapers to sync leads.");
+    throw new Error("Lead search isn't connected yet. Your admin needs to add its key.");
   }
 
   const results = await Promise.all(configs.map(async (cfg) => {
@@ -218,7 +262,8 @@ export async function startApifyRuns(agentId: string, opts: SyncTarget = {}): Pr
     });
     if (!runRes.ok) {
       const body = await runRes.text();
-      return { error: `${cfg.searchLabel}: ${body}`, scraperType: cfg.scraperType };
+      console.warn(`[Apify] start failed for "${cfg.searchLabel}" (${runRes.status}): ${body.slice(0, 500)}`);
+      return { error: explainScraperError(runRes.status, body), search: cfg.searchLabel, scraperType: cfg.scraperType };
     }
     const { data: run } = await runRes.json() as { data: { id: string; defaultDatasetId: string; status: string } };
     return {
@@ -230,10 +275,11 @@ export async function startApifyRuns(agentId: string, opts: SyncTarget = {}): Pr
     };
   }));
 
-  const warnings = (results.filter((r) => "error" in r) as { error: string }[]).map((f) => f.error);
+  const failed   = (results.filter((r) => "error" in r) as { error: string; search: string }[]).map((f) => ({ reason: f.error, search: f.search }));
+  const warnings = describeStartFailures(failed);
   const started  = results.filter((r) => !("error" in r)) as StartedRun[];
 
-  if (!started.length) throw new Error(warnings.join(" | ") || "All scraper runs failed to start");
+  if (!started.length) throw new Error(warnings.join("\n\n") || "Lead search couldn't start.");
   return { started, warnings };
 }
 

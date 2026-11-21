@@ -182,11 +182,11 @@ export async function checkElevenLabs(apiKey: string, agentId: string, callLangu
 }
 
 /**
- * Voice settings that make a phone agent sound like a person: speed 1.1 (ElevenLabs allows
+ * Voice settings that make a phone agent sound like a person: speed 0.9, a calm pace (ElevenLabs allows
  * 0.7–1.2), lower stability for natural variation, and a quicker hand-over when the caller stops.
  */
 export const NATURAL_SPEECH = {
-  tts: { speed: 1.1, stability: 0.35, similarity_boost: 0.8 },
+  tts: { speed: 0.9, stability: 0.35, similarity_boost: 0.8 },
   turn: { speculative_turn: true },
 } as const;
 

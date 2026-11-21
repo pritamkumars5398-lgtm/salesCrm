@@ -329,7 +329,7 @@ export default function VoiceInbox() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search leads..."
-                className="w-full text-[12.5px] rounded-lg pl-8 pr-3 py-2 outline-none border"
+                className="w-full text-[12.5px] rounded-lg pl-8 pr-3 py-1.5 outline-none border"
                 style={{ background: "var(--color-bg3)", borderColor: "var(--color-bg4)", color: "var(--color-text)" }}
               />
             </div>
@@ -338,23 +338,23 @@ export default function VoiceInbox() {
                 <button
                   key={id}
                   onClick={() => setFilter(id)}
-                  className="text-[11px] font-semibold px-2 py-1 rounded-md border-none cursor-pointer"
+                  className="text-[11px] font-semibold px-2 py-[3px] rounded-full border-none cursor-pointer"
                   style={{ background: filter === id ? `${ACCENT}1f` : "var(--color-bg3)", color: filter === id ? ACCENT : "var(--color-text3)" }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            {agentId && <GroupFilterSelect agentId={agentId} value={groupId} onChange={setGroupId} />}
-            {/* How the latest call went */}
+            {/* Group + how the latest call went, in one row */}
             <div className="flex gap-1.5">
+              {agentId && <GroupFilterSelect agentId={agentId} value={groupId} onChange={setGroupId} variant="pill" accent={ACCENT} className="flex-1" />}
               <select
                 value={outcome}
                 onChange={(e) => setOutcome(e.target.value)}
                 className="flex-1 min-w-0 text-[11.5px] font-semibold px-2 py-1 rounded-md border cursor-pointer"
                 style={{ background: outcome ? `${ACCENT}1f` : "var(--color-bg3)", borderColor: "var(--color-bg4)", color: outcome ? ACCENT : "var(--color-text2)" }}
               >
-                <option value="">Outcome: any</option>
+                <option value="">Outcome</option>
                 <option value="interested">Interested</option>
                 <option value="callback">Call back later</option>
                 <option value="not_interested">Not interested</option>
@@ -367,13 +367,13 @@ export default function VoiceInbox() {
                 className="flex-1 min-w-0 text-[11.5px] font-semibold px-2 py-1 rounded-md border cursor-pointer"
                 style={{ background: sentiment ? `${ACCENT}1f` : "var(--color-bg3)", borderColor: "var(--color-bg4)", color: sentiment ? ACCENT : "var(--color-text2)" }}
               >
-                <option value="">Mood: any</option>
+                <option value="">Mood</option>
                 <option value="positive">😊 Positive</option>
                 <option value="neutral">😐 Neutral</option>
                 <option value="negative">🙁 Negative</option>
               </select>
-              {callFilterOn && (
-                <button type="button" onClick={() => { setOutcome(""); setSentiment(""); }} className="text-[11px] px-2 rounded-md border-none cursor-pointer" style={{ background: "var(--color-bg3)", color: "var(--color-text3)" }}>Clear</button>
+              {(callFilterOn || !!groupId) && (
+                <button type="button" title="Clear filters" onClick={() => { setOutcome(""); setSentiment(""); setGroupId(""); }} className="text-[11px] px-2 rounded-md border-none cursor-pointer" style={{ background: "var(--color-bg3)", color: "var(--color-text3)" }}>Clear</button>
               )}
             </div>
           </div>
