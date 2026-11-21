@@ -5,8 +5,13 @@ import { useAppStore } from "@/store/useAppStore";
 import { PLANS, type PlanId, type Plan, type PlanLimits } from "@/lib/plans";
 import { apiFetch, apiGet, apiPost } from "@/lib/api/client";
 import { openRazorpayCheckout, type CheckoutOrder } from "@/lib/razorpay-checkout";
+import TopUpPacks from "@/components/billing/TopUpPacks";
+import { USAGE_CHANGED_EVENT } from "@/lib/topup-checkout";
+import type { TopUpCredits } from "@/lib/topups";
 import PlanStatusBanner, { type BillingPlan } from "@/components/billing/PlanStatusBanner";
 import PaymentHistory, { type PaymentRow } from "@/components/billing/PaymentHistory";
+import SoonBadge from "@/components/ui/SoonBadge";
+import { SMS_COMING_SOON } from "@/lib/constants/coming-soon";
 
 interface BillingData {
   enabled: boolean;
@@ -19,8 +24,11 @@ interface BillingData {
 interface UsageData {
   planId: PlanId;
   plan: Plan & { limits: PlanLimits };
-  usage: { leadsScraped: number; messagesSent: number; callsMade: number; emailsSent: number; smsSent: number };
+  usage: { leadsScraped: number; messagesSent: number; callsMade: number; emailsSent: number; smsSent: number; assistantTokens?: number };
   month: string;
+  /** bought top-up units still left (organization workspaces only) */
+  credits?: TopUpCredits;
+  canBuy?: boolean;
 }
 
 const PLAN_ICONS: Record<PlanId, React.ElementType> = {
@@ -30,15 +38,16 @@ const PLAN_ICONS: Record<PlanId, React.ElementType> = {
   pro: IconCrown,
 };
 
-function UsageMeter({ label, used, limit, color }: { label: string; used: number; limit: number; color: string }) {
+function UsageMeter({ label, used, limit, color, extra = 0 }: { label: string; used: number; limit: number; color: string; extra?: number }) {
   const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
-  const isNear = pct >= 80;
+  const isNear = pct >= 80 && extra <= 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 12, color: "var(--color-text2)", fontWeight: 600 }}>{label}</span>
         <span style={{ fontSize: 11, color: isNear ? "#ef4444" : "var(--color-text3)", fontWeight: 600 }}>
           {limit === -1 ? `${used.toLocaleString()} used · Unlimited` : `${used.toLocaleString()} / ${limit.toLocaleString()}`}
+          {extra > 0 && limit !== -1 && <span style={{ color: "#10b981" }}> · +{extra.toLocaleString()} extra</span>}
         </span>
       </div>
       <div style={{ height: 6, borderRadius: 99, background: "var(--color-bg4)", overflow: "hidden" }}>
@@ -170,6 +179,10 @@ export default function Plans() {
   }, [activeAgent?._id]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    window.addEventListener(USAGE_CHANGED_EVENT, load);
+    return () => window.removeEventListener(USAGE_CHANGED_EVENT, load);
+  }, [load]);
 
   /** What the new plan's limits mean for this month's usage and workspace count. */
   function limitWarnings(planId: PlanId): string {
@@ -182,7 +195,7 @@ export default function Plans() {
     check("Leads", data.usage.leadsScraped, next.leadsPerMonth);
     check("WhatsApp messages", data.usage.messagesSent, next.messagesPerMonth);
     check("Emails", data.usage.emailsSent, next.emailsPerMonth);
-    check("SMS", data.usage.smsSent, next.smsPerMonth);
+    if (!SMS_COMING_SOON) check("SMS", data.usage.smsSent, next.smsPerMonth);
     check("AI calls", data.usage.callsMade, next.callsPerMonth);
     const orgWorkspaces = agents.filter((a) => a.organizationId === activeAgent.organizationId).length;
     const workspaceNote = next.workspaces !== -1 && orgWorkspaces > next.workspaces
@@ -274,7 +287,7 @@ export default function Plans() {
           Plans & Usage
         </h2>
         <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0 }}>
-          {new Date().toLocaleString("en-IN", { month: "long", year: "numeric" })} usage · BYOK — bring your own Apify, Twilio and Vapi keys.
+          {new Date().toLocaleString("en-IN", { month: "long", year: "numeric" })} usage
         </p>
       </div>
 
@@ -330,13 +343,34 @@ export default function Plans() {
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 28px" }}>
-          <UsageMeter label="Monthly leads quota" used={usage.leadsScraped} limit={limits.leadsPerMonth} color={plan.color} />
-          <UsageMeter label="WhatsApp messages" used={usage.messagesSent} limit={limits.messagesPerMonth} color={plan.color} />
-          <UsageMeter label="AI calls" used={usage.callsMade} limit={limits.callsPerMonth} color={plan.color} />
-          <UsageMeter label="Emails sent" used={usage.emailsSent} limit={limits.emailsPerMonth} color={plan.color} />
-          <UsageMeter label="SMS sent" used={usage.smsSent} limit={limits.smsPerMonth} color={plan.color} />
+          <UsageMeter label="Monthly leads quota" used={usage.leadsScraped} extra={data.credits?.leadsScraped ?? 0} limit={limits.leadsPerMonth} color={plan.color} />
+          <UsageMeter label="WhatsApp messages" used={usage.messagesSent} extra={data.credits?.messagesSent ?? 0} limit={limits.messagesPerMonth} color={plan.color} />
+          <UsageMeter label="AI calls" used={usage.callsMade} extra={data.credits?.callsMade ?? 0} limit={limits.callsPerMonth} color={plan.color} />
+          <UsageMeter label="Emails sent" used={usage.emailsSent} extra={data.credits?.emailsSent ?? 0} limit={limits.emailsPerMonth} color={plan.color} />
+          {SMS_COMING_SOON ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 12, color: "var(--color-text2)", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>SMS <SoonBadge label="Coming soon" /></span>
+              <span style={{ fontSize: 11, color: "var(--color-text3)" }}>Text messages to leads are on the way.</span>
+            </div>
+          ) : (
+            <UsageMeter label="SMS sent" used={usage.smsSent} extra={data.credits?.smsSent ?? 0} limit={limits.smsPerMonth} color={plan.color} />
+          )}
+          <UsageMeter label="AI assistant tokens" used={usage.assistantTokens ?? 0} extra={data.credits?.assistantTokens ?? 0} limit={limits.assistantTokensPerMonth ?? -1} color={plan.color} />
         </div>
       </div>
+
+      {/* Top-ups: extra units of one feature, on top of the plan */}
+      {data.credits && (
+        <div style={{ marginBottom: 32 }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", margin: "0 0 4px" }}>
+            Top up — buy more of one thing
+          </p>
+          <p style={{ fontSize: 12.5, color: "var(--color-text3)", margin: "0 0 14px" }}>
+            Need more calls or WhatsApp messages without changing your plan? Extra credits never expire and are used only after your monthly limit runs out.
+          </p>
+          <TopUpPacks credits={data.credits} canBuy={!!data.canBuy && !!billing?.enabled} onBought={load} />
+        </div>
+      )}
 
       {/* Plan cards */}
       <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 14 }}>

@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { Lead } from "@/lib/models/Lead";
 import { placeAiCall } from "@/server/services/call.service";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     await connectDB();
     const access = await authorizeWorkspace(req, body.agentId, { minRole: "admin" });
     if (!access.ok) return access.response;
+    if (!access.user.isSuperadmin) return deny(403, "Your admin sets this up for you.").response;
     const agentId = access.agentId;
     if (!testNumber) {
       return NextResponse.json({ error: "testNumber is required" }, { status: 400 });

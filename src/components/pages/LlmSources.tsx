@@ -239,7 +239,7 @@ function ProviderCard({
 }
 
 export default function LlmSources() {
-  const { activeAgent, showToast } = useAppStore();
+  const { activeAgent, showToast, isSuperadmin } = useAppStore();
   const [values, setValues] = useState<Record<string, string>>({});
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedKey, setSavedKey] = useState<string | null>(null);
@@ -343,6 +343,9 @@ export default function LlmSources() {
     showToast(`LLM scraper ${enabled ? "enabled" : "disabled"}`);
   }
 
+  const isAdmin = isSuperadmin; // keys, models and prompts are set up by the platform admin
+  const isMember = !isAdmin;
+
   const baseInputStyle: React.CSSProperties = {
     width: "100%", padding: "9px 13px", borderRadius: 9,
     border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
@@ -357,7 +360,7 @@ export default function LlmSources() {
             LLM Scraper Sources
           </h2>
           <p style={{ fontSize: 13, color: "var(--color-text3)", margin: 0, lineHeight: 1.6 }}>
-            Enable one or more AI providers below. When you click <strong>Sync Sources</strong> in the topbar, they will all run simultaneously to generate or extract leads based on the master prompt below.
+            Multi-model artificial intelligence lead discovery and web synthesis engine.
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--color-bg2)", padding: "8px 12px", borderRadius: 12, border: "1px solid var(--color-bg4)" }}>
@@ -369,53 +372,112 @@ export default function LlmSources() {
       </div>
 
       <div style={{ opacity: isMasterEnabled ? 1 : 0.4, pointerEvents: isMasterEnabled ? "auto" : "none", transition: "opacity 0.2s" }}>
+      {isMember ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.25)",
+            borderRadius: 16,
+            padding: "20px 24px",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 16,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <span style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(16,185,129,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", flexShrink: 0, marginTop: 2 }}>
+                <IconCheck size={22} />
+              </span>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>
+                    AI Lead Intelligence Engine Configured
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "3px 10px", borderRadius: 99, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                    Setup Completed · Active
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: "var(--color-text2)", margin: "0 0 14px", lineHeight: 1.6 }}>
+                  AI lead search is set up and looked after by your admin. Lead enrichment and synthesis run automatically when syncing sources.
+                </p>
 
-
-      <div style={{ background: "var(--color-bg2)", border: "1px solid var(--color-bg4)", borderRadius: 14, padding: "20px", marginBottom: 28 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", display: "flex", alignItems: "center", gap: 6 }}>
-            <IconTerminal2 size={16} /> Global Scraper Prompt
-          </label>
-          <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: "0 0 8px" }}>
-            This prompt is sent to all active LLMs below. Be highly specific and request real, verifiable business data for the best results.
-          </p>
-          <textarea
-            style={{ ...baseInputStyle, resize: "vertical", minHeight: "150px", fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
-            placeholder="Write your prompt to generate leads..."
-            spellCheck={false}
-            value={values.llmPrompt || ""}
-            onChange={(e) => patchValues({ llmPrompt: e.target.value })}
-          />
-          <div style={{ display: "flex", marginTop: 10 }}>
-            <button
-              onClick={handleSavePrompt}
-              disabled={savingPrompt}
-              style={{ padding: "8px 16px", borderRadius: 9, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", fontSize: 12, fontWeight: 600, cursor: savingPrompt ? "not-allowed" : "pointer" }}
-            >
-              {savingPrompt ? "Saving..." : "Save Prompt"}
-            </button>
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 12,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  background: "var(--color-bg2)",
+                  border: "1px solid var(--color-bg4)"
+                }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>AI Engine</span>
+                    <strong style={{ fontSize: 13, color: "var(--color-text)" }}>Enterprise Multi-Model</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Synthesis Prompt</span>
+                    <strong style={{ fontSize: 13, color: "#10b981" }}>Admin Optimized</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Status</span>
+                    <strong style={{ fontSize: 13, color: "#10b981" }}>Active & Connected</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* ADMIN VIEW */
+        <>
+          <div style={{ background: "var(--color-bg2)", border: "1px solid var(--color-bg4)", borderRadius: 14, padding: "20px", marginBottom: 28 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", display: "flex", alignItems: "center", gap: 6 }}>
+                <IconTerminal2 size={16} /> Global Scraper Prompt
+              </label>
+              <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: "0 0 8px" }}>
+                This prompt is sent to all active LLMs below. Be highly specific and request real, verifiable business data for the best results.
+              </p>
+              <textarea
+                style={{ ...baseInputStyle, resize: "vertical", minHeight: "150px", fontFamily: "monospace", fontSize: 12, lineHeight: 1.5 }}
+                placeholder="Write your prompt to generate leads..."
+                spellCheck={false}
+                value={values.llmPrompt || ""}
+                onChange={(e) => patchValues({ llmPrompt: e.target.value })}
+              />
+              <div style={{ display: "flex", marginTop: 10 }}>
+                <button
+                  onClick={handleSavePrompt}
+                  disabled={savingPrompt}
+                  style={{ padding: "8px 16px", borderRadius: 9, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", fontSize: 12, fontWeight: 600, cursor: savingPrompt ? "not-allowed" : "pointer" }}
+                >
+                  {savingPrompt ? "Saving..." : "Save Prompt"}
+                </button>
+              </div>
+            </div>
+          </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {PROVIDERS.map((def) => {
-          const isEnabled = values[enabledKey(def.type)] === "true";
-          return (
-            <ProviderCard
-              key={def.type}
-              def={def}
-              values={values}
-              setValues={patchValues}
-              isEnabled={isEnabled}
-              onToggleEnabled={(v) => toggleEnabled(def.type, isEnabled)}
-              onSave={(keys) => handleSaveKeys(keys, def.type)}
-              savedKey={savedKey}
-              isMember={activeAgent?.role === "member"}
-            />
-          );
-        })}
-      </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {PROVIDERS.map((def) => {
+              const isEnabled = values[enabledKey(def.type)] === "true";
+              return (
+                <ProviderCard
+                  key={def.type}
+                  def={def}
+                  values={values}
+                  setValues={patchValues}
+                  isEnabled={isEnabled}
+                  onToggleEnabled={(v) => toggleEnabled(def.type, isEnabled)}
+                  onSave={(keys) => handleSaveKeys(keys, def.type)}
+                  savedKey={savedKey}
+                  isMember={false}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
       </div>
     </div>
   );

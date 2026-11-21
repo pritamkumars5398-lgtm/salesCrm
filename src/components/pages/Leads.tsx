@@ -1,10 +1,11 @@
 "use client";
+import { sourceLabel } from "@/lib/utils/lead-source";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   IconSearch, IconPlus, IconRefresh, IconMessageCircle,
   IconPlayerPlay, IconCheck, IconX, IconEye, IconCalendarCheck,
   IconExternalLink, IconAlertCircle, IconTrash, IconRestore, IconTrashX,
-  IconUsers,
+  IconUsers, IconMailOff, IconPhoneOff, IconMapPin, IconColumns3,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
@@ -34,11 +35,9 @@ const CHANNEL_ICONS: Record<string, { Icon: React.ElementType; cls: string }> = 
 function SourceBadge({ source, llmProvider }: { source: string, llmProvider?: string }) {
   const meta = SOURCE_META[source] ?? { label: source, color: "var(--color-text3)", bg: "var(--color-bg3)", dot: "var(--color-text3)" };
   
-  let label = meta.label;
-  if (source === "LLM" && llmProvider) {
-    const providerName = llmProvider === "openai" ? "ChatGPT" : llmProvider === "anthropic" ? "Claude" : llmProvider === "gemini" ? "Gemini" : llmProvider;
-    label = `LLM (${providerName})`;
-  }
+  // Never show which AI or scraper found the lead — just where it came from.
+  void llmProvider;
+  const label = source === "LLM" || source === "Apify" ? sourceLabel(source) : meta.label;
 
   return (
     <span style={{
@@ -68,6 +67,10 @@ interface LeadsResponse {
 
 interface Props { onAddLead: () => void; }
 
+const HIDDEN_COLS_KEY = "leads.hiddenColumns";
+/** Columns the user can hide (Name always shows). */
+const OPTIONAL_COLUMNS = ["Company", "Location", "Source", "Channels", "Status", "Added", "Action"];
+
 export default function Leads({ onAddLead }: Props) {
   const { activeAgent, leads, setLeads, updateLead, removeLeads, openDrawer, showToast, updateAgentLeadCount, activeCampaign, setActiveCampaign, setCampaignPanelOpen, syncing } = useAppStore();
   const queryClient = useQueryClient();
@@ -95,6 +98,22 @@ export default function Leads({ onAddLead }: Props) {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [remainingEligible, setRemainingEligible] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Which optional columns are hidden — remembered per browser.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
+  // Read after mount: the server render has no localStorage, and both renders must match.
+  useEffect(() => {
+    try { setHiddenCols(new Set(JSON.parse(localStorage.getItem(HIDDEN_COLS_KEY) || "[]"))); } catch { /* private mode */ }
+  }, []);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const show = (col: string) => !hiddenCols.has(col);
+  function toggleColumn(col: string) {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      try { localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify([...next])); } catch { /* private mode */ }
+      return next;
+    });
+  }
   const [actionsOpen, setActionsOpen] = useState(false);
   const [jobTitleFilter, setJobTitleFilter] = useState("all");
   const [jobTitles, setJobTitles] = useState<string[]>([]);
@@ -558,20 +577,20 @@ export default function Leads({ onAddLead }: Props) {
     (lead.channels?.[0] as Channel) ?? "whatsapp";
 
   return (
-    <div style={{ padding: "28px 28px 40px", minHeight: "100vh", background: "var(--color-bg)" }}>
+    <div style={{ padding: "18px 24px 14px", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "var(--color-bg)" }}>
       {/* Page Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text)", letterSpacing: "-0.02em", margin: 0 }}>
+      <div style={{ marginBottom: 12, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-text)", letterSpacing: "-0.02em", margin: 0 }}>
           {trashView ? "🗑 Trash" : "Leads"}
         </h1>
-        <p style={{ fontSize: 13, color: "var(--color-text3)", margin: "4px 0 0", fontWeight: 400 }}>
-          {trashView ? "Deleted leads — restore or permanently remove" : `Manage contacts and start outreach${total > 0 ? ` · ${total.toLocaleString()} leads` : ""}`}
+        <p style={{ fontSize: 12.5, color: "var(--color-text3)", margin: 0, fontWeight: 400 }}>
+          {trashView ? "Deleted leads — restore or permanently remove" : `${total > 0 ? `${total.toLocaleString()} leads · ` : ""}manage contacts and start outreach`}
         </p>
       </div>
 
 
       {/* Unified Compact Toolbar on a Single Line */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         {/* Status pill tabs */}
         <div
           style={{
@@ -716,10 +735,53 @@ export default function Leads({ onAddLead }: Props) {
             </div>
           )}
 
+          {/* Show / hide columns */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setColumnsOpen(!columnsOpen); setFiltersOpen(false); setActionsOpen(false); }}
+              title="Show or hide columns"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+              style={{
+                background: columnsOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
+                borderColor: columnsOpen ? "var(--color-primary-light)" : "var(--color-bg4)",
+                color: columnsOpen ? "var(--color-primary-light)" : "var(--color-text2)",
+                height: 30,
+              }}
+            >
+              <IconColumns3 size={14} /> Columns{hiddenCols.size > 0 ? ` (${OPTIONAL_COLUMNS.length - hiddenCols.size}/${OPTIONAL_COLUMNS.length})` : ""}
+            </button>
+            {columnsOpen && (
+              <div
+                className="absolute right-0 mt-2 w-52 rounded-xl border p-2 shadow-xl z-50 flex flex-col"
+                style={{ borderColor: "var(--color-bg4)", background: "var(--color-bg2)" }}
+              >
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-text3)", textTransform: "uppercase", padding: "4px 8px" }}>Show columns</span>
+                <label className="flex items-center gap-2 px-2 py-1.5 rounded-md text-[12.5px]" style={{ color: "var(--color-text3)" }}>
+                  <input type="checkbox" checked disabled /> Name
+                </label>
+                {OPTIONAL_COLUMNS.map((col) => (
+                  <label key={col} className="flex items-center gap-2 px-2 py-1.5 rounded-md text-[12.5px] cursor-pointer hover:bg-bg3" style={{ color: "var(--color-text2)" }}>
+                    <input type="checkbox" className="accent-[#6c63ff] cursor-pointer" checked={show(col)} onChange={() => toggleColumn(col)} /> {col}
+                  </label>
+                ))}
+                {hiddenCols.size > 0 && (
+                  <button
+                    type="button"
+                    className="mt-1 text-[12px] font-semibold rounded-md px-2 py-1.5 text-left cursor-pointer hover:bg-bg3"
+                    style={{ background: "transparent", border: "none", color: "var(--color-primary-light)" }}
+                    onClick={() => { setHiddenCols(new Set()); try { localStorage.removeItem(HIDDEN_COLS_KEY); } catch { /* ignore */ } }}
+                  >
+                    Show all
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Filters Toggle Popover */}
           <div style={{ position: "relative" }}>
             <button
-              onClick={() => { setFiltersOpen(!filtersOpen); setActionsOpen(false); }}
+              onClick={() => { setFiltersOpen(!filtersOpen); setActionsOpen(false); setColumnsOpen(false); }}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
               style={{
                 background: filtersOpen ? "var(--color-primary-subtle)" : "var(--color-bg2)",
@@ -748,9 +810,9 @@ export default function Leads({ onAddLead }: Props) {
                     <option value="LinkedIn">LinkedIn</option>
                     <option value="JustDial">JustDial</option>
                     <option value="Manual">Manual</option>
-                    <option value="Apify">Apify</option>
+                    <option value="Apify">Lead search</option>
                     <option value="Referral">Referral</option>
-                    <option value="LLM">LLM Scraper</option>
+                    <option value="LLM">AI search</option>
                   </select>
                 </div>
 
@@ -909,7 +971,7 @@ export default function Leads({ onAddLead }: Props) {
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--color-bg3)"}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                 >
-                  <IconRefresh size={13} /> Sync Apify
+                  <IconRefresh size={13} /> Sync sources
                 </button>
                 <button
                   onClick={() => { setActionsOpen(false); setMissingContact((v) => !v); }}
@@ -1039,12 +1101,13 @@ export default function Leads({ onAddLead }: Props) {
       )}
 
       {/* Table */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ overflowX: "auto" }}>
+      {/* Only the rows scroll; header, toolbar and pagination stay in place. */}
+      <div className="card" style={{ padding: 0, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="table-scroll" style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
         <table className="data-table min-w-[1100px]">
           <thead>
             <tr>
-              <th className="px-4 py-3 text-left" style={{ width: 40 }}>
+              <th className="px-3 py-2.5 text-left" style={{ width: 40 }}>
                 <input
                   type="checkbox"
                   // Selection survives page changes, so this reflects the visible page only.
@@ -1061,13 +1124,13 @@ export default function Leads({ onAddLead }: Props) {
                   title="Select every lead on this page"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap" style={{ color: "var(--color-text3)", width: 40 }}>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap" style={{ color: "var(--color-text3)", width: 40 }}>
                 Sr
               </th>
-              {["Name", "Company", "Location", "Source", "Channels", "Status", "Added", "Action"].map((h) => (
+              {["Name", ...OPTIONAL_COLUMNS.filter(show)].map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-3 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap"
+                  className="px-3 py-2.5 text-left text-[11px] font-semibold tracking-widest uppercase whitespace-nowrap"
                   style={{ color: "var(--color-text3)" }}
                 >
                   {h}
@@ -1081,11 +1144,11 @@ export default function Leads({ onAddLead }: Props) {
             ))}
             {!isLoading && leads.length === 0 && (
               <tr key="empty-leads-state">
-                <td colSpan={10}>
+                <td colSpan={3 + OPTIONAL_COLUMNS.filter(show).length}>
                   <EmptyState
                     icon={<IconUsers size={24} />}
                     title={trashView ? "Trash is empty" : "No leads found"}
-                    description={trashView ? "Deleted leads appear here." : "Add your first lead or sync from Apify."}
+                    description={trashView ? "Deleted leads appear here." : "Add your first lead or sync your lead sources."}
                     compact
                   />
                 </td>
@@ -1103,7 +1166,7 @@ export default function Leads({ onAddLead }: Props) {
                     : selected.has(lead._id) ? "rgba(223,42,42,0.06)" : undefined,
                 }}
               >
-                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={selected.has(lead._id)}
@@ -1111,41 +1174,24 @@ export default function Leads({ onAddLead }: Props) {
                     className="accent-[#6c63ff] cursor-pointer"
                   />
                 </td>
-                <td className="px-4 py-3 text-[12px] font-semibold text-text3">
+                <td className="px-3 py-2 text-[12px] font-semibold text-text3">
                   {i + 1}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar name={lead.fullName} />
+                    <Avatar name={lead.fullName} size="sm" />
                     <div className="min-w-0">
-                      <div className="text-[13.5px] font-medium truncate max-w-[240px]" title={lead.fullName}>{lead.fullName}</div>
-                      <div className="text-[11.5px] mt-0.5 truncate max-w-[240px]" style={{ color: "var(--color-text3)" }} title={lead.jobTitle}>{lead.jobTitle}</div>
-                      {(!lead.email || !lead.phone) && (
-                        <div className="flex gap-1 mt-1">
-                          {!lead.email && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
-                              background: "rgba(255,107,107,0.1)", color: "#ff6b6b",
-                              border: "1px solid rgba(255,107,107,0.25)", whiteSpace: "nowrap",
-                            }}>
-                              No email
-                            </span>
-                          )}
-                          {!lead.phone && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
-                              background: "rgba(245,166,35,0.1)", color: "#f5a623",
-                              border: "1px solid rgba(245,166,35,0.25)", whiteSpace: "nowrap",
-                            }}>
-                              No phone
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[13px] font-medium truncate max-w-[220px]" title={lead.fullName}>{lead.fullName}</span>
+                        {!lead.email && <span title="No email" className="flex shrink-0"><IconMailOff size={13} style={{ color: "#ff6b6b" }} /></span>}
+                        {!lead.phone && <span title="No phone" className="flex shrink-0"><IconPhoneOff size={13} style={{ color: "#f5a623" }} /></span>}
+                      </div>
+                      <div className="text-[11.5px] truncate max-w-[240px]" style={{ color: "var(--color-text3)" }} title={lead.jobTitle}>{lead.jobTitle}</div>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                {show("Company") && (
+                <td className="px-3 py-2">
                   <div className="text-[13px] truncate max-w-[200px]" style={{ color: "var(--color-text2)" }} title={lead.company}>
                     {lead.website ? (
                       <a
@@ -1164,20 +1210,27 @@ export default function Leads({ onAddLead }: Props) {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                )}
+                {show("Location") && (
+                <td className="px-3 py-2">
                   <div className="text-[12px] font-medium text-text3">
                     {lead.location ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-bg3 dark:bg-slate-800 text-text2 dark:text-text3 border border-bg4 dark:border-slate-700">
-                        {lead.location}
+                      <span className="flex items-center gap-1 text-[12px] font-normal text-text2 max-w-[170px]" title={lead.location}>
+                        <IconMapPin size={12} className="shrink-0 text-text3" />
+                        <span className="truncate">{lead.location}</span>
                       </span>
                     ) : (
                       <span className="text-text3 font-normal">—</span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3"><SourceBadge source={lead.source} llmProvider={lead.llmProvider} /></td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-col gap-1">
+                )}
+                {show("Source") && (
+                <td className="px-3 py-2"><SourceBadge source={lead.source} llmProvider={lead.llmProvider} /></td>
+                )}
+                {show("Channels") && (
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
                     <div className="flex gap-1">
                       {(lead.channels ?? []).map((ch) => {
                         const cfg = CHANNEL_ICONS[ch];
@@ -1190,7 +1243,7 @@ export default function Leads({ onAddLead }: Props) {
                       })}
                     </div>
                     {sequence && sequence.steps && sequence.steps.length > 0 && (
-                      <div className="flex items-center gap-1 mt-0.5" title="Outreach Sequence channels">
+                      <div className="flex items-center gap-1" title="Outreach Sequence channels">
                         <span className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-bg3 dark:bg-slate-800 text-text3 border border-bg4 dark:border-slate-700">
                           Seq:
                         </span>
@@ -1216,7 +1269,9 @@ export default function Leads({ onAddLead }: Props) {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                )}
+                {show("Status") && (
+                <td className="px-3 py-2">
                   <div className="flex flex-col items-start gap-1">
                     <StatusPill status={lead.status} />
                     {lead.outreachStatus === "sending" && (
@@ -1251,7 +1306,9 @@ export default function Leads({ onAddLead }: Props) {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap">
+                )}
+                {show("Added") && (
+                <td className="px-3 py-2 whitespace-nowrap">
                   {lead.createdAt ? (
                     <div>
                       <div className="text-[12px] font-medium" style={{ color: "var(--color-text2)" }}>
@@ -1265,27 +1322,29 @@ export default function Leads({ onAddLead }: Props) {
                     <span style={{ color: "var(--color-text3)", fontSize: 11 }}>—</span>
                   )}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                )}
+                {show("Action") && (
+                <td className="px-3 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex gap-1.5 items-center flex-nowrap">
                     {trashView ? (
                       <>
                         <button
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"
-                          style={{ padding: "5px 10px", background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
+                          style={{ width: 30, height: 30, padding: 0, background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
                           onClick={() => restoreSelected([lead._id])}
                           disabled={deleting}
                           title="Restore this lead"
                         >
-                          <IconRestore size={12} /> Restore
+                          <IconRestore size={15} />
                         </button>
                         <button
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150 hover:brightness-95"
-                          style={{ padding: "5px 10px", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
+                          style={{ width: 30, height: 30, padding: 0, background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
                           onClick={() => deleteForever([lead._id], { confirmLabel: lead.fullName })}
                           disabled={deleting}
                           title="Permanently delete this lead"
                         >
-                          <IconTrashX size={12} /> Delete forever
+                          <IconTrashX size={15} />
                         </button>
                       </>
                     ) : (
@@ -1296,7 +1355,7 @@ export default function Leads({ onAddLead }: Props) {
                         <button
                           className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150"
                           style={{
-                            padding: "5px 10px",
+                            width: 30, height: 30, padding: 0,
                             background: noContact ? "var(--color-bg3)" : "linear-gradient(135deg,#df2a2a,#f24444)",
                             color: noContact ? "var(--color-text3)" : "#fff",
                             border: noContact ? "1px solid var(--color-bg4)" : "none",
@@ -1304,55 +1363,63 @@ export default function Leads({ onAddLead }: Props) {
                             opacity: noContact ? 0.6 : 1,
                           }}
                           disabled={noContact}
-                          title={noContact ? "No email or phone — add contact info first" : undefined}
+                          title={noContact ? "No email or phone — add contact info first" : "Start outreach"}
+                          aria-label="Start outreach"
                           onClick={() => !noContact && startOutreach(lead)}
                         >
-                          <IconPlayerPlay size={12} /> Start
+                          <IconPlayerPlay size={15} />
                         </button>
                       );
                     })()}
                     {lead.status === "replied" && (
                       <button
                         className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold text-white whitespace-nowrap transition-all duration-150 hover:brightness-105"
-                        style={{ padding: "5px 10px", background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
+                        style={{ width: 30, height: 30, padding: 0, background: "linear-gradient(135deg,#22c97a,#10b981)", border: "none", cursor: "pointer" }}
                         onClick={() => markAsBooked(lead)}
+                        title="Mark as meeting booked"
+                        aria-label="Mark as meeting booked"
                       >
-                        <IconCalendarCheck size={12} /> Mark Booked
+                        <IconCalendarCheck size={15} />
                       </button>
                     )}
                     <button
                       className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150"
-                      style={{ padding: "5px 10px", background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", cursor: "pointer" }}
+                      style={{ width: 30, height: 30, padding: 0, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", cursor: "pointer" }}
                       onClick={() => openDrawer(lead, primaryChannel(lead))}
+                      title="Open conversation"
+                      aria-label="Open conversation"
                     >
-                      <IconMessageCircle size={12} /> Convo
+                      <IconMessageCircle size={15} />
                     </button>
                     <button
                       className="inline-flex items-center justify-center gap-1.5 rounded-lg text-[11.5px] font-semibold whitespace-nowrap transition-all duration-150"
-                      style={{ padding: "5px 10px", background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", cursor: "pointer" }}
+                      style={{ width: 30, height: 30, padding: 0, background: "var(--color-bg3)", border: "1px solid var(--color-bg4)", color: "var(--color-text2)", cursor: "pointer" }}
                       onClick={() => setDetailLead(lead)}
+                      title="View details"
+                      aria-label="View details"
                     >
-                      <IconEye size={12} /> Details
+                      <IconEye size={15} />
                     </button>
                     <button
                       className="inline-flex items-center justify-center rounded-lg transition-all duration-150 hover:brightness-95"
-                      style={{ padding: "5px 8px", background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
+                      style={{ width: 30, height: 30, padding: 0, background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#ff6b6b", cursor: "pointer" }}
                       onClick={() => trashLeads([lead._id], { confirmLabel: lead.fullName })}
                       disabled={deleting}
                       title="Move this lead to Trash"
                     >
-                      <IconTrash size={12} />
+                      <IconTrash size={15} />
                     </button>
                     </>
                     )}
                   </div>
                 </td>
+                )}
               </tr>
             )})}
           </tbody>
         </table>
         </div>
-        <div className="relative flex items-center justify-between py-4 px-6 border-t border-[var(--color-bg4)]">
+        <div className="relative flex items-center justify-between py-2.5 px-4 border-t border-[var(--color-bg4)]">
           <div className="text-[13px] font-medium text-text3 dark:text-text3">
             Showing <span className="font-semibold text-text2 dark:text-text4">{leads.length}</span> of <span className="font-semibold text-text2 dark:text-text4">{total}</span> {trashView ? "trashed leads" : "leads"}
           </div>

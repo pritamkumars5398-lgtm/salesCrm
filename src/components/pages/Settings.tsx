@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useState, Fragment } from "react";
-import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain, IconMail } from "@tabler/icons-react";
+import { IconDatabase, IconEye, IconEyeOff, IconCopy, IconPhone, IconMicrophone, IconPlayerPlay, IconAlertTriangle, IconMessage, IconCheck, IconTrash, IconBrain, IconMail, IconBrandWhatsapp, IconCalendar, IconSparkles } from "@tabler/icons-react";
+import ChannelsStatusPanel from "@/components/settings/ChannelsStatusPanel";
 import { useAppStore } from "@/store/useAppStore";
-import { GENERAL_CARDS, INTEGRATION_CARDS, WORKSPACE_CARDS, type SettingsCard } from "@/lib/constants/settings";
+import { GENERAL_CARDS, INTEGRATION_CARDS, WORKSPACE_CARDS, CUSTOMER_CARDS, CUSTOMER_TAB_ALIASES, type SettingsCard } from "@/lib/constants/settings";
+import BusinessSetupPanel from "@/components/settings/BusinessSetupPanel";
+import LeadsSetupPanel from "@/components/settings/LeadsSetupPanel";
 import { GEMINI_VOICES } from "@/lib/constants/gemini-voices";
 import LeadFieldsPanel from "@/components/settings/LeadFieldsPanel";
 import LeadGroupsPanel from "@/components/settings/LeadGroupsPanel";
@@ -20,7 +23,7 @@ import ElevenLabsVoiceStudio from "@/components/settings/ElevenLabsVoiceStudio";
 import GeminiVoiceStudio from "@/components/settings/GeminiVoiceStudio";
 
 export default function Settings() {
-  const { activeAgent, showToast, agents, updateAgent } = useAppStore();
+  const { activeAgent, showToast, agents, updateAgent, isSuperadmin } = useAppStore();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [active, setActive] = useState("profile");
@@ -51,14 +54,17 @@ export default function Settings() {
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab) {
-      setActive(tab);
+      // The customer's "business" / "leads" pages are split into the older tabs in the admin view.
+      const adminAlias: Record<string, string> = { business: "profile", leads: "fields" };
+      setActive(isSuperadmin ? adminAlias[tab] ?? tab : tab);
     }
-  }, [searchParams]);
+  }, [searchParams, isSuperadmin]);
 
   const handleTabChange = (tabKey: string) => {
     setActive(tabKey);
     const params = new URLSearchParams(window.location.search);
     params.set("tab", tabKey);
+    params.delete("channel"); // a menu click always opens the page itself, not a card inside it
     router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -489,78 +495,109 @@ export default function Settings() {
   const isLlmSourcesPage = active === "llm-scraper";
   const isIntegration = INTEGRATION_CARDS.some((c) => c.key === active);
   const workspacePage = WORKSPACE_CARDS.find((c) => c.key === active);
-  // Members can customize basic profile, sales playbook, and preferred voice persona.
-  // Sensitive API credentials, SMTP passwords & carrier infrastructure remain managed by admins.
-  const isMember = activeAgent?.role === "member";
-  const isBasicEditableTab = active === "profile" || active === "playbook" || active === "voice";
-  const readOnly = isMember && !isBasicEditableTab;
+  // Only the platform admin (superadmin) sets up keys, providers, models and channels.
+  // Customers — owners included — fill in business data and see a status page.
+  const isMember = !isSuperadmin;
+  const isRoleMember = activeAgent?.role === "member";
+  const customerTab = CUSTOMER_TAB_ALIASES[active] ?? active;
+  const isBasicEditableTab = active === "profile" || active === "playbook" || customerTab === "business";
+  const readOnly = isRoleMember && !isBasicEditableTab;
+  const isMemberChannelsActive = isMember && (active === "channels" || isIntegration || isApifySourcesPage || isLlmSourcesPage || active === "keys");
 
   return (
     <div className="flex h-full" style={{ background: "var(--color-bg)" }}>
       {/* Left nav */}
       <div className="flex flex-col gap-1 p-3 shrink-0 overflow-y-auto" style={{ width: 220, borderRight: "1px solid var(--color-bg4)", background: "var(--color-bg2)", paddingTop: 20 }}>
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>General</p>
-        {GENERAL_CARDS.map((card) => (
-          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
-        ))}
+        {isMember ? (
+          <>
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>Setup</p>
+            {CUSTOMER_CARDS.map((card) => (
+              <SettingsNavItem key={card.key} card={card} active={customerTab} toggles={toggles} onSelect={handleTabChange} />
+            ))}
 
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Workspace</p>
-        {WORKSPACE_CARDS.map((card) => (
-          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
-        ))}
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Channels</p>
+            <button
+              type="button"
+              onClick={() => handleTabChange("channels")}
+              className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                background: isMemberChannelsActive ? "rgba(223,42,42,0.08)" : "transparent",
+                border: "none",
+                cursor: "pointer",
+                marginBottom: "4px"
+              }}
+            >
+              <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: isMemberChannelsActive ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
+                <IconPhone size={15} style={{ color: isMemberChannelsActive ? "#df2a2a" : "var(--color-text3)" }} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: isMemberChannelsActive ? "#df2a2a" : "var(--color-text)" }}>Channels & status</p>
+                <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Is everything set up? Try it</p>
+              </div>
+            </button>
+          </>
+        ) : (
+          /* Full Admin Sidebar */
+          <>
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1" style={{ color: "var(--color-text3)" }}>General</p>
+            {GENERAL_CARDS.map((card) => (
+              <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
+            ))}
 
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Integrations</p>
-        {INTEGRATION_CARDS.map((card) => (
-          <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
-        ))}
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Workspace</p>
+            {WORKSPACE_CARDS.map((card) => (
+              <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
+            ))}
 
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Sources</p>
-        <button
-          onClick={() => handleTabChange("apify")}
-          className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-          style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer", marginBottom: "4px" }}
-        >
-          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "apify" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
-            <IconDatabase size={15} style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text3)" }} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text)" }}>Apify Scrapers</p>
-            <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Google Maps, LinkedIn & more</p>
-          </div>
-        </button>
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Integrations</p>
+            {INTEGRATION_CARDS.map((card) => (
+              <SettingsNavItem key={card.key} card={card} active={active} toggles={toggles} onSelect={handleTabChange} />
+            ))}
 
-        <button
-          onClick={() => handleTabChange("llm-scraper")}
-          className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
-          style={{ padding: "8px 10px", borderRadius: 10, background: active === "llm-scraper" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer" }}
-        >
-          <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "llm-scraper" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
-            <IconBrain size={15} style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text3)" }} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text)" }}>LLM Scraper</p>
-            <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Claude, Gemini, ChatGPT</p>
-          </div>
-        </button>
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest px-2 mb-1 mt-4" style={{ color: "var(--color-text3)" }}>Sources</p>
+            <button
+              onClick={() => handleTabChange("apify")}
+              className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
+              style={{ padding: "8px 10px", borderRadius: 10, background: active === "apify" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer", marginBottom: "4px" }}
+            >
+              <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "apify" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
+                <IconDatabase size={15} style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text3)" }} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "apify" ? "#df2a2a" : "var(--color-text)" }}>Apify Scrapers</p>
+                <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Google Maps, LinkedIn & more</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleTabChange("llm-scraper")}
+              className="flex items-center gap-2.5 w-full text-left transition-all duration-150"
+              style={{ padding: "8px 10px", borderRadius: 10, background: active === "llm-scraper" ? "rgba(223,42,42,0.08)" : "transparent", border: "none", cursor: "pointer" }}
+            >
+              <span className="shrink-0 flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 8, background: active === "llm-scraper" ? "rgba(223,42,42,0.12)" : "var(--color-bg3)" }}>
+                <IconBrain size={15} style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text3)" }} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold leading-none truncate" style={{ color: active === "llm-scraper" ? "#df2a2a" : "var(--color-text)" }}>LLM Scraper</p>
+                <p className="text-[10.5px] leading-tight mt-0.5 truncate" style={{ color: "var(--color-text3)" }}>Claude, Gemini, ChatGPT</p>
+              </div>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 overflow-y-auto w-full" style={(isApifySourcesPage || isLlmSourcesPage) ? {} : { width: "100%", padding: "2rem 2.5rem 5rem" }}>
+      <div className="flex-1 overflow-y-auto w-full" style={(!isMemberChannelsActive && (isApifySourcesPage || isLlmSourcesPage)) ? {} : { width: "100%", padding: "2rem 2.5rem 5rem" }}>
         <div className="w-full max-w-[1400px] mx-auto">
-          {isMember && (
-            <div className="mb-6 flex items-center justify-between p-4 rounded-xl border border-blue-500/25 bg-blue-500/5">
-              <div className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                <p className="text-[12.5px] text-text2 font-medium m-0 leading-relaxed">
-                  Enterprise Managed Workspace — Core LLM, carrier voice telephony & SMTP email are configured by your administrator. You can customize your Business Profile, AI Playbook, and Voice Personas below.
-                </p>
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/15 border border-blue-500/30 px-2.5 py-1 rounded-md shrink-0 ml-3">
-                User Access
-              </span>
-            </div>
-          )}
-          {isApifySourcesPage ? (
+          {isMemberChannelsActive ? (
+            <ChannelsStatusPanel />
+          ) : isMember && customerTab === "business" ? (
+            <BusinessSetupPanel key={activeAgent?._id} readOnly={false} onOpenTab={handleTabChange} />
+          ) : isMember && customerTab === "leads" ? (
+            <LeadsSetupPanel key={`${activeAgent?._id}-${active}`} readOnly={readOnly} initialTab={active === "groups" ? "groups" : "fields"} />
+          ) : isApifySourcesPage ? (
             <ApifySources agentId={activeAgent?._id} />
           ) : isLlmSourcesPage ? (
             <LlmSources />
@@ -1929,6 +1966,7 @@ export default function Settings() {
           ) : null}
         </div>
       </div>
+
     </div>
   );
 }

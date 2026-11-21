@@ -4,7 +4,7 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { getSettingsMap } from "@/server/services/settings.service";
 import { platformEnv } from "@/server/services/platform-credentials";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 import { isMaskedValue } from "@/lib/secret-settings";
 import {
   checkElevenLabs, createElevenLabsAgent, fixElevenLabsAgent,
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
   await connectDB();
   const access = await authorizeWorkspace(req, body.agentId, { minRole: "admin" });
   if (!access.ok) return access.response;
+  if (!access.user.isSuperadmin) return deny(403, "Your admin sets this up for you.").response;
   const agentId = access.agentId;
   const [saved, env] = await Promise.all([
     getSettingsMap(agentId, ["voiceApiKey", "elevenLabsAgentId", "callLanguage", "agentName"]),

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
-import { logManualCall, placeAiCall } from "@/server/services/call.service";
+import { callSlots, customerCallError, logManualCall, placeAiCall } from "@/server/services/call.service";
 import { authorizeLead } from "@/server/auth/access";
 
 /**
@@ -28,12 +28,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ success: true, mode: "manual", call, lead: await Lead.findById(id).lean() });
   }
 
+  // Several calls may run at once, but never more than this workspace's limit.
+  const slots = await callSlots(String(lead.agentId));
+  if (slots.live >= slots.max) {
+    return NextResponse.json({ error: `${slots.live} call${slots.live === 1 ? " is" : "s are"} already live — the limit is ${slots.max} at once. Try again when one ends.`, busy: true }, { status: 429 });
+  }
+
   try {
     const result = await placeAiCall({ agentId: String(lead.agentId), lead, req });
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      return NextResponse.json({ error: access.user.isSuperadmin ? result.error : customerCallError(result.error) }, { status: result.status });
+    }
     return NextResponse.json({ success: true, mode: "ai_call", call: result.call, lead: await Lead.findById(id).lean() });
   } catch (err) {
     console.error("[LeadCall] dispatch error:", err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to place call" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "Failed to place call";
+    return NextResponse.json({ error: access.user.isSuperadmin ? msg : customerCallError(msg) }, { status: 500 });
   }
 }

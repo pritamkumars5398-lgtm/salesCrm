@@ -181,19 +181,75 @@ export async function checkElevenLabs(apiKey: string, agentId: string, callLangu
   return result;
 }
 
+/**
+ * Voice settings that make a phone agent sound like a person: speed 1.1 (ElevenLabs allows
+ * 0.7–1.2), lower stability for natural variation, and a quicker hand-over when the caller stops.
+ */
+export const NATURAL_SPEECH = {
+  tts: { speed: 1.1, stability: 0.35, similarity_boost: 0.8 },
+  turn: { speculative_turn: true },
+} as const;
+
+/** Languages a phone agent can switch to mid-call (Hindi covers Hinglish). */
+const SWITCH_LANGUAGES = ["en", "hi"] as const;
+
+/** A preset for every switchable language other than the agent's main one, so it can change voice and listening mid-call. */
+function switchPresets(main: string | null): Record<string, { overrides: { agent: { first_message: string } } }> {
+  return Object.fromEntries(
+    SWITCH_LANGUAGES.filter((l) => l !== (main || "en")).map((l) => [l, { overrides: { agent: { first_message: GREETING_VARIABLE } } }]),
+  );
+}
+
+/**
+ * Let an existing agent switch language mid-call: adds the language_detection tool
+ * (keeping its other tools) and presets for the other language. Leaves prompt, voice
+ * and everything else as it is. Safe to run again.
+ */
+export async function enableLanguageSwitching(apiKey: string, agentId: string, callLanguage: string): Promise<{ ok: boolean; error?: string }> {
+  const current = await el(apiKey, `/convai/agents/${encodeURIComponent(agentId)}`);
+  if (current.status !== 200) return { ok: false, error: errorInfo(current).message };
+  const cc = current.data?.conversation_config ?? {};
+  const tools = cc.agent?.prompt?.built_in_tools ?? {};
+  const main = elevenLanguageCode(callLanguage) || cc.agent?.language || "en";
+  const presets = { ...switchPresets(main), ...(cc.language_presets ?? {}) };
+  const hasTool = !!tools.language_detection;
+  const missingPreset = Object.keys(switchPresets(main)).some((l) => !cc.language_presets?.[l]);
+  if (hasTool && !missingPreset) return { ok: true };
+  const body = {
+    conversation_config: {
+      language_presets: presets,
+      agent: {
+        prompt: {
+          built_in_tools: {
+            ...tools,
+            language_detection: { type: "system", name: "language_detection", description: "", params: { system_tool_type: "language_detection" } },
+          },
+        },
+      },
+    },
+  };
+  const r = await el(apiKey, `/convai/agents/${encodeURIComponent(agentId)}`, { method: "PATCH", body: JSON.stringify(body) });
+  return r.status >= 200 && r.status < 300 ? { ok: true } : { ok: false, error: errorInfo(r).message };
+}
+
 function phoneAgentConfig(callLanguage: string) {
   const language = elevenLanguageCode(callLanguage);
   const sys = (name: string, description: string) => ({ type: "system", name, description, params: { system_tool_type: name } });
   return {
     conversation_config: {
       ...(language ? { agent: { language } } : {}),
-      tts: { agent_output_audio_format: "ulaw_8000" },
+      language_presets: switchPresets(language),
+      // Human-like delivery: a touch faster than default (1.0) and less flat, so pace and pitch
+      // vary like a real caller instead of an even read-out.
+      tts: { agent_output_audio_format: "ulaw_8000", ...NATURAL_SPEECH.tts },
       asr: { user_input_audio_format: "ulaw_8000" },
-      turn: { silence_end_call_timeout: 20 },
+      turn: { silence_end_call_timeout: 20, ...NATURAL_SPEECH.turn },
     },
     builtInTools: {
       end_call: sys("end_call", "End the call once the conversation is finished, the person says goodbye or is not interested, it is a wrong number, or you reached an automated phone menu."),
       voicemail_detection: sys("voicemail_detection", "Detect voicemail / answering machines and end the call without leaving a message."),
+      // Blank description = ElevenLabs' default: switch when the caller speaks or asks for another language.
+      language_detection: sys("language_detection", ""),
     },
     platform_settings: {
       overrides: {
@@ -235,6 +291,7 @@ export async function createElevenLabsAgent(
   apiKey: string,
   name: string,
   callLanguage: string,
+  voiceId: string = DEFAULT_VOICE_ID,
 ): Promise<{ ok: boolean; agentId?: string; error?: string }> {
   const cfg = phoneAgentConfig(callLanguage);
   const hindi = cfg.conversation_config.agent?.language === "hi";
@@ -255,14 +312,27 @@ export async function createElevenLabsAgent(
           ...(tool.id ? { tool_ids: [tool.id] } : {}),
         },
       },
-      tts: { ...cfg.conversation_config.tts, voice_id: DEFAULT_VOICE_ID, ...(modelId ? { model_id: modelId } : {}) },
+      tts: { ...cfg.conversation_config.tts, voice_id: voice, ...(modelId ? { model_id: modelId } : {}) },
     },
     platform_settings: cfg.platform_settings,
   });
+  let voice = voiceId;
   // Hindi needs a multilingual voice model; fall back to the account default if that one isn't offered.
   let r = await el(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify(build("eleven_flash_v2_5")) });
   if (r.status >= 400 && r.status !== 401 && r.status !== 403) {
     r = await el(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify(build()) });
+  }
+  // A new ElevenLabs account doesn't have our default (library) voice: use one of its built-in voices.
+  if (r.status >= 400 && /voice.*not found/i.test(errorInfo(r).message)) {
+    const premade = (await listAccountVoices(apiKey).catch(() => [])).filter((v) => v.category === "premade");
+    const builtIn = premade.find((v) => v.gender === "female") ?? premade[0]; // the default persona is "Priya"
+    if (builtIn) {
+      voice = builtIn.voiceId;
+      r = await el(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify(build("eleven_flash_v2_5")) });
+      if (r.status >= 400 && r.status !== 401 && r.status !== 403) {
+        r = await el(apiKey, "/convai/agents/create", { method: "POST", body: JSON.stringify(build()) });
+      }
+    }
   }
   if (r.status >= 200 && r.status < 300 && r.data?.agent_id) return { ok: true, agentId: r.data.agent_id };
   return { ok: false, error: errorInfo(r).message };

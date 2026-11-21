@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import {
-  IconPhone, IconPhoneCall, IconPhoneOff, IconMicrophone, IconBrandWhatsapp, IconChevronDown, IconChevronRight, IconAlertTriangle, IconLoader2,
+  IconPhone, IconPhoneCall, IconPhoneOff, IconMicrophone, IconBrandWhatsapp, IconChevronDown, IconChevronRight, IconAlertTriangle, IconLoader2, IconBookmark, IconBookmarkFilled,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, CallRecord, CallStatus } from "@/store/types";
 import { formatDateTime } from "@/lib/utils/date";
 import LiveListenButton from "./LiveListenButton";
+import WaveAudioPlayer from "./WaveAudioPlayer";
 import PracticeCallModal from "@/components/voice/PracticeCallModal";
 
 interface Props {
@@ -76,13 +77,41 @@ function useNow(enabled: boolean) {
 }
 
 export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
-  const { showToast, updateLead } = useAppStore();
+  const { showToast, updateLead, activeAgent } = useAppStore();
   const [calls, setCalls] = useState<CallRecord[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [dialing, setDialing] = useState(false);
   const [ending, setEnding] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [practicing, setPracticing] = useState(false);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+
+  // Which calls this workspace bookmarked — shared across leads, so loaded once per workspace.
+  const workspaceId = String((lead as { agentId?: unknown }).agentId || activeAgent?._id || "");
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch(`/api/voice/saved?agentId=${workspaceId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.callIds && setSavedIds(new Set(d.callIds)))
+      .catch(() => {});
+  }, [workspaceId]);
+
+  async function toggleSaved(callId: string) {
+    const save = !savedIds.has(callId);
+    setSavedIds((prev) => { const n = new Set(prev); if (save) n.add(callId); else n.delete(callId); return n; });
+    try {
+      const res = await fetch("/api/voice/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: workspaceId, callId, saved: save }),
+      });
+      if (!res.ok) throw new Error();
+      showToast(save ? "Call saved — find it under ★ Saved" : "Removed from saved");
+    } catch {
+      setSavedIds((prev) => { const n = new Set(prev); if (save) n.delete(callId); else n.add(callId); return n; });
+      showToast("Couldn't update saved calls", "error");
+    }
+  }
 
   const activeCall = calls?.find((c) => ACTIVE.includes(c.status));
   const now = useNow(!!activeCall);
@@ -170,7 +199,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
               background: dialing || activeCall || !lead.phone ? "var(--color-bg4)" : "linear-gradient(135deg,#22c97a,#10b981)",
               cursor: dialing ? "wait" : activeCall || !lead.phone ? "not-allowed" : "pointer",
             }}
-            title={activeCall ? "A call is already in progress" : "Call with the AI voice agent (Plivo + ElevenLabs)"}
+            title={activeCall ? "A call is already in progress" : "Call with the AI voice agent"}
           >
             {dialing ? <IconLoader2 size={14} className="animate-spin" /> : <IconPhoneCall size={14} />}
             {dialing ? "Dialing…" : activeCall ? "On a call" : "Call now"}
@@ -218,8 +247,8 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
       {/* Providers */}
       <div className="flex gap-2.5 mb-4">
         {[
-          { Icon: IconPhone, bg: "rgba(59,130,246,0.1)", color: "#3b82f6", name: "Plivo", sub: "Telephony provider" },
-          { Icon: IconMicrophone, bg: "rgba(204,153,255,0.1)", color: "#cc99ff", name: "ElevenLabs", sub: "Conversational AI" },
+          { Icon: IconPhone, bg: "rgba(59,130,246,0.1)", color: "#3b82f6", name: "Phone line", sub: "Calls from your number" },
+          { Icon: IconMicrophone, bg: "rgba(204,153,255,0.1)", color: "#cc99ff", name: "AI voice agent", sub: "Talks to the lead" },
         ].map(({ Icon, bg, color, name, sub }) => (
           <div key={name} className="flex-1 flex items-center gap-2 p-2.5 rounded-[10px] border" style={{ background: "var(--color-bg3)", borderColor: "rgba(0,0,0,0.1)" }}>
             <div className="w-7 h-7 rounded-[7px] flex items-center justify-center flex-shrink-0" style={{ background: bg, color }}>
@@ -256,8 +285,9 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
           : c.durationSec;
         return (
           <div key={c._id} className="rounded-[12px] border mb-2.5 overflow-hidden" style={{ background: "var(--color-bg3)", borderColor: "rgba(0,0,0,0.1)" }}>
+            <div className="flex items-center">
             <button
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
+              className="flex-1 min-w-0 flex items-center gap-2 pl-3 pr-1 py-2.5 text-left"
               onClick={() => setExpanded((e) => ({ ...e, [c._id]: !open }))}
             >
               {open ? <IconChevronDown size={14} style={{ color: "var(--color-text3)" }} /> : <IconChevronRight size={14} style={{ color: "var(--color-text3)" }} />}
@@ -272,6 +302,17 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                 <span className="text-[12px] font-mono" style={{ color: "var(--color-text)" }}>{fmtDuration(duration)}</span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => toggleSaved(c._id)}
+              title={savedIds.has(c._id) ? "Saved — click to remove" : "Save this call"}
+              aria-label={savedIds.has(c._id) ? "Remove from saved" : "Save this call"}
+              className="shrink-0 mr-2 p-1.5 rounded-md cursor-pointer bg-transparent border-none"
+              style={{ color: savedIds.has(c._id) ? "#f5a623" : "var(--color-text3)" }}
+            >
+              {savedIds.has(c._id) ? <IconBookmarkFilled size={16} /> : <IconBookmark size={16} />}
+            </button>
+            </div>
 
             {open && (
               <div className="px-3 pb-3">
@@ -320,7 +361,7 @@ export default function CallConvo({ lead, refreshKey, onCallStarted }: Props) {
                 )}
 
                 {c.recordingUrl && (
-                  <audio controls preload="none" src={c.recordingUrl} className="w-full mb-2.5" style={{ height: 34 }} />
+                  <WaveAudioPlayer src={`/api/voice/recording?callId=${c._id}`} downloadUrl={c.recordingUrl} />
                 )}
 
                 {c.transcript?.some(isSpokenTurn) ? (

@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     agentId: access.agentId,
     req,
     canManage: access.canManage,
+    isPlatformAdmin: access.user.isSuperadmin,
     messages: body.messages,
     page: typeof body.page === "string" ? body.page : undefined,
     confirm: body.confirm && typeof body.confirm.toolCallId === "string"

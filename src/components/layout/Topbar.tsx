@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle, IconSparkles,
+  IconPlus, IconRefresh, IconMenu2, IconChevronDown, IconAlertTriangle, IconSparkles, IconShield,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -27,7 +27,7 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
     sidebarOpenMobile, setSidebarOpenMobile,
     sidebarCollapsed, setSidebarCollapsed,
     updateAgent, showToast, cronJobs, setCronJobs, setActiveCampaign,
-    assistantOpen, setAssistantOpen,
+    assistantOpen, setAssistantOpen, isSuperadmin,
   } = useAppStore();
 
   const isMobile = useIsMobile();
@@ -377,6 +377,21 @@ export default function Topbar({ onAddLead, onSyncApify, syncing }: Props) {
         )}
 
         {/* AI assistant */}
+        {isSuperadmin && currentPage !== "superadmin" && (
+          <button
+            onClick={() => router.push("/admin")}
+            title="Open the superadmin panel"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
+              borderRadius: "var(--radius-lg)", background: "rgba(245,158,11,0.12)",
+              border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b",
+              fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            <IconShield size={14} />
+            <span className="hidden sm:inline">Admin</span>
+          </button>
+        )}
         <button
           onClick={() => setAssistantOpen(!assistantOpen)}
           title="AI assistant — set up and run anything by chat (⌘J / Ctrl+J)"

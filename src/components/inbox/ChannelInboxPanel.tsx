@@ -5,6 +5,7 @@ import type { Channel, Lead } from "@/store/types";
 import InboxLeadList, { type InboxItem } from "./InboxLeadList";
 import ChannelConversationThread from "./ChannelConversationThread";
 import ComposeEmailModal from "./ComposeEmailModal";
+import GroupFilterSelect from "@/components/leads/GroupFilterSelect";
 
 const CHANNEL_META: Record<string, { color: string; requires: "email" | "phone" }> = {
   whatsapp: { color: "#22c97a", requires: "phone" },
@@ -27,6 +28,7 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -46,7 +48,7 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
     if (showSpinner) setLoading(true);
     if (pageNum > 1) setIsFetchingMore(true);
     try {
-      const qParam = query ? `&q=${encodeURIComponent(query)}` : "";
+      const qParam = (query ? `&q=${encodeURIComponent(query)}` : "") + (groupId ? `&groupId=${groupId}` : "");
       const reqContact = meta.requires;
       const [leadsRes, convosRes] = await Promise.all([
         fetch(`/api/leads?agentId=${agentId}&page=${pageNum}&limit=25&requireContact=${reqContact}${qParam}`),
@@ -61,7 +63,7 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
       setHasMore(pageNum < totalPages);
 
       setLeads((prev) => {
-        if (pageNum === 1 && !showSpinner && prev.length > 0) {
+        if (pageNum === 1 && !showSpinner && prev.length > 0 && !groupId) {
           // Background poll: merge new leads at the front without destroying older loaded pages
           const prevMap = new Map(prev.map(l => [l._id, l]));
           newLeads.forEach(l => prevMap.set(l._id, l));
@@ -95,7 +97,7 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
     pollRef.current = setInterval(() => loadInbox(1, false, debouncedSearch), POLL_MS);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel, agentId, debouncedSearch]);
+  }, [channel, agentId, debouncedSearch, groupId]);
 
   const items: InboxItem[] = useMemo(() => {
     // We don't filter by search here anymore because it's done on the backend
@@ -131,15 +133,20 @@ export default function ChannelInboxPanel({ channel, agentId }: Props) {
         hasMore={hasMore}
         onLoadMore={handleLoadMore}
         accentColor={meta.color}
-        headerActions={channel === "email" ? (
-          <button
-            onClick={() => setComposeOpen(true)}
-            className="flex items-center justify-center gap-1.5 w-full rounded-lg text-[12px] font-semibold py-2 border-none cursor-pointer"
-            style={{ background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff" }}
-          >
-            <IconPencilPlus size={14} /> Compose
-          </button>
-        ) : undefined}
+        headerActions={
+          <>
+            <GroupFilterSelect agentId={agentId} value={groupId} onChange={setGroupId} />
+            {channel === "email" && (
+              <button
+                onClick={() => setComposeOpen(true)}
+                className="flex items-center justify-center gap-1.5 w-full rounded-lg text-[12px] font-semibold py-2 border-none cursor-pointer"
+                style={{ background: "linear-gradient(135deg, #df2a2a, #f24444)", color: "#fff" }}
+              >
+                <IconPencilPlus size={14} /> Compose
+              </button>
+            )}
+          </>
+        }
       />
 
       <div className="flex-1 min-w-0">

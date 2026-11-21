@@ -5,6 +5,7 @@ import { Lead } from "@/lib/models/Lead";
 import { authorizeWorkspace } from "@/server/auth/access";
 import { getVoiceConfig } from "@/server/services/settings.service";
 import { buildCallInstructions } from "@/server/services/call-prompt";
+import { getEffectiveVoice, isElevenLabsVoiceId } from "@/server/services/voice-options.service";
 
 const SPEECH_LANG: Record<string, string> = { English: "en", Hindi: "hi", Hinglish: "hi" };
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   if (!access.ok) return access.response;
 
   const cfg = await getVoiceConfig(access.agentId);
-  const isGemini = (cfg.voiceProvider || "Google Gemini") === "Google Gemini";
+  const isGemini = ["Google Gemini", "Gemini", ""].includes(cfg.voiceProvider || "");
 
   let lead = null;
   if (body.leadId) {
@@ -32,17 +33,8 @@ export async function POST(req: Request) {
 
   const { prompt, firstMessage } = await buildCallInstructions(access.agentId, cfg, lead, lead?.phone || "");
 
-  const VOICE_NAMES: Record<string, string> = {
-    "ch9J8IB6HKlEHQaWQFdk": "Priya (Warm Indian Female)",
-    "cgSgspJ2msm6clMCkdW9": "Jessica",
-    "EXAVITQu4vr4xnSDxMaL": "Sarah",
-    "Xb7hH8MSUJpSbSDYk0k2": "Alice",
-    "FGY2WhTYpPnrIDTdsKH5": "Laura",
-    "pNInz6obpgDQGcFmaJgB": "Adam",
-    "IKne3meq5aSn9XLyUdCD": "Charlie",
-    "mg9npuuaf8WJphS6E0Rt": "Aisha",
-    "H6QPv2pQZDcGqLwDTIJQ": "Kanika",
-  };
+  // The same voice the customer's AI voice card shows and phone calls use.
+  const voice = await getEffectiveVoice(access.agentId);
 
   if (isGemini) {
     const geminiKey = cfg.geminiApiKey || process.env.GEMINI_API_KEY;
@@ -53,8 +45,8 @@ export async function POST(req: Request) {
       provider: "Google Gemini",
       greeting: firstMessage,
       prompt,
-      voiceId: cfg.voiceId || "Puck",
-      voiceName: cfg.voiceId || "Puck",
+      voiceId: voice.voiceId,
+      voiceName: voice.name,
       preview: { greeting: firstMessage, prompt, leadName: lead?.fullName || "Sample lead" },
     });
   }
@@ -64,11 +56,11 @@ export async function POST(req: Request) {
   }
 
   // Ensure ElevenLabs agent entity on ElevenLabs servers matches the selected voice
-  if (cfg.voiceId) {
+  if (isElevenLabsVoiceId(voice.voiceId) && voice.voiceId === cfg.voiceId) {
     await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(cfg.elevenLabsAgentId)}`, {
       method: "PATCH",
       headers: { "xi-api-key": cfg.elevenLabsApiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_config: { tts: { voice_id: cfg.voiceId } } }),
+      body: JSON.stringify({ conversation_config: { tts: { voice_id: voice.voiceId } } }),
     }).catch(() => {});
   }
 
@@ -88,12 +80,12 @@ export async function POST(req: Request) {
   if (lang) agentOverride.language = lang;
 
   const ttsOverride: Record<string, unknown> = {};
-  if (cfg.voiceId) ttsOverride.voice_id = cfg.voiceId;
+  if (isElevenLabsVoiceId(voice.voiceId)) ttsOverride.voice_id = voice.voiceId;
 
   return NextResponse.json({
     provider: "ElevenLabs",
-    voiceId: cfg.voiceId,
-    voiceName: VOICE_NAMES[cfg.voiceId] || cfg.voiceId || "Selected Voice",
+    voiceId: voice.voiceId,
+    voiceName: voice.name,
     signedUrl: signed.signed_url,
     // Same payload shape the phone bridge sends, so the practice run behaves like a real call.
     initiation: {

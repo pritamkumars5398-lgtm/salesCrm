@@ -7,6 +7,7 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { getWhatsAppConfig, getAppBaseUrl } from "./settings.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
 import { sendSms } from "./sms.service";
+import { SMS_COMING_SOON } from "@/lib/constants/coming-soon";
 import { placeAiCall, waitForCallSlot } from "./call.service";
 import { generateOutreachEmail, generateWhatsAppMessage } from "./ai.service";
 import { leadAiContext } from "./playbook.service";
@@ -197,8 +198,10 @@ async function channelsForLead(lead: ILead): Promise<{ channels: OutreachChannel
     ? await Sequence.findById(lead.sequenceId).lean()
     : await Sequence.findOne({ agentId: lead.agentId }).sort({ updatedAt: -1 }).lean();
 
-  if (seq?.steps?.length) {
-    const sorted = [...seq.steps].sort(
+  // SMS steps are skipped while SMS is "coming soon".
+  const liveSteps = (seq?.steps ?? []).filter((s) => !(SMS_COMING_SOON && s.channel === "sms"));
+  if (liveSteps.length) {
+    const sorted = [...liveSteps].sort(
       (a, b) => a.dayOffset - b.dayOffset || a.sendTime.localeCompare(b.sendTime)
     );
     const first = sorted[0];
@@ -215,7 +218,7 @@ async function channelsForLead(lead: ILead): Promise<{ channels: OutreachChannel
 
   if (canEmail) return { channels: ["email"] };
   if (canWhatsApp) return { channels: ["whatsapp"] };
-  if (canPhone) return { channels: ["sms"] };
+  if (canPhone && !SMS_COMING_SOON) return { channels: ["sms"] };
   return { channels: [], error: "Lead has no email or phone number." };
 }
 

@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import { VALID_PAGES } from "@/lib/constants/pages";
 import Sidebar from "@/components/layout/Sidebar";
+import UsageAlerts from "@/components/billing/UsageAlerts";
+import AdminShell from "@/components/admin/AdminShell";
 import Topbar from "@/components/layout/Topbar";
 import ConversationDrawer from "@/components/drawer/ConversationDrawer";
 import ToastContainer from "@/components/ui/Toast";
@@ -32,6 +34,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const segment = pathname.split("/")[1] ?? "";
   const isAppRoute = (VALID_PAGES as readonly string[]).includes(segment);
 
+  // The superadmin panel has its own frame (menu, auth check) — not the customer sidebar.
+  if (segment === "admin") return <AdminShell>{children}</AdminShell>;
   if (!isAppRoute) return <>{children}</>;
   return <Shell>{children}</Shell>;
 }
@@ -58,10 +62,24 @@ function Shell({ children }: { children: React.ReactNode }) {
     if (agentId) setSyncPreviewFor(agentId);
   }
 
-  function startSync(agentId: string) {
+  function startSync(agentId: string, target: { groupId?: string; keyword?: string; locations?: string[]; total?: number } = {}) {
     setSyncPreviewFor(null);
-    runApifySync(agentId, { onLimitReached: () => router.push(`/plans/${agentId}`) });
+    setSyncGroupId(undefined);
+    runApifySync(agentId, { ...target, onLimitReached: () => router.push(`/plans/${agentId}`) });
   }
+
+  // "Find leads for this group" on the Leads page opens the same preview, with that group picked.
+  const [syncGroupId, setSyncGroupId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const open = (e: Event) => {
+      const agentId = useAppStore.getState().activeAgent?._id;
+      if (!agentId) return;
+      setSyncGroupId((e as CustomEvent<{ groupId?: string }>).detail?.groupId);
+      setSyncPreviewFor(agentId);
+    };
+    window.addEventListener("crm:find-leads-for-group", open);
+    return () => window.removeEventListener("crm:find-leads-for-group", open);
+  }, []);
 
   // Keep the active agent in step with the URL (agent switch, deep link, back button).
   useEffect(() => {
@@ -206,8 +224,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar onAddLead={() => setAddLeadOpen(true)} onSyncApify={handleSyncApify} syncing={syncing} />
+        <UsageAlerts />
 
         <div className="flex flex-1 overflow-hidden">
+          {/* Fixed-height frame: each page scrolls its own inner area (see [page]/[agentId]/page.tsx). */}
           <div key={pathname} className="flex-1 min-w-0 h-full overflow-hidden animate-fade-in flex flex-col">
             {children}
           </div>
@@ -220,8 +240,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         <SyncPreviewModal
           agentId={syncPreviewFor}
           workspaceName={agents.find((a) => a._id === syncPreviewFor)?.name}
-          onStart={() => startSync(syncPreviewFor)}
-          onClose={() => setSyncPreviewFor(null)}
+          initialGroupId={syncGroupId}
+          onStart={(target) => startSync(syncPreviewFor, target)}
+          onClose={() => { setSyncPreviewFor(null); setSyncGroupId(undefined); }}
         />
       )}
       <SyncPanel

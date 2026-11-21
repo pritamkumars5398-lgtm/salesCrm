@@ -6,6 +6,8 @@ import { authorizeWorkspace } from "@/server/auth/access";
 import { canUsePlatformCredentials } from "@/server/services/platform-credentials";
 import { isMaskedValue, isSecretSettingKey, maskSecretValue } from "@/lib/secret-settings";
 import { DEFAULT_PIPELINE_LABELS } from "@/lib/constants/business-templates";
+import { clearChannelStatusCache } from "@/server/services/channel-status.service";
+import { HIDDEN_FROM_CUSTOMER_KEYS, isAdminOnlyKey } from "@/lib/constants/admin-settings";
 
 /** Never writable through this route: billing is set by plans / superadmin only. */
 const PROTECTED_KEYS = new Set(["plan", "custom_limits"]);
@@ -65,24 +67,12 @@ export async function GET(req: Request) {
     }
   });
 
-  const isMember = !access.canManage && access.role === "member";
-  if (isMember) {
-    // For regular users/members: do not expose raw secrets or masked passwords.
-    // Instead provide explicit setup completion status flags so UI indicates
-    // "Setup has been done by Administrator" rather than confusing masked inputs.
-    map["_llmConfigured"] = (map.llmApiKey || process.env.GROQ_API_KEY) ? "true" : "false";
-    map["_emailConfigured"] = (map.smtpPass || process.env.SMTP_PASS) ? "true" : "false";
-    map["_voiceConfigured"] = (map.plivoAuthToken || process.env.PLIVO_AUTH_TOKEN || map.geminiApiKey || process.env.GEMINI_API_KEY) ? "true" : "false";
-    map["_smsConfigured"] = (map.smsApiKey || process.env.TWILIO_AUTH_TOKEN) ? "true" : "false";
-    map["_whatsappConfigured"] = (map.waApiKey || map.waSessionId) ? "true" : "false";
-    map["_calendlyConfigured"] = (map.calendlyApiToken || process.env.CALENDLY_API_TOKEN) ? "true" : "false";
-    map["_isAdminManaged"] = "true";
-
-    // Strip masked secrets so member browser does not receive password placeholders
+  // Only the platform admin (superadmin) sees how a workspace is wired up. Customers —
+  // owners included — never receive keys, passwords, provider or model names; the
+  // Channels page shows them a plain configured / active status instead.
+  if (!access.user.isSuperadmin) {
     for (const key of Object.keys(map)) {
-      if (isSecretSettingKey(key)) {
-        map[key] = "";
-      }
+      if (isSecretSettingKey(key) || HIDDEN_FROM_CUSTOMER_KEYS.has(key)) delete map[key];
     }
   }
 
@@ -131,6 +121,7 @@ export async function POST(req: Request) {
   if (!access.ok) return access.response;
   const agentId = access.agentId;
   const isMember = !access.canManage && access.role === "member";
+  const isPlatformAdmin = access.user.isSuperadmin;
 
   if (!body.settings || typeof body.settings !== "object") {
     return NextResponse.json({ error: "settings object required" }, { status: 400 });
@@ -141,6 +132,8 @@ export async function POST(req: Request) {
     if (PROTECTED_KEYS.has(key) || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(key)) continue;
     // Members are restricted to basic settings (voice persona, script, business profile)
     if (isMember && !MEMBER_ALLOWED_KEYS.has(key)) continue;
+    // Keys, providers, models and channel switches are set up by the platform admin only.
+    if (!isPlatformAdmin && isAdminOnlyKey(key)) continue;
     if (isMaskedValue(value)) continue; // the browser sent back the mask: keep the stored secret
     const str = value === null || value === undefined ? "" : String(value);
     if (str.length > MAX_VALUE_LENGTH) {
@@ -202,6 +195,7 @@ export async function POST(req: Request) {
     },
   }));
   if (ops.length) await Setting.bulkWrite(ops);
+  if (ops.length) clearChannelStatusCache(agentId);
 
   // If voiceId changed for an ElevenLabs agent, sync directly to the ElevenLabs ConvAI agent
   if (incoming.voiceId) {

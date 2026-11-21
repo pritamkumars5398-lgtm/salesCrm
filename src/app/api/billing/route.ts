@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       daysLeft: plan.expired ? 0 : daysLeft(plan.expiresAt),
     },
     payments: payments.map((p) => ({
-      _id: String(p._id), planId: p.planId, amount: p.amount / 100, status: p.status,
+      _id: String(p._id), kind: p.kind ?? "plan", planId: p.planId, topUpField: p.topUpField, topUpUnits: p.topUpUnits, amount: p.amount / 100, status: p.status,
       periodStart: p.periodStart, periodEnd: p.periodEnd, creditedDays: p.creditedDays ?? 0,
       failureReason: p.failureReason, createdAt: p.createdAt,
     })),

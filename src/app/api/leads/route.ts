@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Lead } from "@/lib/models/Lead";
+import { Call } from "@/lib/models/Call";
 import { Agent } from "@/lib/models/Agent";
 import { Conversation } from "@/lib/models/Conversation";
 import { Activity } from "@/lib/models/Activity";
@@ -55,6 +56,8 @@ export async function GET(req: Request) {
   const channel = searchParams.get("channel");
   const missingContact = searchParams.get("missingContact");
   const requireContact = searchParams.get("requireContact");
+  /** notCalled=1 — only leads that never had a real (non-test) call: the Voice calls "Not called" list */
+  const notCalled = searchParams.get("notCalled") === "1";
   const location = searchParams.get("location");
   const addedDate = searchParams.get("addedDate");       // YYYY-MM-DD (sync batch day)
   const outreach = searchParams.get("outreachStatus");  // none|pending|sending|sent|failed
@@ -151,6 +154,10 @@ export async function GET(req: Request) {
     const group = await groupFilterById(agentId, groupId);
     if (!group) return NextResponse.json({ error: "Group not found in this workspace." }, { status: 404 });
     and.push(group);
+  }
+  if (notCalled) {
+    const calledIds = await Call.distinct("leadId", { agentId, isTest: { $ne: true }, leadId: { $type: "objectId" } });
+    if (calledIds.length) and.push({ _id: { $nin: calledIds } });
   }
   if (and.length) baseFilter.$and = and;
 

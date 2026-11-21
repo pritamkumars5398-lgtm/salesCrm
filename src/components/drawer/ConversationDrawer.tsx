@@ -12,6 +12,8 @@ import EmailConvo from "./EmailConvo";
 import SMSConvo from "./SMSConvo";
 import CallConvo from "./CallConvo";
 import PracticeChatModal from "@/components/practice/PracticeChatModal";
+import SoonBadge from "@/components/ui/SoonBadge";
+import { isComingSoonChannel } from "@/lib/constants/coming-soon";
 
 const CHANNEL_TABS: { id: Channel; label: string; Icon: React.ElementType; color: string }[] = [
   { id: "whatsapp", label: "WhatsApp", Icon: IconBrandWhatsapp, color: "#22c97a" },
@@ -44,6 +46,11 @@ export default function ConversationDrawer() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // SMS is "coming soon": never leave the drawer on that tab.
+  useEffect(() => {
+    if (open && lead && isComingSoonChannel(channel)) setDrawerChannel(lead.phone ? "whatsapp" : "email");
+  }, [open, lead, channel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isMobile = windowWidth < 768;
   const [replyText, setReplyText] = useState("");
@@ -483,23 +490,25 @@ export default function ConversationDrawer() {
           >
             {CHANNEL_TABS.map(({ id, label, Icon, color }) => {
               const needsPhone = id === "whatsapp" || id === "sms" || id === "call";
-              const tabDisabled = (id === "email" && !lead.email) || (needsPhone && !lead.phone);
+              const soon = isComingSoonChannel(id);
+              const tabDisabled = soon || (id === "email" && !lead.email) || (needsPhone && !lead.phone);
               return (
                 <button
                   key={id}
                   onClick={() => !tabDisabled && setDrawerChannel(id)}
-                  title={tabDisabled ? (id === "email" ? "No email address" : "No phone number") : undefined}
+                  title={soon ? `${label} is coming soon` : tabDisabled ? (id === "email" ? "No email address" : "No phone number") : undefined}
                   className="flex-1 py-2 text-[11.5px] font-medium flex items-center justify-center gap-1 border-b-2 transition-all duration-150"
                   style={{
                     color: tabDisabled ? "var(--color-text3)" : channel === id ? "var(--color-text)" : "var(--color-text3)",
                     borderBottomColor: !tabDisabled && channel === id ? "#6c63ff" : "transparent",
                     background: !tabDisabled && channel === id ? "var(--color-bg3)" : "transparent",
-                    opacity: tabDisabled ? 0.35 : 1,
-                    cursor: tabDisabled ? "not-allowed" : "pointer",
+                    opacity: soon ? 0.6 : tabDisabled ? 0.35 : 1,
+                    cursor: soon ? "default" : tabDisabled ? "not-allowed" : "pointer",
                   }}
                 >
                   <Icon size={14} style={{ color: !tabDisabled && channel === id ? color : undefined }} />
                   {label}
+                  {soon && <SoonBadge />}
                 </button>
               );
             })}

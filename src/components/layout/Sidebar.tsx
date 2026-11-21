@@ -6,12 +6,13 @@ import {
   IconLayoutDashboard, IconUsers, IconListCheck, IconLayoutKanban,
   IconCalendar, IconActivity, IconSettings, IconClock,
   IconCreditCard, IconMail, IconBrandWhatsapp, IconPhone, IconMessage,
-  IconShield, IconX, IconChevronRight, IconMicrophone,
+  IconShield, IconX, IconChevronRight,
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import type { Page } from "@/store/types";
 import { PLANS, type PlanId } from "@/lib/plans";
+import { isComingSoonChannel, COMING_SOON_LABEL } from "@/lib/constants/coming-soon";
 
 const NAV_ITEMS: { id: Page; label: string; Icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard",  Icon: IconLayoutDashboard },
@@ -21,7 +22,6 @@ const NAV_ITEMS: { id: Page; label: string; Icon: React.ElementType }[] = [
   { id: "calendar",  label: "Calendar",   Icon: IconCalendar },
   { id: "activity",  label: "Activity",   Icon: IconActivity },
   { id: "crons",     label: "Schedules",  Icon: IconClock },
-  { id: "voice",     label: "Voice AI Test", Icon: IconMicrophone },
 ];
 
 interface MiniUsage {
@@ -166,6 +166,8 @@ export default function Sidebar() {
 
   const [miniUsage, setMiniUsage]     = useState<MiniUsage | null>(null);
   const [outreach, setOutreach]       = useState<Record<string, string>>({});
+  // Customer-safe channel states (the settings API hides provider ids such as the WhatsApp session).
+  const [channelStates, setChannelStates] = useState<Record<string, string>>({});
   const [agentStats, setAgentStats]   = useState<Record<string, { newCount: number; inOutreachCount: number; totalCount: number }>>({});
   const [liveInOutreach, setLiveInOutreach] = useState(0);
 
@@ -183,6 +185,11 @@ export default function Sidebar() {
     fetch(`/api/settings?agentId=${activeAgent._id}`)
       .then((r) => r.json())
       .then((d) => setOutreach(d))
+      .catch(() => {});
+    fetch(`/api/channels?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((d: { channels?: { key: string; state: string }[] }) =>
+        setChannelStates(Object.fromEntries((d.channels ?? []).map((c) => [c.key, c.state]))))
       .catch(() => {});
     fetch(`/api/crons?agentId=${activeAgent._id}`)
       .then((r) => r.json())
@@ -333,7 +340,7 @@ export default function Sidebar() {
                 label="Superadmin Portal"
                 Icon={IconShield}
                 active={true}
-                onClick={() => navigate(`/superadmin/${activeAgent?._id || "default"}`)}
+                onClick={() => navigate("/admin")}
                 collapsed={collapsed}
               />
             </div>
@@ -462,6 +469,23 @@ export default function Sidebar() {
               );
             })()}
 
+            {/* ── Admin (superadmins only) — at the top so it's always in view ── */}
+            {isSuperadmin && (
+              <>
+                <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
+                <div style={{ padding: "0 4px" }}>
+                  <NavItem
+                    id="superadmin"
+                    label="Superadmin panel"
+                    Icon={IconShield}
+                    active={(currentPage as string) === "superadmin"}
+                    onClick={() => navigate("/admin")}
+                    collapsed={collapsed}
+                  />
+                </div>
+              </>
+            )}
+
             {/* ── Navigation ── */}
             <SectionLabel collapsed={collapsed}>Navigation</SectionLabel>
             <nav style={{ padding: "0 4px", display: "flex", flexDirection: "column" }}>
@@ -493,8 +517,9 @@ export default function Sidebar() {
             <SectionLabel collapsed={collapsed}>Channels</SectionLabel>
             <div style={{ padding: "0 4px", display: "flex", flexDirection: "column", gap: 2, marginBottom: 4 }}>
               {OUTREACH_CHANNELS.map(({ key, label, Icon, color, bg, enabledKey, valueKey }) => {
-                const enabled = outreach[enabledKey] !== "false";
-                const value   = outreach[valueKey] || "";
+                const soon    = isComingSoonChannel(key);
+                const enabled = !soon && outreach[enabledKey] !== "false";
+                const value   = soon ? COMING_SOON_LABEL : outreach[valueKey] || (channelStates[key === "voice" ? "calls" : key] === "active" ? "Active" : "");
                 const isVoice = key === "voice";
                 const isActive = isVoice
                   ? currentPage === "voice-inbox"
@@ -502,6 +527,7 @@ export default function Sidebar() {
                 return (
                   <button
                     key={key}
+                    disabled={soon}
                     onClick={() => {
                       const agentId = activeAgent?._id || "default";
                       if (isVoice) navigate(`/voice-inbox/${agentId}`);
@@ -515,18 +541,18 @@ export default function Sidebar() {
                       padding: collapsed ? "7px 0" : "7px 10px",
                       borderRadius: "var(--radius-lg)",
                       background: isActive ? "var(--color-primary-subtle)" : enabled ? bg : "transparent",
-                      opacity: enabled ? 1 : 0.45,
+                      opacity: soon ? 0.6 : enabled ? 1 : 0.45,
                       transition: "opacity var(--transition-fast), background var(--transition-fast)",
                       border: "none",
                       width: "100%",
                       textAlign: "left",
-                      cursor: "pointer",
+                      cursor: soon ? "default" : "pointer",
                       font: "inherit",
                       color: "inherit",
                     }}
                     title={
                       collapsed
-                          ? `${label}: ${enabled && value ? value : enabled ? "Not configured" : "Disabled"}`
+                          ? `${label}: ${soon ? COMING_SOON_LABEL : enabled && value ? value : enabled ? "Not configured" : "Disabled"}`
                           : undefined
                     }
                   >
@@ -554,10 +580,10 @@ export default function Sidebar() {
                             style={{ fontSize: 10, color: enabled && value ? color : "var(--color-text4)", margin: "1px 0 0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                             title={value}
                           >
-                            {enabled && value ? value : enabled ? "Not configured" : "Disabled"}
+                            {soon ? COMING_SOON_LABEL : enabled && value ? value : enabled ? "Not configured" : "Disabled"}
                           </p>
                         </div>
-                        <span
+                        {!soon && <span
                           style={{
                             width: 6,
                             height: 6,
@@ -565,7 +591,7 @@ export default function Sidebar() {
                             background: enabled ? "var(--color-green)" : "var(--color-bg5)",
                             flexShrink: 0,
                           }}
-                        />
+                        />}
                       </>
                     )}
                   </button>
@@ -610,22 +636,6 @@ export default function Sidebar() {
               />
             </div>
 
-            {/* ── Admin (conditional) ── */}
-            {isSuperadmin && (
-              <>
-                <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
-                <div style={{ padding: "0 4px" }}>
-                  <NavItem
-                    id="superadmin"
-                    label="Superadmin"
-                    Icon={IconShield}
-                    active={(currentPage as string) === "superadmin"}
-                    onClick={() => navigate(`/superadmin/${activeAgent?._id || "default"}`)}
-                    collapsed={collapsed}
-                  />
-                </div>
-              </>
-            )}
           </>
         )}
       </div>

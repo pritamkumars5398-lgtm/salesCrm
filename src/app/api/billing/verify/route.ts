@@ -25,7 +25,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unknown order." }, { status: 404 });
     }
     const paid = await confirmPayment(orderId, paymentId);
-    return NextResponse.json({ ok: true, planId: paid.planId, periodEnd: paid.periodEnd, creditedDays: paid.creditedDays ?? 0 });
+    return NextResponse.json({
+      ok: true, kind: paid.kind ?? "plan", planId: paid.planId, periodEnd: paid.periodEnd, creditedDays: paid.creditedDays ?? 0,
+      topUpField: paid.topUpField, topUpUnits: paid.topUpUnits,
+    });
   } catch (err) {
     if (err instanceof BillingError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error("[Billing] verify failed:", err);

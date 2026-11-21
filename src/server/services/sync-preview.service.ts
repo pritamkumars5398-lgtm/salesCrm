@@ -1,7 +1,7 @@
 import { Lead } from "@/lib/models/Lead";
 import { Setting } from "@/lib/models/Setting";
 import { getSettingsMap } from "./settings.service";
-import { getAllConfigs, leadQuota, IMPORT_PER_RUN, type ScraperType } from "./apify.service";
+import { getAllConfigs, leadQuota, IMPORT_PER_RUN, type ScraperType, type SyncTarget } from "./apify.service";
 import { parseLeadFilter, describeLeadFilter, LEAD_FILTER_KEY } from "@/lib/lead-filter";
 
 export interface SyncPreviewScraper {
@@ -34,6 +34,8 @@ export interface SyncPreview {
   /** the most new leads this sync can add before dedup and the plan cap */
   maxNewLeads: number;
   filterSummary?: string;
+  /** the workspace's usual search, to prefill the Sync window */
+  defaults: { keyword: string; locations: string[] };
   /** a sync can't usefully start while any of these is true */
   blockers: string[];
   warnings: string[];
@@ -62,14 +64,14 @@ function maxResultsOf(input: Record<string, unknown>): number | null {
  * anything: the Apify runs (same configs the real sync uses), the AI lead
  * sources, the lead quota and anything that would make the sync fail.
  */
-export async function getSyncPreview(agentId: string): Promise<SyncPreview> {
+export async function getSyncPreview(agentId: string, opts: SyncTarget = {}): Promise<SyncPreview> {
   const [m, configs, quota, existingLeads, filterRow] = await Promise.all([
     getSettingsMap(agentId, [
       "apifyScraperEnabled", "apifyToken", "google-mapsEnabled", "linkedinEnabled", "justdialEnabled", "customEnabled",
-      "jdActorId", "customActorId", "llmPrompt",
+      "jdActorId", "customActorId", "llmPrompt", "industry", "gmKeyword", "leadLocations", "leadLocation",
       ...LLM_PROVIDERS.flatMap((p) => [`${p.type}Enabled`, `${p.type}ApiKey`, `${p.type}Model`]),
     ]),
-    getAllConfigs(agentId, { withoutToken: true }),
+    getAllConfigs(agentId, { withoutToken: true, ...opts }),
     leadQuota(agentId),
     Lead.countDocuments({ agentId }),
     Setting.findOne({ agentId, key: LEAD_FILTER_KEY }).lean(),
@@ -135,7 +137,15 @@ export async function getSyncPreview(agentId: string): Promise<SyncPreview> {
     }
   }
 
+  let defaultPlaces: string[] = [];
+  try {
+    const list = JSON.parse(m.leadLocations || "[]");
+    if (Array.isArray(list)) defaultPlaces = list.filter((l) => l?.name && l.active !== false).map((l) => String(l.name));
+  } catch { /* fall through */ }
+  if (!defaultPlaces.length && m.leadLocation) defaultPlaces = [m.leadLocation];
+
   return {
+    defaults: { keyword: m.gmKeyword || m.industry || "", locations: defaultPlaces },
     apify: { enabled: apifyEnabled, tokenSet, scrapers, skipped },
     llms,
     quota: { ...quota, remaining },
@@ -144,5 +154,35 @@ export async function getSyncPreview(agentId: string): Promise<SyncPreview> {
     filterSummary,
     blockers,
     warnings,
+  };
+}
+
+/** Plain words for a customer: no provider, model or actor names (the admin sets those up). */
+function scrubForCustomer(text: string): string {
+  return text
+    .replace(/The Apify API token isn't set, so no scraper can run\./g, "Lead search isn't set up yet — your admin will set it up.")
+    .replace(/Turn on Apify scrapers or an AI source in Settings\./g, "Ask your admin to turn one on.")
+    .replace(/(OpenAI ChatGPT|Anthropic Claude|Google Gemini)/g, "AI search")
+    .replace(/API key missing|model not chosen/g, "your admin needs to finish setting it up")
+    .replace(/\bApify\b/g, "lead search");
+}
+
+/** The sync preview as a customer may see it. */
+export function syncPreviewForCustomer(p: SyncPreview): SyncPreview {
+  return {
+    ...p,
+    apify: {
+      ...p.apify,
+      scrapers: p.apify.scrapers.map((s) => ({ ...s, actorId: "" })),
+      skipped: p.apify.skipped.map((s) => ({ ...s, reason: scrubForCustomer(s.reason.replace(/no actor ID set/g, "not set up")) })),
+    },
+    llms: p.llms.map((l, i) => ({
+      ...l,
+      label: p.llms.length > 1 ? `AI search ${i + 1}` : "AI search",
+      model: "",
+      ...(l.problem ? { problem: scrubForCustomer(l.problem) } : {}),
+    })),
+    blockers: p.blockers.map(scrubForCustomer),
+    warnings: p.warnings.map(scrubForCustomer),
   };
 }

@@ -17,6 +17,8 @@ interface Props {
  */
 export default function PracticeCallModal({ leadId, leadName, onClose }: Props) {
   const activeAgent = useAppStore((s) => s.activeAgent);
+  // Engine names and credit notes are for the platform admin only.
+  const isSuperadmin = useAppStore((s) => s.isSuperadmin);
   const call = usePracticeCall(activeAgent?._id, leadId);
   const [mode, setMode] = useState<"voice" | "text">("voice");
   const [text, setText] = useState("");
@@ -62,15 +64,16 @@ export default function PracticeCallModal({ leadId, leadName, onClose }: Props) 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h2 className="text-[15px] font-bold text-text">Practice call — {leadName}</h2>
-              {(call.voiceName || call.provider) && (
+              {call.voiceName && (
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold bg-bg3 text-text2 border border-bg4">
-                  Voice: <span className="text-text font-extrabold">{call.voiceName || "Default"}</span> ({call.provider || "AI"})
+                  Voice: <span className="text-text font-extrabold">{call.voiceName}</span>
+                  {isSuperadmin && call.provider ? ` (${call.provider})` : ""}
                 </span>
               )}
             </div>
             <p className="text-[12px] leading-relaxed text-text3">
               The real AI agent of <b>{activeAgent?.name}</b>, briefed exactly as a phone call to this lead. Nobody is dialed.{" "}
-              {call.provider === "Google Gemini" ? (
+              {!isSuperadmin ? null : call.provider === "Google Gemini" ? (
                 <span className="text-emerald-500 font-medium">Powered by Google Gemini Voice (no ElevenLabs credits required).</span>
               ) : call.provider === "ElevenLabs" ? (
                 <span>Uses ElevenLabs credits (about 1,000 per minute).</span>

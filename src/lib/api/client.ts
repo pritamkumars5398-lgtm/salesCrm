@@ -37,6 +37,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       (data && typeof data === "object" && "error" in data && typeof data.error === "string")
         ? data.error
         : `Request failed (${res.status})`;
+    // A plan limit just blocked something: let the usage banner/popup refresh right away.
+    if (typeof window !== "undefined" && /limit (exceeded|reached)/i.test(message)) window.dispatchEvent(new Event("crm:usage-changed"));
     throw new ApiError(res.status, message, data);
   }
 

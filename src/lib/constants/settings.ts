@@ -40,6 +40,8 @@ export const GENERAL_CARDS: SettingsCard[] = [
       { label: "Business Website", key: "businessWebsite", placeholder: "https://yourwebsite.com", hint: "Used by AI in responses" },
       { label: "Business Phone", key: "businessPhone", placeholder: "+91 xxxxx xxxxx", hint: "Used by AI in responses" },
       { label: "Follow-up Limit (Days/Messages)", key: "followUpDays", options: ["3", "Disabled", "1", "2", "4", "5", "6", "7"], hint: "Automatically follow up daily if lead doesn't reply" },
+      { label: "Email me when a lead is interested", key: "ownerInterestAlerts", options: ["On", "Off"], hint: "Alert on interest from a call, WhatsApp or email — at most one email per lead a day" },
+      { label: "Send interest alerts to", key: "ownerAlertEmail", placeholder: "you@yourbusiness.com", hint: "Leave empty to use the account owner's login email. Separate several with commas." },
     ],
   },
   {
@@ -122,12 +124,12 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Call API Key (Vapi / Alternative)", key: "callApiKey", type: "password", placeholder: "Enter API key...", hint: "Used if call provider is Vapi or Bland.ai" },
 
       // ── 2. Voice / Conversational AI Engine ──
-      { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["Google Gemini", "ElevenLabs", "Deepgram"], hint: "Conversational voice engine for speech synthesis (Gemini Live Audio / ElevenLabs / Deepgram)" },
+      { label: "Voice Provider", key: "voiceProvider", placeholder: "", options: ["Google Gemini", "ElevenLabs"], hint: "The engine that speaks on calls. Only Gemini and ElevenLabs can talk on phone calls." },
       { label: "Gemini API Key", key: "geminiApiKey", type: "password", placeholder: "Enter Gemini API key (or uses GEMINI_API_KEY from .env)...", hint: "Google AI Studio API Key for Gemini Live Voice synthesis" },
       { label: "Gemini Voice Model", key: "geminiVoiceModel", placeholder: "gemini-2.5-flash-native-audio-preview-12-2025", options: ["gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.0-flash-exp"], hint: "Gemini native audio model" },
       { label: "ElevenLabs ConvAI Agent ID", key: "elevenLabsAgentId", placeholder: "agent_6001m54cz5fbfw78qqx5a8qhb8yg", hint: "Agent ID from ElevenLabs Conversational AI dashboard" },
       { label: "Voice API Key (ElevenLabs)", key: "voiceApiKey", type: "password", placeholder: "Enter ElevenLabs API key...", hint: "Your ElevenLabs account API key" },
-      { label: "Voice Name / ID", key: "voiceId", placeholder: "Select an AI voice", hint: "AI Voice personality for speech synthesis" },
+      { label: "Voice Name / ID", key: "voiceId", placeholder: "Select an AI voice", hint: "Gemini: a voice name like Puck. ElevenLabs: a 20-character voice ID. Anything else is ignored and calls use the ElevenLabs agent's own voice." },
 
       // ── 3. Speech-to-Text & Transcription ──
       { label: "Speech-to-Text Provider", key: "sttProvider", placeholder: "", options: ["Deepgram", "OpenAI Whisper"], hint: "Real-time transcription engine" },
@@ -140,7 +142,7 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
       { label: "Max Call Duration (minutes)", key: "callMaxDuration", placeholder: "", options: ["2", "3", "5", "7", "10", "15"], hint: "Call ends automatically after this duration" },
       { label: "Call Window Start (hour, 24h)", key: "callWindowStart", placeholder: "9", hint: "Earliest hour (IST, or CALL_TIMEZONE) AI calls to leads may start, e.g. 9 = 9 AM. Leave both empty for no limit." },
       { label: "Call Window End (hour, 24h)", key: "callWindowEnd", placeholder: "18", hint: "Calls are refused from this hour on, e.g. 18 = 6 PM" },
-      { label: "Max Simultaneous Calls", key: "callConcurrency", placeholder: "", options: ["1", "2", "3", "5"], hint: "Sequence/campaign calls are placed in batches of this size — the next lead is dialed when a call ends." },
+      { label: "Max Simultaneous Calls", key: "callConcurrency", placeholder: "", options: ["3", "1", "2", "5", "10"], hint: "How many AI calls may run at once (Call selected, sequences and campaigns). The next lead is dialled as soon as a line frees up. Check your voice plan allows this many." },
       { label: "Record Calls", key: "callRecording", placeholder: "", options: ["On", "Off"], hint: "Saves a recording of each AI call (playable in the lead's Call tab). Tell callees the call is recorded where required." },
       { label: "Voicemail Detection", key: "callVoicemailDetection", placeholder: "", options: ["Off", "Hang up on voicemail"], hint: "Hang up automatically when an answering machine picks up" },
     ],
@@ -198,3 +200,16 @@ export const INTEGRATION_CARDS: SettingsCard[] = [
     ],
   },
 ];
+
+/** The customer's simple menu: business data only (keys and channels are set up by the platform admin). */
+export const CUSTOMER_CARDS: SettingsCard[] = [
+  { key: "business", title: "Your business", description: "What you sell & who you sell to", Icon: IconBuilding, iconBg: "rgba(16,185,129,0.1)", iconColor: "#10b981", fields: [] },
+  { key: "leads", title: "Leads", description: "Fields, stages & groups", Icon: IconListDetails, iconBg: "rgba(14,165,233,0.1)", iconColor: "#0ea5e9", fields: [] },
+  { key: "knowledge", title: "Knowledge base", description: "Docs & FAQs the AI answers from", Icon: IconBook, iconBg: "rgba(245,158,11,0.1)", iconColor: "#f59e0b", fields: [] },
+  { key: "team", title: "Team", description: "People & workspaces", Icon: IconUsers, iconBg: "rgba(99,102,241,0.1)", iconColor: "#6366f1", fields: [] },
+];
+
+/** Old customer tab names still used in links → the page that now holds them. */
+export const CUSTOMER_TAB_ALIASES: Record<string, string> = {
+  profile: "business", playbook: "business", fields: "leads", groups: "leads",
+};

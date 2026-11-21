@@ -9,6 +9,7 @@ import { eventEmitter } from "@/lib/events";
 import { callGroq } from "@/server/services/ai.service";
 import { getPlaybook } from "@/server/services/playbook.service";
 import { getLeadHistory } from "@/server/services/lead-history.service";
+import { notifyOwnerOfInterest } from "@/server/services/owner-alert.service";
 
 async function handleInterested(lead: any, agentId: string) {
   const calendlySetting = await Setting.findOne({ agentId, key: "calendlyLink" }).lean();
@@ -152,6 +153,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       agentId, leadId: lead._id, leadName: lead.fullName, channel: "email",
       event: "Lead clicked 'Interested'", detail: "Lead clicked the interested button in the email."
     });
+    notifyOwnerOfInterest({ agentId: String(agentId), lead, channel: "email", reason: "Clicked \"I'm interested\" in your email" });
 
     // Record the client's interest reply in the email conversation
     let convo = await Conversation.findOne({ leadId: lead._id, channel: "email" });

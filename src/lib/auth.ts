@@ -104,3 +104,15 @@ export async function hasServerSession(): Promise<boolean> {
     return false;
   }
 }
+
+/** Where a signed-in user lands: the admin panel for superadmins, otherwise their dashboard. */
+export async function homePath(): Promise<string> {
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.ok) {
+      const d = await res.json();
+      if (d?.user?.isSuperadmin) return "/admin";
+    }
+  } catch { /* fall through */ }
+  return "/dashboard/default";
+}

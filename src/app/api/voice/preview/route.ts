@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { authorizeWorkspace } from "@/server/auth/access";
 import { platformEnv } from "@/server/services/platform-credentials";
+import { getEffectiveVoice, isVoiceAllowed } from "@/server/services/voice-options.service";
 import { generateGeminiSpeech } from "@/server/services/gemini-voice.service";
 
 export async function POST(req: Request) {
@@ -20,8 +21,17 @@ export async function POST(req: Request) {
     const m: Record<string, string> = {};
     rows.forEach((r) => { m[r.key] = r.value; });
 
-    const provider = reqVoiceProvider || reqProvider || m.voiceProvider || "Google Gemini";
-    const voiceId = reqVoiceId || m.voiceId || (provider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk");
+    // Customers preview only the configured engine and the voices their admin offered.
+    const isPlatformAdmin = access.user.isSuperadmin;
+    if (!isPlatformAdmin && reqVoiceId && !(await isVoiceAllowed(agentId, String(reqVoiceId)))) {
+      return NextResponse.json({ error: "That voice isn't available." }, { status: 400 });
+    }
+    // Without an explicit engine (admin tools pass one), speak with exactly the voice
+    // calls and practice calls use — the same voice the customer's AI voice card shows.
+    const explicit = isPlatformAdmin ? reqVoiceProvider || reqProvider : "";
+    const effective = explicit ? null : await getEffectiveVoice(agentId);
+    const provider = explicit || (effective?.engine === "gemini" ? "Google Gemini" : "ElevenLabs");
+    const voiceId = reqVoiceId || effective?.voiceId || m.voiceId || (provider === "Google Gemini" ? "Puck" : "ch9J8IB6HKlEHQaWQFdk");
 
     if (provider === "Google Gemini" || provider === "Gemini") {
       const geminiKey = m.geminiApiKey || process.env.GEMINI_API_KEY || "AIzaSyDNxEE27Hh8agf_bZuTktgHvNRMcNoPMyo";
@@ -96,6 +106,13 @@ export async function POST(req: Request) {
 
       if (!res.ok) {
         const errText = await res.text();
+        // Free ElevenLabs plans can't speak library voices through the API (402
+        // paid_plan_required). Play the voice's own sample clip instead, so the
+        // customer still hears what it sounds like.
+        if (res.status === 402 || res.status === 403) {
+          const sample = await voiceSampleClip(apiKey, resolvedVoiceId);
+          if (sample) return sample;
+        }
         if (res.status === 404) {
           return NextResponse.json({
             error: `Voice "${voiceId}" not found in ElevenLabs. Please check your Voice Name / ID in settings.`,
@@ -136,5 +153,25 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+/** The voice's public sample clip from ElevenLabs, as an audio response, or null. */
+async function voiceSampleClip(apiKey: string, voiceId: string): Promise<Response | null> {
+  try {
+    const info = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
+      headers: { "xi-api-key": apiKey },
+      signal: AbortSignal.timeout(7000),
+    });
+    const previewUrl = info.ok ? (await info.json())?.preview_url : null;
+    if (!previewUrl || !/^https:\/\//.test(previewUrl)) return null;
+    const clip = await fetch(previewUrl, { signal: AbortSignal.timeout(10000) });
+    if (!clip.ok) return null;
+    return new Response(await clip.arrayBuffer(), {
+      // ElevenLabs' CDN serves these mp3s as text/plain; browsers need an audio type to play them.
+      headers: { "Content-Type": /^audio\//.test(clip.headers.get("content-type") || "") ? clip.headers.get("content-type")! : "audio/mpeg", "Cache-Control": "no-store", "X-Voice-Sample": "1" },
+    });
+  } catch {
+    return null;
   }
 }

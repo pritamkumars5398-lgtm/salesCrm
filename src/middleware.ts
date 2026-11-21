@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { SESSION_EXPIRED_ERROR } from "@/lib/session-messages";
 
 /**
  * API routes that must stay reachable without a session cookie:
@@ -31,7 +32,7 @@ export async function middleware(request: NextRequest) {
   const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
 
   if (pathname.startsWith("/api/")) {
-    if (!session) return NextResponse.json({ error: "Your session has expired. Please log in again." }, { status: 401 });
+    if (!session) return NextResponse.json({ error: SESSION_EXPIRED_ERROR }, { status: 401 });
     return NextResponse.next();
   }
 
@@ -43,7 +44,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/(dashboard|leads|sequence|crm|calendar|activity|settings|crons|profile|plans|superadmin|voice|inbox|voice-inbox|apify)/:path*",
+    "/(dashboard|leads|sequence|crm|calendar|activity|settings|crons|profile|plans|superadmin|voice|inbox|voice-inbox|apify|admin)/:path*",
+    "/admin",
     "/api/:path*",
   ],
 };

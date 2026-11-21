@@ -336,10 +336,12 @@ function ScraperCard({
 
 export default function ApifySources({ agentId: propAgentId }: { agentId?: string } = {}) {
   const pathname = usePathname();
-  const { activeAgent, agents, showToast } = useAppStore();
+  const { activeAgent, agents, showToast, isSuperadmin } = useAppStore();
   const routeAgentId = pathname ? pathname.split("/")[2] : "";
   const agentId = propAgentId || activeAgent?._id || routeAgentId || (agents[0]?._id ?? "");
   const currentAgent = activeAgent || agents.find((a) => a._id === agentId) || agents[0];
+  const isAdmin = isSuperadmin; // tokens and actors are set up by the platform admin
+  const isMember = !isAdmin;
   const [values, setValues] = useState<Record<string, string>>({});
   const [agentSettings, setAgentSettings] = useState<Record<string, string>>({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
@@ -533,123 +535,185 @@ export default function ApifySources({ agentId: propAgentId }: { agentId?: strin
       </div>
 
       <div style={{ opacity: isMasterEnabled ? 1 : 0.4, pointerEvents: isMasterEnabled ? "auto" : "none", transition: "opacity 0.2s" }}>
-      {currentAgent?.role === "member" ? (
-        <div style={{
-          background: "rgba(16,185,129,0.06)",
-          border: "1px solid rgba(16,185,129,0.25)",
-          borderRadius: 14,
-          padding: "16px 20px",
-          marginBottom: 24,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 12,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(16,185,129,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981" }}>
-              <IconCheck size={18} />
-            </span>
-            <div>
-              <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)", margin: "0 0 2px" }}>
-                Lead Scraper Infrastructure Connected
-              </p>
-              <p style={{ fontSize: 12, color: "var(--color-text3)", margin: 0 }}>
-                Managed & configured by your administrator · Enter your target search keywords & locations below
-              </p>
+      {isMember ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Status banner for Customer/Member */}
+          <div style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.25)",
+            borderRadius: 16,
+            padding: "20px 24px",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 16,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <span style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(16,185,129,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", flexShrink: 0, marginTop: 2 }}>
+                <IconCheck size={22} />
+              </span>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>
+                    Lead Sources & Scraper Connected
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "3px 10px", borderRadius: 99, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                    Setup Completed · Active
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: "var(--color-text2)", margin: "0 0 14px", lineHeight: 1.6 }}>
+                  Your lead scraping engine, target queries, and negative quality filters are fully managed and configured by your administrator. Lead extraction and automatic CRM enrichment are active.
+                </p>
+
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 12,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  background: "var(--color-bg2)",
+                  border: "1px solid var(--color-bg4)"
+                }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Active Scraper</span>
+                    <strong style={{ fontSize: 13, color: "var(--color-text)" }}>
+                      {SCRAPERS.find((s) => s.type === activeType)?.label || "Google Maps Scraper"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Lead Quality Filter</span>
+                    <strong style={{ fontSize: 13, color: "#10b981" }}>Active & Enforced</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: "var(--color-text3)", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Data Pipeline</span>
+                    <strong style={{ fontSize: 13, color: "var(--color-text)" }}>Synchronized</strong>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "4px 10px", borderRadius: 6, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
-            Setup Completed
-          </span>
-        </div>
-      ) : (
-        /* Token card for Admin */
-        <div
-          style={{
+
+          {/* User Guide Card */}
+          <div style={{
             background: "var(--color-bg2)",
             border: "1px solid var(--color-bg4)",
             borderRadius: 14,
             padding: "18px 20px",
-            marginBottom: 24,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <IconKey size={15} style={{ color: "#df2a2a" }} />
-            </span>
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+          }}>
             <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Apify API Token</p>
-              <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Shared across all scrapers — get it from apify.com/account/integrations</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: "0 0 4px" }}>
+                How to fetch leads into your pipeline?
+              </p>
+              <p style={{ fontSize: 12, color: "var(--color-text3)", margin: 0, lineHeight: 1.5 }}>
+                Click the red <strong>Sync Sources</strong> button in the top navigation bar at any time to pull verified business contacts into your CRM.
+              </p>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text2)", background: "var(--color-bg3)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--color-bg4)" }}>
+              Admin Configured
+            </span>
+          </div>
+
+          {/*
+          // COMMENTED: Complex LeadFilterPanel & Individual Scraper Configuration forms for regular members (managed by Admin)
+          // {agentId ? <LeadFilterPanel agentId={agentId} filterString={agentSettings.leadFilter} ... /> : null}
+          // <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{SCRAPERS.map(...)}</div>
+          */}
+        </div>
+      ) : (
+        /* ADMIN VIEW: Full setup, API Token, LeadFilterPanel, and Scraper Cards */
+        <>
+          <div
+            style={{
+              background: "var(--color-bg2)",
+              border: "1px solid var(--color-bg4)",
+              borderRadius: 14,
+              padding: "18px 20px",
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(223,42,42,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconKey size={15} style={{ color: "#df2a2a" }} />
+              </span>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>Apify API Token</p>
+                <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: 0 }}>Shared across all scrapers — get it from apify.com/account/integrations</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                type="password"
+                value={values.apifyToken ?? ""}
+                onChange={(e) => patchValues({ apifyToken: e.target.value })}
+                placeholder="apify_api_..."
+                style={{
+                  flex: 1, padding: "9px 13px", borderRadius: 9,
+                  border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
+                  color: "var(--color-text)", fontSize: 13, outline: "none", fontFamily: "inherit",
+                }}
+              />
+              <button
+                onClick={handleTokenSave}
+                style={{
+                  padding: "9px 18px", borderRadius: 9,
+                  background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#df2a2a,#f24444)",
+                  border: tokenSaved ? "1px solid rgba(16,185,129,0.3)" : "none",
+                  color: tokenSaved ? "#10b981" : "#fff",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 6,
+                  transition: "all 0.2s",
+                }}
+              >
+                {tokenSaved ? <><IconCheck size={13} /> Saved</> : "Save"}
+              </button>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              type="password"
-              value={values.apifyToken ?? ""}
-              onChange={(e) => patchValues({ apifyToken: e.target.value })}
-              placeholder="apify_api_..."
-              style={{
-                flex: 1, padding: "9px 13px", borderRadius: 9,
-                border: "1px solid var(--color-bg4)", background: "var(--color-bg)",
-                color: "var(--color-text)", fontSize: 13, outline: "none", fontFamily: "inherit",
+
+          {/* Ideal Customer Filter (Brand Exclusions & Quality) */}
+          {agentId ? (
+            <LeadFilterPanel
+              agentId={agentId}
+              filterString={agentSettings.leadFilter}
+              industry={agentSettings.industry}
+              businessName={agentSettings.brandName || currentAgent?.name}
+              onSaved={(f) => {
+                setAgentSettings((prev) => ({ ...prev, leadFilter: JSON.stringify(f) }));
               }}
+              showToast={showToast}
             />
-            <button
-              onClick={handleTokenSave}
-              style={{
-                padding: "9px 18px", borderRadius: 9,
-                background: tokenSaved ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg,#df2a2a,#f24444)",
-                border: tokenSaved ? "1px solid rgba(16,185,129,0.3)" : "none",
-                color: tokenSaved ? "#10b981" : "#fff",
-                fontSize: 13, fontWeight: 700, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 6,
-                transition: "all 0.2s",
-              }}
-            >
-              {tokenSaved ? <><IconCheck size={13} /> Saved</> : "Save"}
-            </button>
+          ) : null}
+
+          {/* Section label */}
+          <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
+            Scrapers (Admin Configuration)
+          </p>
+
+          {/* Scraper cards */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {SCRAPERS.map((def) => (
+              <ScraperCard
+                key={def.type}
+                def={def}
+                values={values}
+                setValues={patchValues}
+                isActive={values.activeScraperType === def.type}
+                isEnabled={values[enabledKey(def.type)] !== "false"}
+                onSetActive={() => handleSetActive(def.type)}
+                onToggleEnabled={(v) => handleToggleEnabled(def.type, v)}
+                onSave={(keys) => handleSaveCard(def.type, keys)}
+                savedKey={savedKey}
+                onSyncField={handleSyncField}
+              />
+            ))}
           </div>
-        </div>
+        </>
       )}
-
-      {/* Ideal Customer Filter (Brand Exclusions & Quality) */}
-      {agentId ? (
-        <LeadFilterPanel
-          agentId={agentId}
-          filterString={agentSettings.leadFilter}
-          industry={agentSettings.industry}
-          businessName={agentSettings.brandName || currentAgent?.name}
-          onSaved={(f) => {
-            setAgentSettings((prev) => ({ ...prev, leadFilter: JSON.stringify(f) }));
-          }}
-          showToast={showToast}
-        />
-      ) : null}
-
-      {/* Section label */}
-      <p style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-text3)", marginBottom: 12 }}>
-        Scrapers
-      </p>
-
-      {/* Scraper cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {SCRAPERS.map((def) => (
-          <ScraperCard
-            key={def.type}
-            def={def}
-            values={values}
-            setValues={patchValues}
-            isActive={values.activeScraperType === def.type}
-            isEnabled={values[enabledKey(def.type)] !== "false"}
-            onSetActive={() => handleSetActive(def.type)}
-            onToggleEnabled={(v) => handleToggleEnabled(def.type, v)}
-            onSave={(keys) => handleSaveCard(def.type, keys)}
-            savedKey={savedKey}
-            onSyncField={handleSyncField}
-          />
-        ))}
-      </div>
       </div>
     </div>
   );

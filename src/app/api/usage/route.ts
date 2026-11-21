@@ -5,6 +5,7 @@ import { Setting } from "@/lib/models/Setting";
 import { Organization } from "@/lib/models/Organization";
 import { PLANS, type PlanId } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
+import { emptyCredits } from "@/lib/topups";
 import { authorizeWorkspace } from "@/server/auth/access";
 import { getOrganizationLimits, getOrganizationUsage } from "@/server/services/workspace.service";
 
@@ -23,17 +24,22 @@ export async function GET(req: Request) {
   const month = currentMonth();
 
   if (access.organizationId) {
-    const [{ planId, limits }, usage] = await Promise.all([
+    const [{ planId, limits }, usage, org] = await Promise.all([
       getOrganizationLimits(access.organizationId),
       getOrganizationUsage(access.organizationId, month),
+      Organization.findById(access.organizationId).select("topUpCredits").lean(),
     ]);
     const plan = PLANS[planId];
+    const credits = { ...emptyCredits(), ...(org?.topUpCredits ?? {}) };
     return NextResponse.json({
       month,
       planId,
       scope: "organization",
       plan: { name: plan.name, priceINR: plan.priceINR, color: plan.color, limits },
       usage,
+      /** bought top-up units still left per feature (used after the monthly limit) */
+      credits,
+      canBuy: access.role === "owner" || access.role === null,
     });
   }
 

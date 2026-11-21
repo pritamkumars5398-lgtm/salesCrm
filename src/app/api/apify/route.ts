@@ -5,9 +5,11 @@ import {
   getRunStatus,
   importDataset,
   abortApifyRun,
+  parseSyncTarget,
   type ScraperType,
 } from "@/server/services/apify.service";
 import { authorizeWorkspace } from "@/server/auth/access";
+import { cleanGroupIds } from "@/server/services/lead-attributes.service";
 
 // ─── POST — start all enabled scraper runs in parallel ───────────────────────
 export async function POST(req: Request) {
@@ -17,7 +19,7 @@ export async function POST(req: Request) {
   if (!access.ok) return access.response;
 
   try {
-    const { started, warnings } = await startApifyRuns(access.agentId);
+    const { started, warnings } = await startApifyRuns(access.agentId, parseSyncTarget(body));
     return NextResponse.json({
       runs: started,
       ...(warnings.length ? { warnings } : {}),
@@ -50,17 +52,21 @@ export async function GET(req: Request) {
 // ─── PATCH — import one dataset into leads ───────────────────────────────────
 export async function PATCH(req: Request) {
   await connectDB();
-  const { agentId, datasetId, scraperType } = (await req.json().catch(() => ({}))) as {
+  const { agentId, datasetId, scraperType, groupId } = (await req.json().catch(() => ({}))) as {
     agentId?: string;
     datasetId?: string;
     scraperType: ScraperType;
+    /** put the new leads straight into this (manual) group */
+    groupId?: string;
   };
   const access = await authorizeWorkspace(req, agentId);
   if (!access.ok) return access.response;
   if (!datasetId) return NextResponse.json({ error: "datasetId required" }, { status: 400 });
+  const groups = groupId ? await cleanGroupIds(access.agentId, [groupId]) : null;
+  if (groups && !groups.ok) return NextResponse.json({ error: groups.error }, { status: 400 });
 
   try {
-    const result = await importDataset(access.agentId, datasetId, scraperType);
+    const result = await importDataset(access.agentId, datasetId, scraperType, { groupIds: groups?.ok ? groups.value : [] });
     if (result.limitReached) {
       return NextResponse.json({ error: result.message, limitReached: true }, { status: 403 });
     }

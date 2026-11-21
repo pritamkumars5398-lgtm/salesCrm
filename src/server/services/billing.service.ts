@@ -3,6 +3,7 @@ import { Organization } from "@/lib/models/Organization";
 import { Payment, IPayment } from "@/lib/models/Payment";
 import { PLANS, PlanId } from "@/lib/plans";
 import { getOrganizationLimits } from "./workspace.service";
+import { findPack } from "@/lib/topups";
 
 /**
  * Prepaid plans through Razorpay: each payment buys 30 days of a plan. When
@@ -121,6 +122,33 @@ export async function createPlanOrder(organizationId: string, userId: string, pl
   return { orderId: order.id, amount, currency: "INR", keyId: razorpayConfig().keyId };
 }
 
+/** Start a Razorpay checkout for one top-up pack (price always from our list, never the browser). */
+export async function createTopUpOrder(organizationId: string, userId: string, packId: string) {
+  const pack = findPack(packId);
+  if (!pack) throw new BillingError(400, "Pick a top-up pack.");
+  const amount = pack.priceINR * 100;
+  const order = await razorpay<{ id: string; amount: number; currency: string }>("/orders", {
+    method: "POST",
+    body: { amount, currency: "INR", receipt: `topup_${organizationId.slice(-12)}_${Date.now()}`, notes: { organizationId, packId } },
+  });
+  await Payment.create({
+    organizationId, userId, kind: "topup", topUpPackId: pack.id, topUpField: pack.field, topUpUnits: pack.units,
+    amount, currency: "INR", razorpayOrderId: order.id, status: "created",
+  });
+  return { orderId: order.id, amount, currency: "INR", keyId: razorpayConfig().keyId };
+}
+
+export async function applyFakeTopUp(organizationId: string, userId: string, packId: string) {
+  const pack = findPack(packId);
+  if (!pack) throw new BillingError(400, "Pick a top-up pack.");
+  const stamp = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const record = await Payment.create({
+    organizationId, userId, kind: "topup", topUpPackId: pack.id, topUpField: pack.field, topUpUnits: pack.units,
+    amount: pack.priceINR * 100, currency: "INR", razorpayOrderId: `fake_order_${stamp}`, status: "created",
+  });
+  return applyPayment(record, `fake_pay_${stamp}`);
+}
+
 interface RazorpayPayment {
   id: string;
   order_id: string;
@@ -172,6 +200,14 @@ async function applyPayment(record: IPayment, paymentId: string): Promise<IPayme
   if (!claimed) return (await Payment.findById(record._id))!;
 
   const orgId = String(record.organizationId);
+  if (record.kind === "topup") {
+    // Add the units to the organization's balance — they never expire.
+    if (!record.topUpField || !record.topUpUnits) throw new BillingError(400, "This top-up has no pack details.");
+    await Organization.updateOne({ _id: orgId }, { $inc: { [`topUpCredits.${record.topUpField}`]: record.topUpUnits } });
+    return claimed;
+  }
+  if (!record.planId) throw new BillingError(400, "This payment has no plan.");
+  const planId = record.planId;
   // Another payment for the same organization may land at the same moment —
   // only write if the expiry is still what we based our maths on.
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -180,17 +216,17 @@ async function applyPayment(record: IPayment, paymentId: string): Promise<IPayme
     const active = !current.expired && current.expiresAt && current.expiresAt.getTime() > now;
     let start = now;
     let creditedDays = 0;
-    if (active && current.purchasedPlan === record.planId) {
+    if (active && current.purchasedPlan === planId) {
       start = current.expiresAt!.getTime();
     } else if (active && current.purchasedPlan !== "free") {
       const remainingDays = (current.expiresAt!.getTime() - now) / DAY_MS;
-      creditedDays = Math.floor(remainingDays * PLANS[current.purchasedPlan].priceINR / PLANS[record.planId].priceINR);
+      creditedDays = Math.floor(remainingDays * PLANS[current.purchasedPlan].priceINR / PLANS[planId].priceINR);
     }
     const end = new Date(start + (PLAN_PERIOD_DAYS + creditedDays) * DAY_MS);
 
     const updated = await Organization.findOneAndUpdate(
       { _id: orgId, planExpiresAt: current.expiresAt ?? null },
-      { $set: { plan: record.planId, planExpiresAt: end } },
+      { $set: { plan: planId, planExpiresAt: end } },
       { new: true },
     );
     if (updated) {

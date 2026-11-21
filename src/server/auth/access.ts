@@ -6,6 +6,7 @@ import { Agent, IAgent } from "@/lib/models/Agent";
 import { Lead, ILead } from "@/lib/models/Lead";
 import { Membership, MemberRole } from "@/lib/models/Membership";
 import { SESSION_COOKIE, readCookie, verifySession } from "@/lib/session";
+import { SESSION_EXPIRED_ERROR } from "@/lib/session-messages";
 
 export interface SessionUser {
   _id: string;
@@ -49,7 +50,7 @@ export async function getSessionUser(req: Request): Promise<SessionUser | null> 
 
 export async function authorizeUser(req: Request): Promise<{ ok: true; user: SessionUser } | Denied> {
   const user = await getSessionUser(req);
-  if (!user) return deny(401, "Your session has expired. Please log in again.");
+  if (!user) return deny(401, SESSION_EXPIRED_ERROR);
   return { ok: true, user };
 }
 

@@ -248,8 +248,15 @@ async function getElevenSignedUrl(cfg) {
   return { url: null, reason };
 }
 
+/** "Good afternoon" in a saved or default greeting → the real time of the call (Asia/Kolkata by default). */
+function matchTimeOfDay(text) {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: process.env.CALL_TIMEZONE || "Asia/Kolkata" }).format(new Date()));
+  const tod = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+  return text.replace(/\bgood\s+(morning|afternoon|evening)\b/gi, (m) => (/^G/.test(m) ? "Good " : "good ") + tod);
+}
+
 function fillTemplate(text, vars) {
-  return text
+  return matchTimeOfDay(text)
     .replace(/\{\{\s*leadName\s*\}\}/gi, vars.lead_name)
     .replace(/\{\{\s*company(Name)?\s*\}\}/gi, vars.company_name)
     .replace(/\{\{\s*businessType\s*\}\}/gi, vars.business_type)
@@ -435,7 +442,10 @@ async function handlePlivoStream(plivoWs, req) {
       // Older agents with a fixed greeting only change it through the override.
       if (overrideLevel > 2) agent.first_message = greeting;
       if (overrideLevel > 1 && speechLang) agent.language = speechLang;
-      const tts = cfg.geminiVoice ? { voice_id: cfg.geminiVoice } : {};
+      // Only an ElevenLabs voice id (20 letters/digits) can override the agent's voice; anything
+      // else (a Gemini name, a leftover Deepgram id) made ElevenLabs reject the session, which then
+      // dropped the lead-specific prompt too. Without it the agent speaks in its own voice.
+      const tts = /^[A-Za-z0-9]{20}$/.test(cfg.geminiVoice || "") ? { voice_id: cfg.geminiVoice } : {};
       payload.conversation_config_override = { agent, ...(Object.keys(tts).length ? { tts } : {}) };
     }
     return payload;
@@ -745,7 +755,8 @@ RESPONSE: <your response to caller>`;
       endCall("Google Gemini API key not configured (Settings → Voice Calls).");
       return;
     }
-    const firstMessage = fillTemplate(cfg.callGreeting || DEFAULT_GREETING, vars);
+    // Same opening the app built for this call (natural, business-based); the old default was an object, not text.
+    const firstMessage = call.aiFirstMessage || fillTemplate(cfg.callGreeting || DEFAULT_GREETING[cfg.language || "English"] || DEFAULT_GREETING.English, vars);
     await speakGemini(firstMessage);
   }
 

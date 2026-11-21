@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { IconCalendar, IconChevronLeft, IconChevronRight, IconClock, IconPlus, IconPlug } from "@tabler/icons-react";
+import { IconCalendar, IconChevronLeft, IconChevronRight, IconClock, IconPlus, IconExternalLink, IconCopy } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, getDaysInMonth, getDay, isToday } from "date-fns";
@@ -8,8 +8,19 @@ import { format, startOfMonth, getDaysInMonth, getDay, isToday } from "date-fns"
 export default function Calendar() {
   const { activeAgent, meetings, setMeetings, showToast } = useAppStore();
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [provider, setProvider] = useState("cal.com");
-  const [apiKey, setApiKey] = useState("");
+  // Meeting booking is set up by the admin; this page only shows its status and booking link.
+  const [booking, setBooking] = useState<{ state: string; message: string; link?: string } | null>(null);
+  useEffect(() => {
+    if (!activeAgent) return;
+    setBooking(null);
+    fetch(`/api/channels?agentId=${activeAgent._id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const c = (d.channels ?? []).find((x: { key: string }) => x.key === "calendly");
+        setBooking(c ? { state: c.state, message: c.message, link: c.details?.find((x: { label: string }) => x.label === "Booking link")?.value } : { state: "not_set_up", message: "" });
+      })
+      .catch(() => setBooking({ state: "not_set_up", message: "" }));
+  }, [activeAgent?._id]);
 
   const { data, isLoading: loading } = useQuery({
     queryKey: ["meetings", activeAgent?._id],
@@ -34,16 +45,6 @@ export default function Calendar() {
   const meetingDays = new Set(
     meetings.map((m) => new Date(m.scheduledAt).getDate())
   );
-
-  async function connectCalendar() {
-    if (!activeAgent || !apiKey) return;
-    await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: activeAgent._id, settings: { calProvider: provider, calApiKey: apiKey } }),
-    });
-    showToast("Calendar connected");
-  }
 
   return (
     <div className="p-6">
@@ -101,18 +102,32 @@ export default function Calendar() {
               })}
             </div>
 
-            {/* Provider connect */}
+            {/* Meeting booking — set up by the admin; the customer only sees status and the link */}
             <div className="mt-4 pt-3.5 border-t" style={{ borderColor: "rgba(0,0,0,0.1)" }}>
-              <div className="text-[11px] font-semibold tracking-widest uppercase mb-2.5" style={{ color: "var(--color-text3)" }}>Provider</div>
-              <select className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mb-2" value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option value="cal.com">Cal.com</option>
-                <option value="calendly">Calendly</option>
-                <option value="google">Google Calendar</option>
-              </select>
-              <input className="w-full bg-bg2 border border-bg4 rounded-xl px-3 py-2.5 text-text text-[13.5px] outline-none transition-all duration-200 focus:border-indigo-600 placeholder:text-text3 mb-2" type="text" placeholder="API key or link" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-              <button className="inline-flex items-center justify-center gap-1.5 px-4 py-[9px] rounded-xl text-[13px] font-semibold bg-gradient-to-br from-indigo-600 to-indigo-500 !border-none !text-white hover:brightness-105 transition-all duration-200 ease-out !px-3 !py-[7px] !text-xs !rounded-lg w-full justify-center" onClick={connectCalendar}>
-                <IconPlug size={14} /> Connect
-              </button>
+              <div className="text-[11px] font-semibold tracking-widest uppercase mb-2.5" style={{ color: "var(--color-text3)" }}>Meeting booking</div>
+              {booking === null ? (
+                <p className="text-[12.5px] m-0" style={{ color: "var(--color-text3)" }}>Checking…</p>
+              ) : booking.state === "not_set_up" ? (
+                <p className="text-[12.5px] m-0" style={{ color: "var(--color-text3)" }}>Not set up yet — your admin will set this up.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[12.5px] font-semibold" style={{ color: booking.state === "active" ? "#10b981" : "#f59e0b" }}>{booking.message}</span>
+                  {booking.link && (
+                    <div className="flex gap-1.5">
+                      <a href={booking.link} target="_blank" rel="noopener noreferrer" className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-[7px] rounded-lg text-xs font-semibold bg-bg3 border border-bg4 text-text no-underline">
+                        <IconExternalLink size={13} /> Open
+                      </a>
+                      <button
+                        type="button"
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-[7px] rounded-lg text-xs font-semibold bg-bg3 border border-bg4 text-text cursor-pointer"
+                        onClick={() => navigator.clipboard?.writeText(booking.link!).then(() => showToast("Booking link copied"), () => showToast("Couldn't copy", "error"))}
+                      >
+                        <IconCopy size={13} /> Copy link
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

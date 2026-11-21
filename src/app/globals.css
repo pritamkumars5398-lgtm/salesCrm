@@ -1087,3 +1087,11 @@ textarea.form-input {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Tables inside a scrolling area keep their column headings visible. */
+.table-scroll .data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--color-bg2) !important;
+}
+

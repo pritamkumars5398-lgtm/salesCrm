@@ -100,7 +100,8 @@ export async function getVoiceConfig(agentId: string): Promise<VoiceConfig> {
     recordCalls: (m.callRecording || "On") !== "Off",
     hangupOnVoicemail: (m.callVoicemailDetection || "Off") !== "Off",
     callLanguage: ["Hindi", "Hinglish", "English"].includes(m.callLanguage) ? m.callLanguage : "",
-    maxConcurrentCalls: Number.isFinite(concurrency) && concurrency > 0 ? Math.min(concurrency, 10) : 1,
+    // Unset = 3 calls at once (the admin can set 1 to dial strictly one by one).
+    maxConcurrentCalls: Number.isFinite(concurrency) && concurrency > 0 ? Math.min(concurrency, 10) : 3,
   };
 }
 

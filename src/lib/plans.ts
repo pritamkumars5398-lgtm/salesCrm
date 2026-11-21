@@ -6,6 +6,8 @@ export interface PlanLimits {
   callsPerMonth: number;
   emailsPerMonth: number;
   smsPerMonth: number;
+  /** AI Assistant (chat panel) tokens per month; -1 = unlimited */
+  assistantTokensPerMonth: number;
   /** business lines (workspaces) one organization may run */
   workspaces: number;
 }
@@ -33,12 +35,14 @@ export const PLANS: Record<PlanId, Plan> = {
       emailsPerMonth: 100,
       smsPerMonth: 20,
       workspaces: 2,
+      assistantTokensPerMonth: 50000,
     },
     features: [
+      "50,000 AI assistant tokens / month",
       "2 business workspaces",
       "25 leads / month",
       "50 WhatsApp messages / month",
-      "20 SMS messages / month",
+      "SMS — coming soon",
       "5 AI calls / month",
       "100 emails / month",
       "BYOK (bring your own API keys)",
@@ -56,12 +60,14 @@ export const PLANS: Record<PlanId, Plan> = {
       emailsPerMonth: -1,
       smsPerMonth: 200,
       workspaces: 3,
+      assistantTokensPerMonth: 300000,
     },
     features: [
+      "3 lakh AI assistant tokens / month",
       "3 business workspaces",
       "200 leads / month",
       "500 WhatsApp messages / month",
-      "200 SMS messages / month",
+      "SMS — coming soon",
       "30 AI calls / month",
       "Unlimited emails",
       "CRM pipeline",
@@ -81,12 +87,14 @@ export const PLANS: Record<PlanId, Plan> = {
       emailsPerMonth: -1,
       smsPerMonth: 1000,
       workspaces: 5,
+      assistantTokensPerMonth: 1000000,
     },
     features: [
+      "10 lakh AI assistant tokens / month",
       "5 business workspaces",
       "1,000 leads / month",
       "2,000 WhatsApp messages / month",
-      "1,000 SMS messages / month",
+      "SMS — coming soon",
       "100 AI calls / month",
       "Unlimited emails",
       "Priority support",
@@ -105,12 +113,14 @@ export const PLANS: Record<PlanId, Plan> = {
       emailsPerMonth: -1,
       smsPerMonth: 3000,
       workspaces: -1,
+      assistantTokensPerMonth: -1,
     },
     features: [
+      "Unlimited AI assistant",
       "Unlimited business workspaces",
       "5,000 leads / month",
       "Unlimited WhatsApp messages",
-      "3,000 SMS messages / month",
+      "SMS — coming soon",
       "500 AI calls / month",
       "Unlimited emails",
       "API access",

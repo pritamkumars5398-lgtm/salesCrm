@@ -5,7 +5,7 @@ import { getEmailConfig, sendEmail } from "@/lib/email-service";
 import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   await connectDB();
@@ -61,6 +61,7 @@ export async function GET(req: Request) {
   await connectDB();
   const access = await authorizeWorkspace(req, new URL(req.url).searchParams.get("agentId"), { minRole: "admin" });
   if (!access.ok) return access.response;
+  if (!access.user.isSuperadmin) return deny(403, "Your admin sets this up for you.").response;
   const agentId = access.agentId;
 
   const cfg = await getEmailConfig(agentId);

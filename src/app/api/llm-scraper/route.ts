@@ -7,10 +7,15 @@ import { Usage } from "@/lib/models/Usage";
 import { currentMonth } from "@/lib/utils/date";
 import { checkUsageLimit } from "@/lib/usage-check";
 import { authorizeWorkspace } from "@/server/auth/access";
+import { cleanGroupIds } from "@/server/services/lead-attributes.service";
+import { parseSyncTarget } from "@/server/services/apify.service";
 
 export async function POST(req: Request) {
   await connectDB();
-  const { agentId: requestedAgentId, providerType } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const { agentId: requestedAgentId, providerType, groupId } = body;
+  const target = parseSyncTarget(body);
+  const keyword = target.keyword || "";
   const access = await authorizeWorkspace(req, requestedAgentId);
   if (!access.ok) return access.response;
   const agentId = access.agentId;
@@ -18,6 +23,8 @@ export async function POST(req: Request) {
   if (!providerType || !/^[a-zA-Z]{2,20}$/.test(providerType)) {
     return NextResponse.json({ error: "providerType is required" }, { status: 400 });
   }
+  const groups = groupId ? await cleanGroupIds(agentId, [String(groupId)]) : null;
+  if (groups && !groups.ok) return NextResponse.json({ error: groups.error }, { status: 400 });
 
   const canScrape = await checkUsageLimit(agentId, "leadsScraped", 1);
   if (!canScrape) {
@@ -32,7 +39,15 @@ export async function POST(req: Request) {
 
     const apiKey = m[`${providerType}ApiKey`];
     const model = m[`${providerType}Model`];
-    const prompt = m.llmPrompt;
+    const places = target.locations?.join(", ") || m.leadLocation || "";
+    const extra = [
+      keyword ? `find only: ${keyword}` : "",
+      target.locations?.length ? `only in or near: ${places}` : "",
+      target.total ? `return about ${Math.min(target.total, 50)} leads` : "",
+    ].filter(Boolean);
+    const prompt = extra.length
+      ? `${m.llmPrompt || `Find real businesses that could buy from us${places ? ` in ${places}` : ""}.`}\n\nFor this search — ${extra.join("; ")}.`
+      : m.llmPrompt;
 
     if (!apiKey) {
       return NextResponse.json({ error: `API Key is missing for ${providerType}. Please set it in LLM Scraper config.` }, { status: 400 });
@@ -174,6 +189,7 @@ If any data is missing, use an empty string "" instead of null.`;
           location: String(p.location || ""),
           source: "LLM",
           llmProvider: providerType,
+          ...(groups?.ok && groups.value.length ? { groupIds: groups.value } : {}),
           channels: phone ? ["whatsapp", "call"] : ["email"],
           status: "new",
           pipelineStage: "new",

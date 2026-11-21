@@ -57,7 +57,7 @@ const TOOL_RUNNING: Record<string, string> = {
   get_setup_status: "Checking your setup…",
   get_settings: "Reading settings…",
   update_settings: "Saving settings…",
-  voice_setup: "Checking ElevenLabs…",
+  voice_setup: "Checking the voice setup…",
   get_sequence: "Reading the sequence…",
   set_sequence: "Saving the sequence…",
   find_leads: "Searching leads…",
@@ -142,6 +142,14 @@ export default function AssistantPanel() {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveStep[]>([]);
   const [openThoughts, setOpenThoughts] = useState<Record<number, boolean>>({});
+  // This month's AI assistant tokens (plan + top-ups); left null = unlimited.
+  const [allowance, setAllowance] = useState<{ used: number; limit: number; credits: number; left: number | null } | null>(null);
+  const loadAllowance = () => {
+    if (!agentId) return;
+    fetch(`/api/assistant/usage?agentId=${agentId}`).then((r) => (r.ok ? r.json() : null)).then((d) => d && setAllowance(d)).catch(() => {});
+  };
+  useEffect(() => { if (assistantOpen) loadAllowance(); }, [assistantOpen, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const outOfTokens = allowance?.left === 0;
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -249,6 +257,8 @@ export default function AssistantPanel() {
     } finally {
       setBusy(false);
       setLive([]);
+      loadAllowance();
+      window.dispatchEvent(new Event("crm:usage-changed"));
     }
   }
 
@@ -455,20 +465,49 @@ export default function AssistantPanel() {
 
         {/* Composer */}
         <div className="border-t p-3 flex-shrink-0" style={{ borderColor: "var(--color-bg4)" }}>
+          {allowance && (() => {
+            const unlimited = allowance.left === null;
+            const total = allowance.limit > 0 ? allowance.limit + allowance.credits : 0;
+            const pct = unlimited || !total ? 100 : Math.max(0, Math.min(100, Math.round(((allowance.left ?? 0) / total) * 100)));
+            const low = !unlimited && pct <= 20;
+            const color = outOfTokens ? "#ef4444" : low ? "#f59e0b" : "#8b5cf6";
+            return (
+              <div className="mb-2 flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <span style={{ color: outOfTokens ? "#ef4444" : "var(--color-text3)" }}>
+                    {unlimited
+                      ? "AI assistant · unlimited on your plan"
+                      : outOfTokens
+                        ? "AI assistant tokens used up for this month"
+                        : `${(allowance.left ?? 0).toLocaleString("en-IN")} tokens left this month${allowance.credits ? ` (incl. ${allowance.credits.toLocaleString("en-IN")} extra)` : ""}`}
+                  </span>
+                  {!unlimited && (low || outOfTokens) && (
+                    <a href={`/plans/${agentId}`} className="font-semibold no-underline" style={{ color }}>Top up</a>
+                  )}
+                </div>
+                {!unlimited && (
+                  <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--color-bg4)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-              placeholder={pending ? "Confirm above, or type to do something else…" : "Ask or tell me what to set up…"}
+              disabled={outOfTokens}
+              placeholder={outOfTokens ? "Top up AI assistant tokens to keep chatting" : pending ? "Confirm above, or type to do something else…" : "Ask or tell me what to set up…"}
               rows={1}
               className="flex-1 rounded-xl px-3 py-2 text-[12.5px] outline-none resize-none border"
               style={{ background: "var(--color-bg3)", borderColor: "var(--color-bg4)", color: "var(--color-text)", minHeight: 38, maxHeight: 120 }}
             />
             <button
               onClick={() => submit()}
-              disabled={busy || !input.trim()}
+              disabled={busy || !input.trim() || outOfTokens}
               className="w-[38px] h-[38px] rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: busy || !input.trim() ? "var(--color-bg4)" : "linear-gradient(135deg,#8b5cf6,#6c63ff)", color: "#fff" }}
               title="Send (Enter)"

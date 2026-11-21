@@ -45,7 +45,8 @@ export default function WorkspaceSwitcher({ collapsed, onNavigate }: Props) {
   const showOrgHeaders = orgNames.length > 1;
 
   return (
-    <div ref={ref} style={{ position: "relative", minWidth: 0, flex: 1 }}>
+    // Folded sidebar: just the logo, centred in the 64px column like the icons below it.
+    <div ref={ref} style={{ position: "relative", minWidth: 0, flex: collapsed ? "0 0 auto" : 1 }}>
       <button
         onClick={() => {
           const rect = ref.current?.getBoundingClientRect();
@@ -53,7 +54,7 @@ export default function WorkspaceSwitcher({ collapsed, onNavigate }: Props) {
           setOpen((v) => !v);
         }}
         title={activeAgent?.name}
-        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}
+        style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : undefined, gap: 8, minWidth: 0, width: collapsed ? "auto" : "100%", background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}
       >
         <span
           style={{

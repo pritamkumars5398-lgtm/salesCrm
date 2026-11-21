@@ -16,6 +16,7 @@ import { analyzeCallTranscript, generateCallFollowUpWhatsApp } from "./ai.servic
 import { buildCallInstructions } from "./call-prompt";
 import { applyAiFieldValues } from "./playbook.service";
 import { getLeadHistory } from "./lead-history.service";
+import { notifyOwnerOfInterest } from "./owner-alert.service";
 
 /** Providers whose lead calls run through Plivo + the ElevenLabs bridge. */
 const PLIVO_PROVIDERS = ["Plivo", "ElevenLabs Conversational AI"];
@@ -241,6 +242,14 @@ const SLOT_POLL_MS = 5000;
  * campaign dials leads one batch at a time instead of all at once.
  * Returns an error message if no slot frees up in time.
  */
+/** How many lead calls are live right now and how many may run at once. */
+export async function callSlots(agentId: string): Promise<{ live: number; max: number }> {
+  const cfg = await getVoiceConfig(agentId);
+  await expireStaleCalls({ agentId }, cfg.maxDurationMin);
+  const live = await Call.countDocuments({ agentId, active: true, isTest: { $ne: true } });
+  return { live, max: cfg.maxConcurrentCalls };
+}
+
 export async function waitForCallSlot(agentId: string): Promise<string | null> {
   const cfg = await getVoiceConfig(agentId);
   const deadline = Date.now() + (cfg.maxDurationMin + 3) * 60 * 1000;
@@ -589,6 +598,15 @@ export async function finalizeCall(callId: string) {
       if (lead.pipelineStage === "new" || lead.pipelineStage === "contacted") set.pipelineStage = "replied";
     }
   }
+  const POSITIVE: Record<string, string> = {
+    interested: "Showed interest on the call",
+    meeting_requested: "Agreed to a meeting on the call",
+    callback_requested: "Asked to be called back",
+  };
+  if (call.status === "completed" && leadSpoke && call.outcome && POSITIVE[call.outcome]) {
+    notifyOwnerOfInterest({ agentId, lead, channel: "call", reason: POSITIVE[call.outcome], said: call.summary || undefined });
+  }
+
   await Lead.updateOne({ _id: lead._id }, {
     ...(Object.keys(set).length ? { $set: set } : {}),
     $push: {
@@ -617,4 +635,18 @@ export async function finalizeCall(callId: string) {
     await sendCallWhatsAppDetails(String(call._id), whatsappTopic, "after_call")
       .catch((err) => console.error("[Call] after-call WhatsApp failed:", err));
   }
+}
+
+/**
+ * A call error as a customer should read it. Setup problems (provider, keys, numbers,
+ * the bridge, settings pages) are the admin's to fix, so they get one plain sentence;
+ * problems the customer can act on (bad number, calling hours, plan limits) pass through.
+ */
+export function customerCallError(error: string | undefined): string {
+  const msg = error || "The call couldn't be placed.";
+  if (/plivo|elevenlabs|gemini|vapi|twilio|api key|agent id|settings →|PUBLIC_APP_URL|bridge|npm run|\.env|caller phone|callback/i.test(msg)) {
+    console.error("[call] setup problem hidden from the customer:", msg);
+    return "Calls aren't ready right now — your admin needs to check the call setup.";
+  }
+  return msg;
 }

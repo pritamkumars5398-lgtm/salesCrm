@@ -16,6 +16,7 @@ import { getPlaybook, businessBrief, leadAiContext, aiFillInstructions, applyAiF
 import { findKnowledge } from "@/server/services/knowledge.service";
 import { getFieldDefs } from "@/server/services/lead-groups.service";
 import { getLeadHistory, historyPromptBlock } from "@/server/services/lead-history.service";
+import { notifyOwnerOfInterest } from "@/server/services/owner-alert.service";
 
 export async function handleAgentReply(
   lead: any,
@@ -65,6 +66,15 @@ export async function handleAgentReply(
 
     // 2. Write the reply (same function practice mode uses)
     const parsed = await writeAgentReply(lead, agentId, clientMessageContent, channel);
+
+    // Tell the business owner when the lead shows clear interest (whether or not our reply goes out).
+    if (parsed.interested === true && parsed.status !== "closed" && (channel === "whatsapp" || channel === "email" || channel === "sms")) {
+      notifyOwnerOfInterest({
+        agentId, lead, channel,
+        reason: parsed.interestReason ? String(parsed.interestReason).slice(0, 200) : "Replied with interest",
+        said: clientMessageContent,
+      });
+    }
 
     // 5. Deliver first — only record the reply as sent once the provider accepted it.
     const savedContent = (channel === "email" && parsed.subject)
@@ -193,6 +203,9 @@ export interface AgentReplyDraft {
   status: string;
   subject?: string;
   body: string;
+  /** the lead's message shows real interest (wants a call/demo/price/details to buy) */
+  interested?: boolean;
+  interestReason?: string;
   fields?: Record<string, unknown>;
 }
 
@@ -263,14 +276,18 @@ ${bookingRule}
    - If the message is gibberish, random numbers, spam, or completely out of context (e.g. "234567890" or "dfgdfgd"):
      Set "status" to "closed". Write a polite 1-sentence response asking if they meant to reply or if they want to clarify, without blindly inviting them to book a calendar slot.
 ${fillHelp ? `\n2. ${fillHelp}\n   Put them in a "fields" object (omit the object if the lead revealed nothing).\n` : ""}
-3. Output format:
+3. Interest check (for the business owner, not shown to the lead):
+   - Set "interested" to true ONLY if the lead's latest message shows real buying interest: agrees to a call/demo/meeting, asks for price, a quote, a visit or how to buy/start, or clearly says they're interested. A plain "ok", "thanks", "hi" or a question asked out of curiosity is false.
+   - "interest_reason": a short English phrase of why (e.g. "Asked for the price", "Agreed to a demo"), or "".
+
+4. Output format:
    - You MUST return ONLY a valid JSON object.
    - For email channels, the JSON must contain "status", "subject", and "body".
    - For other channels (whatsapp, sms, call), the JSON must contain "status" and "body" (no subject).
    - FORMATTING: Ensure the "body" uses line breaks (\\n\\n) to separate sentences or ideas. Do NOT output a single massive block of text. Put URLs on their own lines.
 
 Return ONLY valid JSON format:
-${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."' : '{"status": "replied" | "closed", "body": "..."'}${fillHelp ? ', "fields": {...}' : ""}}`;
+${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "body": "..."' : '{"status": "replied" | "closed", "body": "..."'}, "interested": false, "interest_reason": ""${fillHelp ? ', "fields": {...}' : ""}}`;
 
     // 4. Query the workspace's own LLM (provider + key from its settings)
     const raw = await callGroq(agentId, prompt, { json: true, temperature: 0.3, maxTokens: 500 });
@@ -282,5 +299,7 @@ ${channel === "email" ? '{"status": "replied" | "closed", "subject": "...", "bod
     }
 
     if (!parsed.body || typeof parsed.body !== "string") throw new Error("LLM returned no reply body");
+    parsed.interested = parsed.interested === true || parsed.interested === "true";
+    parsed.interestReason = typeof parsed.interest_reason === "string" ? parsed.interest_reason : "";
     return parsed as AgentReplyDraft;
 }

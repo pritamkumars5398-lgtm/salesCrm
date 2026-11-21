@@ -155,7 +155,13 @@ export async function POST(req: Request) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[WhatsApp] ${provider} Error Response:`, errorText);
-      return NextResponse.json({ error: `${provider} API error: ${errorText}` }, { status: response.status });
+      // Never pass the provider's status on: a 401 from WhatsApp means *its* key or
+      // session is bad, but the browser would read it as "your login expired".
+      const providerAuth = response.status === 401 || response.status === 403;
+      const error = providerAuth
+        ? "WhatsApp couldn't send: the WhatsApp connection was rejected (its session may have expired). Ask your admin to reconnect WhatsApp."
+        : `${provider} API error: ${errorText}`;
+      return NextResponse.json({ error }, { status: 502 });
     }
 
     console.log(`[WhatsApp] ${provider} Success Response: 200 OK`);

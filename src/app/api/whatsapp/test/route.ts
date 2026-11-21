@@ -4,7 +4,7 @@ import { Conversation } from "@/lib/models/Conversation";
 import { Lead } from "@/lib/models/Lead";
 import { getWhatsAppConfig } from "@/server/services/settings.service";
 import { sendWhatsAppMessage } from "@/server/services/whatsapp.service";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     await connectDB();
     const access = await authorizeWorkspace(req, requestedAgentId, { minRole: "admin" });
     if (!access.ok) return access.response;
+    if (!access.user.isSuperadmin) return deny(403, "Your admin sets this up for you.").response;
     const agentId = access.agentId;
     if (!to) {
       return NextResponse.json({ error: "to (phone number) is required" }, { status: 400 });

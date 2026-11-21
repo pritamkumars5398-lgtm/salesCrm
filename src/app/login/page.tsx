@@ -1,18 +1,18 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import AuthModal from "@/components/ui/AuthModal";
-import { hasServerSession } from "@/lib/auth";
+import { hasServerSession, homePath } from "@/lib/auth";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const { login } = useAppStore();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     hasServerSession().then((signedIn) => {
-      if (signedIn) router.replace("/dashboard/default");
+      if (signedIn) homePath().then((p) => router.replace(p));
       else setReady(true);
     });
   }, [router]);
@@ -25,8 +25,16 @@ export default function LoginPage() {
       onClose={() => router.push("/")}
       onAuth={(name, email) => {
         login(name, email);
-        router.push("/dashboard/default");
+        homePath().then((p) => router.push(p));
       }}
     />
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   );
 }

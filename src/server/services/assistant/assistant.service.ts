@@ -1,6 +1,7 @@
 import { Agent } from "@/lib/models/Agent";
 import { resolveGroqModel, groqModelParams } from "@/lib/llm";
 import { getLLMConfig } from "../settings.service";
+import { getAssistantAllowance, recordAssistantTokens } from "../assistant-usage.service";
 import { ASSISTANT_TOOLS, TOOLS_BY_NAME, type ToolContext } from "./tools";
 
 /**
@@ -61,16 +62,18 @@ const TOOL_SPECS = ASSISTANT_TOOLS.map((t) => ({
   function: { name: t.name, description: t.description, parameters: t.parameters },
 }));
 
-function systemPrompt(agentName: string, page: string) {
+function systemPrompt(agentName: string, page: string, isPlatformAdmin: boolean) {
   return `You are the built-in AI assistant of a sales CRM (like ClickUp Brain). You set things up and answer questions for the user's workspace "${agentName}" by calling tools — never guess at configuration; read it with tools.
 
-What the CRM does: finds leads (Google Maps/LinkedIn scrapers), contacts them by email, WhatsApp, SMS or AI phone calls (Plivo telephony + ElevenLabs voice agent, often in Hindi), follows up with AI replies, books meetings via Calendly. The "sequence" decides the channel of the first outreach step. Schedules run outreach automatically while the agent is published.
+What the CRM does: finds leads (Google Maps/LinkedIn scrapers), contacts them by email, WhatsApp, SMS or AI phone calls ${isPlatformAdmin ? "(Plivo telephony + ElevenLabs voice agent, often in Hindi)" : "(often in Hindi)"}, follows up with AI replies, books meetings via Calendly. The "sequence" decides the channel of the first outreach step. Schedules run outreach automatically while the agent is published.
 
 Rules:
 - You can manage leads directly: add_lead (e.g. "add 9876543210 as Ramesh Gupta"), update_lead, add_lead_note, delete_lead. Never tell the user something can't be done without checking your tools.
 - Use tools to read and change things. Start with get_setup_status when the user asks what's set up, what's missing or why something fails.
 - For settings, call get_settings to learn exact keys/options before update_settings if unsure.
-- When a needed value is missing (an API key, phone number, link), ask the user for it in one short question.
+${isPlatformAdmin
+  ? "- When a needed value is missing (an API key, phone number, link), ask the user for it in one short question."
+  : "- The user's admin sets up every connection (AI, calls, voice engine, email, WhatsApp, SMS, Calendly, lead sources). Never ask the user for API keys or provider settings and never name the providers or models behind the CRM. If a channel isn't set up or needs attention, say their admin will take care of it. The user may change their business details, the call language, the call's opening line and pick one of the offered voices.\n- When a needed business value is missing (phone number, link), ask the user for it in one short question."}
 - Actions that contact leads, cost money or change automation (calls, campaigns, publishing, schedules) — call the tool directly; the app shows the user a Confirm button. Don't ask "shall I?" in text first.
 - Before acting on one specific lead, make sure it's the right one: use find_leads without guessing filters. If exactly one lead's name matches (ignoring case), use it; if several match, list the top few (name, city, phone) and ask which one.
 - If a tool returns an error, explain it plainly and say exactly how to fix it.
@@ -143,7 +146,7 @@ function forModel(messages: ChatMessage[]): ChatMessage[] {
   );
 }
 
-async function callLLM(agentId: string, messages: ChatMessage[], system: string): Promise<ChatMessage> {
+async function callLLM(agentId: string, messages: ChatMessage[], system: string, onTokens?: (n: number) => void): Promise<ChatMessage> {
   const llm = await getLLMConfig(agentId);
   if (!llm) throw new Error("No AI key configured — add one in Settings → AI Brain.");
   const isOpenAi = (llm.provider.includes("OpenAI") || llm.provider.includes("GPT")) && !llm.apiKey.startsWith("gsk_");
@@ -188,6 +191,7 @@ async function callLLM(agentId: string, messages: ChatMessage[], system: string)
     if (res.status === 429) throw new Error("The AI provider's rate limit was hit (Groq free tier allows ~8,000 tokens/minute). Wait a few seconds and try again, or upgrade the Groq plan.");
     throw new Error(`AI error: ${data.error?.message || `HTTP ${res.status}`}`);
   }
+  onTokens?.(Number(data.usage?.total_tokens) || 0);
   const msg = data.choices?.[0]?.message ?? {};
   const reasoning = typeof msg.reasoning === "string" ? msg.reasoning.trim().slice(0, 2000) : "";
   return {
@@ -227,6 +231,8 @@ async function runPendingToolCalls(
       result = { error: `Unknown tool ${call.function.name}` };
     } else if (tool.adminOnly && !ctx.canManage) {
       result = { error: "Only workspace admins can change this. Ask an admin of this organization." };
+    } else if (tool.platformOnly && !ctx.isPlatformAdmin) {
+      result = { error: "This is set up by the user's admin. Tell the user their admin will take care of it; don't ask for keys." };
     } else if (tool.confirm && confirm?.toolCallId !== call.id) {
       const summary = tool.summarize ? await tool.summarize(args, ctx) : `Run ${tool.name}`;
       return { toolCallId: call.id, name: tool.name, summary };
@@ -279,17 +285,19 @@ export async function runAssistant(opts: {
   agentId: string;
   req: Request;
   canManage: boolean;
+  /** superadmin — may change keys, providers and the voice engine */
+  isPlatformAdmin?: boolean;
   messages: unknown;
   page?: string;
   confirm?: { toolCallId: string; approved: boolean };
   onEvent?: Emit;
 }): Promise<AssistantResult> {
   const emit: Emit = opts.onEvent ?? (() => {});
-  const ctx: ToolContext = { agentId: opts.agentId, req: opts.req, canManage: opts.canManage };
+  const ctx: ToolContext = { agentId: opts.agentId, req: opts.req, canManage: opts.canManage, isPlatformAdmin: !!opts.isPlatformAdmin };
   const messages = trimHistory(closeDanglingToolCalls(sanitize(opts.messages)));
   const changes = new Set<string>();
   const agent = await Agent.findById(opts.agentId).select("name").lean();
-  const system = systemPrompt(agent?.name || "this workspace", opts.page || "dashboard");
+  const system = systemPrompt(agent?.name || "this workspace", opts.page || "dashboard", !!opts.isPlatformAdmin);
 
   const done = (pending?: PendingAction): AssistantResult => ({ messages: redact(messages), pending, changes: [...changes] });
 
@@ -301,7 +309,16 @@ export async function runAssistant(opts: {
     const last = messages[messages.length - 1];
     if (last?.role === "assistant" && !last.tool_calls?.length) break; // answered
     emit({ type: "status", text: messages[messages.length - 1]?.role === "tool" ? "Reviewing the results…" : "Thinking…" });
-    const reply = await callLLM(opts.agentId, messages, system);
+    // Monthly AI assistant tokens (plan + top-ups).
+    const allowance = await getAssistantAllowance(opts.agentId);
+    if (allowance.left <= 0) {
+      throw new Error(allowance.limit === 0
+        ? "The AI assistant is turned off for your account. Contact your admin."
+        : "Monthly AI assistant limit reached — top up assistant tokens or upgrade your plan on the Plans page.");
+    }
+    let used = 0;
+    const reply = await callLLM(opts.agentId, messages, system, (n) => { used = n; });
+    await recordAssistantTokens(opts.agentId, used).catch((e) => console.error("[Assistant] token count failed:", e));
     if (reply.reasoning) emit({ type: "reasoning", text: reply.reasoning });
     messages.push(reply);
     if (!reply.tool_calls?.length) break;

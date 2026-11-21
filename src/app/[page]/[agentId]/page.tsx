@@ -20,6 +20,8 @@ import VoiceTest from "@/components/pages/VoiceTest";
 import Inbox from "@/components/pages/Inbox";
 import VoiceInbox from "@/components/pages/VoiceInbox";
 
+const OWN_SCROLL_PAGES = new Set(["leads", "settings", "profile", "sequence", "inbox", "voice-inbox", "voice"]);
+
 interface PageProps {
   params: Promise<{ page: string; agentId: string }>;
 }
@@ -43,6 +45,7 @@ export default function Home({ params }: PageProps) {
     }
   }, [pageParam, currentPage, setPage]);
 
+  const body = (() => {
   switch (pageParam) {
     case "dashboard":
       return <Dashboard />;
@@ -84,4 +87,10 @@ export default function Home({ params }: PageProps) {
     default:
       return null;
   }
+  })();
+
+  // These pages fill the frame and scroll their own inner parts (lists, chats, panels);
+  // every other page scrolls as one inside the fixed frame.
+  if (OWN_SCROLL_PAGES.has(pageParam)) return body;
+  return <div className="flex-1 min-h-0 overflow-y-auto">{body}</div>;
 }

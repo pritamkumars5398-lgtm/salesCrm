@@ -4,6 +4,8 @@
  * once instead of leaving every screen half-broken. A "Workspace not found"
  * means the open workspace was deleted or the user lost access to it.
  */
+import { SESSION_EXPIRED_ERROR } from "@/lib/session-messages";
+
 if (typeof window !== "undefined" && !(window as unknown as { __sessionGuard__?: boolean }).__sessionGuard__) {
   (window as unknown as { __sessionGuard__?: boolean }).__sessionGuard__ = true;
   const originalFetch = window.fetch;
@@ -16,9 +18,14 @@ if (typeof window !== "undefined" && !(window as unknown as { __sessionGuard__?:
       const path = url.startsWith("http") ? new URL(url).pathname : url;
       if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
         if (response.status === 401) {
-          redirecting = true;
-          localStorage.removeItem("sa_user");
-          window.location.replace("/?session=expired");
+          // Only our own login check means "signed out" — not a 401 some outside
+          // service (WhatsApp, email, a voice provider) sent back through a route.
+          const body = await response.clone().json().catch(() => null);
+          if (body?.error === SESSION_EXPIRED_ERROR) {
+            redirecting = true;
+            localStorage.removeItem("sa_user");
+            window.location.replace("/?session=expired");
+          }
         } else {
           // Access to the open workspace was removed (or it was deleted) — reload into one the user can open.
           const body = await response.clone().json().catch(() => null);
@@ -33,4 +40,3 @@ if (typeof window !== "undefined" && !(window as unknown as { __sessionGuard__?:
   };
 }
 
-export {};

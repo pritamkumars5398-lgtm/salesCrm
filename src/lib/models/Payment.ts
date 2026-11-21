@@ -6,7 +6,14 @@ import type { PlanId } from "@/lib/plans";
 export interface IPayment extends Document {
   organizationId: Types.ObjectId;
   userId: Types.ObjectId;
-  planId: Exclude<PlanId, "free">;
+  /** what was bought: 30 days of a plan, or a top-up pack */
+  kind: "plan" | "topup";
+  /** set for plan payments */
+  planId?: Exclude<PlanId, "free">;
+  /** set for top-up payments (see src/lib/topups.ts) */
+  topUpPackId?: string;
+  topUpField?: string;
+  topUpUnits?: number;
   /** in paise, fixed when the order was created */
   amount: number;
   currency: "INR";
@@ -27,7 +34,11 @@ const PaymentSchema = new Schema<IPayment>(
   {
     organizationId:    { type: Schema.Types.ObjectId, ref: "Organization", required: true },
     userId:            { type: Schema.Types.ObjectId, ref: "User", required: true },
-    planId:            { type: String, enum: ["starter", "growth", "pro"], required: true },
+    kind:              { type: String, enum: ["plan", "topup"], default: "plan" },
+    planId:            { type: String, enum: ["starter", "growth", "pro"], required: function (this: { kind?: string }) { return this.kind !== "topup"; } },
+    topUpPackId:       { type: String },
+    topUpField:        { type: String },
+    topUpUnits:        { type: Number },
     amount:            { type: Number, required: true },
     currency:          { type: String, default: "INR" },
     razorpayOrderId:   { type: String, required: true, unique: true },

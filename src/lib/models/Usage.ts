@@ -9,6 +9,8 @@ export interface IUsage extends Document {
   callsMade: number;
   emailsSent: number;
   smsSent: number;
+  /** AI Assistant chat tokens (prompt + reply) */
+  assistantTokens: number;
 }
 
 const UsageSchema = new Schema<IUsage>({
@@ -19,6 +21,7 @@ const UsageSchema = new Schema<IUsage>({
   callsMade:    { type: Number, default: 0 },
   emailsSent:   { type: Number, default: 0 },
   smsSent:      { type: Number, default: 0 },
+  assistantTokens: { type: Number, default: 0 },
 });
 
 UsageSchema.index({ agentId: 1, month: 1 }, { unique: true });

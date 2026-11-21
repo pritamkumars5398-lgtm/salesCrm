@@ -54,7 +54,7 @@ export default function CreateWorkspaceModal({ onClose }: Props) {
       setActiveAgent(workspace);
       showToast(`"${workspace.name}" created — tell the AI what it sells next.`, "success");
       onClose();
-      router.push(`/settings/${workspace._id}?tab=playbook`);
+      router.push(`/settings/${workspace._id}?tab=business`);
     } finally {
       setSaving(false);
     }

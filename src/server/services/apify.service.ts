@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 /**
  * Apify scraping service — single implementation used by the /api/apify routes
  * (interactive Sync panel) and the cron executor (scheduled "scrape → outreach").
@@ -42,7 +43,35 @@ export interface StartedRun {
 
 // ─── config loading ───────────────────────────────────────────────────────────
 
-export async function getAllConfigs(agentId: string, opts: { withoutToken?: boolean } = {}): Promise<ScraperConfig[]> {
+/**
+ * One sync's own choices, made in the Sync window — each one replaces the
+ * workspace's saved value for this sync only.
+ */
+export interface SyncTarget {
+  /** what kind of business to search for, e.g. "Solar panel dealers" */
+  keyword?: string;
+  /** places to search in, e.g. ["Lucknow", "Noida"] */
+  locations?: string[];
+  /** roughly how many leads to fetch in total */
+  total?: number;
+}
+
+const MAX_SYNC_TOTAL = 500;
+
+/** Read a SyncTarget from a request body or query, dropping anything odd. */
+export function parseSyncTarget(raw: { keyword?: unknown; locations?: unknown; total?: unknown }): SyncTarget {
+  const keyword = typeof raw.keyword === "string" ? raw.keyword.trim().slice(0, 80) : "";
+  const list = Array.isArray(raw.locations) ? raw.locations : typeof raw.locations === "string" ? raw.locations.split(",") : [];
+  const locations = [...new Set(list.map((l) => String(l).trim().slice(0, 60)).filter(Boolean))].slice(0, 10);
+  const n = parseInt(String(raw.total ?? ""), 10);
+  const total = Number.isFinite(n) && n > 0 ? Math.min(n, MAX_SYNC_TOTAL) : undefined;
+  return { ...(keyword ? { keyword } : {}), ...(locations.length ? { locations } : {}), ...(total ? { total } : {}) };
+}
+
+/** `keyword` / `locations` / `total` replace the business's usual search for one sync. */
+export async function getAllConfigs(agentId: string, opts: { withoutToken?: boolean } & SyncTarget = {}): Promise<ScraperConfig[]> {
+  const override = opts.keyword?.trim() || "";
+  const placesOverride = opts.locations?.length ? opts.locations : null;
   const keys = [
     "apifyToken",
     "google-mapsEnabled", "linkedinEnabled", "justdialEnabled", "customEnabled",
@@ -73,22 +102,26 @@ export async function getAllConfigs(agentId: string, opts: { withoutToken?: bool
   if (activeLocations.length === 0) {
     activeLocations = [m.gmLocation || m.leadLocation || "Lucknow"];
   }
+  if (placesOverride) activeLocations = placesOverride;
+  // "How many leads": split across places (and search terms), at most 100 per search.
+  const perSearch = (searches: number) => opts.total ? Math.max(1, Math.min(IMPORT_PER_RUN, Math.ceil(opts.total / Math.max(1, searches)))) : null;
 
   // Google Maps
   if (m["google-mapsEnabled"] !== "false") {
-    const keyword  = m.gmKeyword  || m.industry    || "Carpenter";
-    const max      = parseInt(m.gmMaxResults ?? "25", 10) || 25;
+    const keyword  = override || m.gmKeyword  || m.industry    || "Carpenter";
+    let max        = parseInt(m.gmMaxResults ?? "25", 10) || 25;
     const configured = m.gmActorId || m.apifyActorId;
     const actorId  = !configured || configured === TRUNCATED_GM_ACTOR ? DEFAULT_GM_ACTOR : configured;
     
-    let gmLocs = m.gmLocation ? m.gmLocation.split(",").map(s => s.trim()).filter(Boolean) : [];
+    let gmLocs = !placesOverride && m.gmLocation ? m.gmLocation.split(",").map(s => s.trim()).filter(Boolean) : [];
     if (gmLocs.length === 0) gmLocs = activeLocations;
 
-    const extraKeywords = (m.gmExtraKeywords ?? "")
+    const extraKeywords = (override ? "" : m.gmExtraKeywords ?? "")
       .split(/[\n,]/)
       .map((s) => s.trim())
       .filter(Boolean);
     const allKeywords = [keyword, ...extraKeywords].filter((v, i, a) => a.indexOf(v) === i);
+    max = perSearch(gmLocs.length * allKeywords.length) ?? max;
 
     gmLocs.forEach((location) => {
       const searchStrings = allKeywords.map((k) => `${k} in ${location}`);
@@ -114,8 +147,8 @@ export async function getAllConfigs(agentId: string, opts: { withoutToken?: bool
   if (m.linkedinEnabled !== "false") {
     const actorId  = m.liActorId || DEFAULT_LI_ACTOR;
     const fallbackKeyword = m.industry || "Carpenter";
-    const keywords = m.liKeywords || `${fallbackKeyword} ${activeLocations[0] || "Lucknow"}`;
-    const max      = parseInt(m.liMaxResults ?? "20", 10) || 20;
+    const keywords = override ? `${override} ${activeLocations[0] || ""}`.trim() : m.liKeywords || `${fallbackKeyword} ${activeLocations[0] || "Lucknow"}`;
+    const max      = perSearch(1) ?? (parseInt(m.liMaxResults ?? "20", 10) || 20);
     configs.push({
       token: m.apifyToken, actorId, scraperType: "linkedin",
       searchLabel: `LinkedIn: "${keywords}"`,
@@ -125,11 +158,10 @@ export async function getAllConfigs(agentId: string, opts: { withoutToken?: bool
 
   // JustDial
   if (m.justdialEnabled !== "false" && m.jdActorId) {
-    const category = m.jdCategory || m.industry || "Carpenter";
-    const max      = Math.max(parseInt(m.jdMaxResults ?? "30", 10) || 30, 10);
-    
-    let jdLocs = m.jdCity ? m.jdCity.split(",").map(s => s.trim()).filter(Boolean) : [];
+    const category = override || m.jdCategory || m.industry || "Carpenter";
+    let jdLocs = !placesOverride && m.jdCity ? m.jdCity.split(",").map(s => s.trim()).filter(Boolean) : [];
     if (jdLocs.length === 0) jdLocs = activeLocations;
+    const max      = perSearch(jdLocs.length) ?? Math.max(parseInt(m.jdMaxResults ?? "30", 10) || 30, 10);
 
     jdLocs.forEach((location) => {
       configs.push({
@@ -166,11 +198,11 @@ function apifyHeaders(token: string) {
 // ─── run lifecycle ────────────────────────────────────────────────────────────
 
 /** Start all enabled scraper runs in parallel. */
-export async function startApifyRuns(agentId: string): Promise<{
+export async function startApifyRuns(agentId: string, opts: SyncTarget = {}): Promise<{
   started: StartedRun[];
   warnings: string[];
 }> {
-  const configs = await getAllConfigs(agentId);
+  const configs = await getAllConfigs(agentId, opts);
   if (!configs.length) {
     throw new Error("No enabled scrapers configured. Go to Settings → Apify Scrapers.");
   }
@@ -276,7 +308,8 @@ export async function leadQuota(agentId: string): Promise<{ limit: number; used:
 export async function importDataset(
   agentId: string,
   datasetId: string,
-  scraperType: ScraperType
+  scraperType: ScraperType,
+  opts: { groupIds?: Types.ObjectId[] } = {},
 ): Promise<ImportResult> {
   const [{ limit, used }, locationsRow, filterRow] = await Promise.all([
     leadQuota(agentId),
@@ -435,6 +468,7 @@ export async function importDataset(
         website:       website.trim(),
         location:      leadLocation,
         tags,
+        ...(opts.groupIds?.length ? { groupIds: opts.groupIds } : {}),
         customFields: {
           reviewsCount: reviews || undefined,
           rating: rating || undefined,

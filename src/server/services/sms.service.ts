@@ -3,6 +3,7 @@ import { currentMonth } from "@/lib/utils/date";
 import { getSettingsMap } from "./settings.service";
 import { normalizePhone } from "./whatsapp.service";
 import { platformEnv } from "./platform-credentials";
+import { SMS_COMING_SOON, SMS_COMING_SOON_MESSAGE } from "@/lib/constants/coming-soon";
 
 export interface SmsResult {
   provider: string;
@@ -16,6 +17,7 @@ export interface SmsResult {
  * /api/sms/send route sits behind the session-cookie middleware.
  */
 export async function sendSms(agentId: string, to: string, text: string): Promise<SmsResult> {
+  if (SMS_COMING_SOON) throw new Error(SMS_COMING_SOON_MESSAGE);
   const [m, env] = await Promise.all([
     getSettingsMap(agentId, ["smsProvider", "smsApiKey", "smsAccountSid", "smsFrom"]),
     platformEnv(agentId),

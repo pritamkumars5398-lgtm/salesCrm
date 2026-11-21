@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { IconArrowLeft, IconEye, IconEyeOff, IconCheck, IconSparkles } from "@tabler/icons-react";
 import { authLogin, authSignup, requestAccess } from "@/lib/auth";
 import Button from "@/components/ui/Button";
@@ -12,6 +13,10 @@ interface Props {
 }
 
 export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   const [mode, setMode] = useState(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -20,8 +25,13 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Sync step param from URL (?step=1|2|3)
+  const stepParam = searchParams?.get("step");
+  const parsedStep = stepParam ? parseInt(stepParam, 10) : 1;
+  const initialStep = !isNaN(parsedStep) && parsedStep >= 1 && parsedStep <= 3 ? parsedStep : 1;
+
   // Request Access / Onboarding Wizard steps
-  const [signupStep, setSignupStep] = useState(1);
+  const [signupStep, setSignupStep] = useState(initialStep);
   const [businessName, setBusinessName] = useState("");
   const [businessWebsite, setBusinessWebsite] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
@@ -29,6 +39,42 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
   const [docLink, setDocLink] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+
+  // Keep mode in sync with props/path
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  // Keep signup step in sync with URL search param
+  useEffect(() => {
+    if (stepParam) {
+      const s = parseInt(stepParam, 10);
+      if (!isNaN(s) && s >= 1 && s <= 3) {
+        setSignupStep(s);
+      }
+    }
+  }, [stepParam]);
+
+  const changeStep = (nextStep: number) => {
+    const clamped = Math.max(1, Math.min(3, nextStep));
+    setSignupStep(clamped);
+    setError("");
+    const targetBase = pathname?.includes("request") ? pathname : "/request-access";
+    router.replace(`${targetBase}?step=${clamped}`, { scroll: false });
+  };
+
+  const handleSwitchToLogin = () => {
+    setMode("login");
+    setError("");
+    router.push("/login");
+  };
+
+  const handleSwitchToRequestAccess = (step = 1) => {
+    setMode("signup");
+    setError("");
+    setSignupStep(step);
+    router.push(`/request-access?step=${step}`);
+  };
 
   async function handleAction(e: React.FormEvent) {
     e.preventDefault();
@@ -52,10 +98,10 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
     // Request Access / Onboarding flow (Admin configured model)
     if (signupStep === 1) {
       if (!name || !email) { setError("Name and Email are required."); return; }
-      setSignupStep(2);
+      changeStep(2);
     } else if (signupStep === 2) {
       if (!businessName) { setError("Please specify your Business Name."); return; }
-      setSignupStep(3);
+      changeStep(3);
     } else if (signupStep === 3) {
       setLoading(true);
       try {
@@ -245,8 +291,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                 style={{ width: "100%" }}
                 onClick={() => {
                   setRequestSubmitted(false);
-                  setMode("login");
-                  setSignupStep(1);
+                  handleSwitchToLogin();
                 }}
               >
                 Return to Login
@@ -279,10 +324,29 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text3)", textTransform: "uppercase" }}>
                 Step {signupStep} of 3
               </span>
-              <div style={{ display: "flex", gap: 4, width: "60%" }}>
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 1 ? "#df2a2a" : "var(--color-bg4)" }} />
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 2 ? "#df2a2a" : "var(--color-bg4)" }} />
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: signupStep >= 3 ? "#df2a2a" : "var(--color-bg4)" }} />
+              <div style={{ display: "flex", gap: 6, width: "60%" }}>
+                {[1, 2, 3].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => {
+                      // Allow navigating directly to current or visited steps
+                      if (s <= signupStep) changeStep(s);
+                    }}
+                    title={`Go to Step ${s}`}
+                    style={{
+                      flex: 1,
+                      height: 4,
+                      borderRadius: 2,
+                      background: signupStep >= s ? "#df2a2a" : "var(--color-bg4)",
+                      border: "none",
+                      padding: 0,
+                      cursor: s <= signupStep ? "pointer" : "default",
+                      transition: "background 0.2s ease",
+                    }}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -401,7 +465,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
                   size="lg"
                   disabled={loading}
                   style={{ flex: 1 }}
-                  onClick={() => setSignupStep((s) => s - 1)}
+                  onClick={() => changeStep(signupStep - 1)}
                 >
                   Back
                 </Button>
@@ -430,7 +494,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => { setMode("login"); setError(""); setSignupStep(1); }}
+                onClick={handleSwitchToLogin}
                 style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#df2a2a", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Log in to your dashboard →
@@ -444,7 +508,7 @@ export default function AuthModal({ mode: initialMode, onClose, onAuth }: Props)
               <button
                 type="button"
                 disabled={loading}
-                onClick={() => { setMode("signup"); setError(""); setSignupStep(1); }}
+                onClick={() => handleSwitchToRequestAccess(1)}
                 style={{ background: "none", border: "none", cursor: loading ? "not-allowed" : "pointer", color: "#df2a2a", fontWeight: 700, padding: 0, fontSize: 13, opacity: loading ? 0.6 : 1 }}
               >
                 Request Workspace Setup →

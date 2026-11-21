@@ -1,6 +1,7 @@
 import { Usage } from "@/lib/models/Usage";
 import { Setting } from "@/lib/models/Setting";
 import { Agent } from "@/lib/models/Agent";
+import { Organization } from "@/lib/models/Organization";
 import { PLANS, type PlanId, type PlanLimits } from "@/lib/plans";
 import { currentMonth } from "@/lib/utils/date";
 import { getOrganizationLimits, getOrganizationUsage, UsageField } from "@/server/services/workspace.service";
@@ -11,6 +12,7 @@ const LIMIT_KEY: Record<UsageField, keyof PlanLimits> = {
   emailsSent: "emailsPerMonth",
   smsSent: "smsPerMonth",
   callsMade: "callsPerMonth",
+  assistantTokens: "assistantTokensPerMonth",
 };
 
 /**
@@ -29,7 +31,16 @@ export async function checkUsageLimit(
     const orgId = String(agent.organizationId);
     const [{ limits }, usage] = await Promise.all([getOrganizationLimits(orgId), getOrganizationUsage(orgId)]);
     const max = limits[LIMIT_KEY[field]];
-    return max === -1 || usage[field] + incrementAmount <= max;
+    if (max === 0) return false; // switched off for this client by the platform admin
+    if (max === -1 || usage[field] + incrementAmount <= max) return true;
+    // Over the monthly plan limit: use bought top-up credits, if there are enough (atomic, so
+    // two sends at once can't spend the same credit).
+    const paid = await Organization.findOneAndUpdate(
+      { _id: orgId, [`topUpCredits.${field}`]: { $gte: incrementAmount } },
+      { $inc: { [`topUpCredits.${field}`]: -incrementAmount } },
+      { new: true },
+    ).select("_id").lean();
+    return !!paid;
   }
 
   const month = currentMonth();

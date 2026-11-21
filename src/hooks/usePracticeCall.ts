@@ -83,10 +83,11 @@ export function usePracticeCall(agentId: string | undefined, leadId: string | nu
 
   useEffect(() => {
     if (!agentId) return;
-    fetch(`/api/settings?agentId=${agentId}`)
+    // Show the voice the AI voice card shows (the one calls really use) before the call starts.
+    fetch(`/api/channels/voices?agentId=${agentId}`)
       .then((r) => r.json())
-      .then((s) => {
-        if (s?.voiceProvider) setProvider(s.voiceProvider);
+      .then((d) => {
+        if (d?.current?.name) setVoiceName(d.current.name);
       })
       .catch(() => {});
   }, [agentId]);

@@ -17,13 +17,12 @@ export interface SequenceTemplate {
 export const SEQUENCE_TEMPLATES: SequenceTemplate[] = [
   {
     name: "Cold outreach",
-    desc: "Email → WA → SMS → Call",
-    meta: "4 steps · 4 days",
+    desc: "Email → WA → Call",
+    meta: "3 steps · 3 days",
     steps: [
       { order: 1, channel: "email",    dayOffset: 1, sendTime: "10:00" },
       { order: 2, channel: "whatsapp", dayOffset: 2, sendTime: "11:00" },
-      { order: 3, channel: "sms",      dayOffset: 3, sendTime: "15:00" },
-      { order: 4, channel: "call",     dayOffset: 4, sendTime: "10:00" },
+      { order: 3, channel: "call",     dayOffset: 3, sendTime: "10:00" },
     ],
   },
   {
@@ -50,6 +49,5 @@ export const SEQUENCE_TEMPLATES: SequenceTemplate[] = [
 export const DEFAULT_SEQUENCE_STEPS: SequenceStep[] = [
   { order: 1, channel: "email",    dayOffset: 1, sendTime: "10:00" },
   { order: 2, channel: "whatsapp", dayOffset: 2, sendTime: "11:00" },
-  { order: 3, channel: "sms",      dayOffset: 3, sendTime: "15:00" },
-  { order: 4, channel: "call",     dayOffset: 4, sendTime: "10:00" },
+  { order: 3, channel: "call",     dayOffset: 3, sendTime: "10:00" },
 ];

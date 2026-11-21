@@ -23,7 +23,7 @@ const DEFAULT_SCHEDULE: ScheduleState = {
 
 const ACTION_OPTIONS = [
   { value: "start_outreach", label: "Start outreach",  Icon: IconPlayerPlay, color: "#22c97a" },
-  { value: "sync_apify",     label: "Sync Apify",      Icon: IconRefresh,    color: "#4dabf7" },
+  { value: "sync_apify",     label: "Sync lead sources",      Icon: IconRefresh,    color: "#4dabf7" },
   { value: "send_report",    label: "Send report",     Icon: IconMail,       color: "#f5a623" },
   { value: "pause_agent",    label: "Pause agent",     Icon: IconRobot,      color: "#ff6b6b" },
   { value: "resume_agent",   label: "Resume agent",    Icon: IconRobot,      color: "#22c97a" },

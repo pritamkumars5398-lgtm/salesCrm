@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Setting } from "@/lib/models/Setting";
 import { Conversation } from "@/lib/models/Conversation";
 import { Lead } from "@/lib/models/Lead";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 import { platformEnv } from "@/server/services/platform-credentials";
 
 export async function GET(req: Request) {
@@ -67,6 +67,7 @@ export async function POST(req: Request) {
     await connectDB();
     const access = await authorizeWorkspace(req, requestedAgentId, { minRole: "admin" });
     if (!access.ok) return access.response;
+    if (!access.user.isSuperadmin) return deny(403, "Your admin sets this up for you.").response;
     const agentId = access.agentId;
     if (!to) {
       return NextResponse.json({ error: "to (phone number) is required" }, { status: 400 });

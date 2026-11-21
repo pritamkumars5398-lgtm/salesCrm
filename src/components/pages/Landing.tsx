@@ -95,7 +95,7 @@ const STEPS = [
   {
     n: "01",
     title: "Set up your agent",
-    desc: "Pick your AI model, connect your channels (Email, WhatsApp, SMS, Voice), and tell the agent about your business and target leads.",
+    desc: "Pick your AI model, connect your channels (Email, WhatsApp, Voice — SMS coming soon), and tell the agent about your business and target leads.",
   },
   {
     n: "02",
@@ -126,7 +126,7 @@ const CHANNELS = [
     Icon: IconMessage,
     color: "#cc99ff",
     bg: "rgba(204,153,255,0.1)",
-    label: "SMS",
+    label: "SMS (soon)",
   },
   {
     Icon: IconPhone,
@@ -137,7 +137,7 @@ const CHANNELS = [
 ];
 
 const STATS = [
-  { value: "4 channels", label: "Email · WhatsApp · SMS · Voice" },
+  { value: "3 channels", label: "Email · WhatsApp · Voice · SMS soon" },
   { value: "10× faster", label: "outreach vs manual SDR" },
   { value: "24 / 7", label: "AI never sleeps or forgets" },
   { value: "0 missed", label: "follow-ups, ever" },
@@ -145,7 +145,7 @@ const STATS = [
 
 const PILLARS = [
   { color: "#df2a2a", title: "Always On", desc: "Your agent emails, messages, and calls leads while your team is offline." },
-  { color: "#4dabf7", title: "Channel-Native", desc: "Real email threads, WhatsApp chats, SMS, and voice calls — not just one inbox." },
+  { color: "#4dabf7", title: "Channel-Native", desc: "Real email threads, WhatsApp chats and voice calls (SMS coming soon) — not just one inbox." },
   { color: "#22c97a", title: "Fast to Launch", desc: "Connect a channel, write a sequence, import leads. Live in minutes, not weeks." },
   { color: "#cc99ff", title: "Built to Convert", desc: "Every reply, call, and status update lands in one CRM view your team already trusts." },
 ];
@@ -199,7 +199,7 @@ export default function Landing({
     setParallax({ x: 0, y: 0 });
   };
 
-  const openSignup = () => router.push("/signup");
+  const openSignup = () => router.push("/request-access?step=1");
   const openLogin = () => router.push("/login");
 
   // Hero entrance animation trigger
@@ -987,8 +987,8 @@ export default function Landing({
               margin: "0 auto 36px",
             }}
           >
-            SalesAgent runs personalized outreach across Email, WhatsApp, SMS,
-            and Voice — 24/7 — so your team focuses on closing, not chasing.
+            SalesAgent runs personalized outreach across Email, WhatsApp and Voice
+            (SMS coming soon) — 24/7 — so your team focuses on closing, not chasing.
           </p>
 
           <div

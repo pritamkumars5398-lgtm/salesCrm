@@ -13,7 +13,7 @@ import { currentMonth } from "@/lib/utils/date";
 import { getEmailConfig } from "@/lib/email-service";
 import { getLLMConfig, getSettingsMap, getVoiceConfig, getWhatsAppConfig, getAppBaseUrl } from "../settings.service";
 import { checkElevenLabs, createElevenLabsAgent, fixElevenLabsAgent } from "../elevenlabs.service";
-import { placeAiCall, getVoiceSetupError } from "../call.service";
+import { customerCallError, placeAiCall, getVoiceSetupError } from "../call.service";
 import { normalizeDialableNumber } from "@/lib/plivo-service";
 import { countEligibleLeads, createCampaign, preflightCheck, processCampaign } from "../campaign.service";
 import { armSchedules, unpublishAgent } from "../cron.service";
@@ -27,11 +27,21 @@ import { platformEnv } from "../platform-credentials";
  * Confirm card before they execute.
  */
 
+import { getChannelStatus } from "@/server/services/channel-status.service";
+import { isVoiceAllowed } from "@/server/services/voice-options.service";
+import { HIDDEN_FROM_CUSTOMER_KEYS, isAdminOnlyKey } from "@/lib/constants/admin-settings";
+import { isSecretSettingKey } from "@/lib/secret-settings";
+
+/** Voice settings a customer may change themselves (also on the AI voice card). */
+const CUSTOMER_VOICE_KEYS = new Set(["callLanguage", "callGreeting", "voiceId"]);
+
 export interface ToolContext {
   agentId: string;
   req: Request;
   /** owner/admin — members can't change settings, schedules or publishing */
   canManage: boolean;
+  /** the platform admin (superadmin): the only one who sets up keys, providers, models and channels */
+  isPlatformAdmin: boolean;
 }
 
 export interface AssistantTool {
@@ -46,6 +56,8 @@ export interface AssistantTool {
   changes?: string[];
   /** changes workspace configuration — owner/admin only */
   adminOnly?: boolean;
+  /** technical setup (keys, providers, voice engine) — platform admin only */
+  platformOnly?: boolean;
   run: (args: any, ctx: ToolContext) => Promise<unknown>;
 }
 
@@ -110,7 +122,25 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     name: "get_setup_status",
     description: "Overview of how this CRM agent is set up: published status, which channels (AI, email, WhatsApp, SMS, voice calls, Calendly) are configured and working, the active sequence, schedules and lead counts. Call this first when the user asks what's set up, what's missing, or why something doesn't work.",
     parameters: { type: "object", properties: {} },
-    run: async (_args, { agentId }) => {
+    run: async (_args, { agentId, isPlatformAdmin }) => {
+      // Customers see what their Channels page shows: set up or not, on or off — never providers, models or keys.
+      if (!isPlatformAdmin) {
+        const [agent, channels, seq, schedules, counts] = await Promise.all([
+          Agent.findById(agentId).lean(),
+          getChannelStatus(agentId),
+          activeSequence(agentId),
+          CronJob.find({ agentId }).lean(),
+          leadCounts(agentId),
+        ]);
+        return {
+          agent: { name: agent?.name, published: agent?.status === "active" },
+          channels: channels.map((c) => ({ channel: c.title, status: c.message, ...(c.details.length ? { details: c.details } : {}) })),
+          note: "Channels are set up by the user's admin. If one isn't set up or needs attention, tell the user their admin will handle it; never ask them for API keys.",
+          sequence: seq ? { name: seq.name, steps: describeSteps(seq.steps), note: "Only the first step currently runs automatically." } : null,
+          schedules: schedules.map((s) => ({ id: String(s._id), name: s.name, action: s.action, cron: s.cronExpression, enabled: s.enabled })),
+          leads: counts,
+        };
+      }
       const [agent, llm, email, wa, voiceError, voiceCfg, m, seq, schedules, counts, env] = await Promise.all([
         Agent.findById(agentId).lean(),
         getLLMConfig(agentId),
@@ -164,7 +194,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         keys: { type: "array", items: { type: "string" } },
       },
     },
-    run: async (args: { section?: string; keys?: string[] }, { agentId }) => {
+    run: async (args: { section?: string; keys?: string[] }, { agentId, isPlatformAdmin }) => {
       const keys = args.keys?.length
         ? args.keys
         : args.section ? [...FIELDS.values()].filter((f) => f.section === args.section).map((f) => f.key) : [];
@@ -175,7 +205,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         return {
           key,
           label: f?.label,
-          value: displayValue(key, m[key]),
+          value: !isPlatformAdmin && (HIDDEN_FROM_CUSTOMER_KEYS.has(key) || isSecretSettingKey(key))
+            ? "(set up by your admin)"
+            : displayValue(key, m[key]),
           ...(f?.options ? { options: f.options } : {}),
           ...(f?.hint ? { hint: f.hint } : {}),
           ...(f ? {} : { note: "unknown key" }),
@@ -193,11 +225,21 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       required: ["settings"],
     },
     changes: ["settings"],
-    run: async (args: { settings: Record<string, unknown> }, { agentId }) => {
+    run: async (args: { settings: Record<string, unknown> }, { agentId, isPlatformAdmin }) => {
       const saved: Record<string, string> = {};
       const rejected: Record<string, string> = {};
       for (const [key, raw] of Object.entries(args.settings || {})) {
         const value = String(raw ?? "").trim();
+        // Same rule as the Settings page: keys, providers, models and channel switches belong to the
+        // platform admin. Customers may still pick the call language, the opening line and an offered voice.
+        if (!isPlatformAdmin && isAdminOnlyKey(key) && !CUSTOMER_VOICE_KEYS.has(key)) {
+          rejected[key] = "set up by the user's admin — tell them their admin will change this";
+          continue;
+        }
+        if (!isPlatformAdmin && key === "voiceId" && !(await isVoiceAllowed(agentId, value))) {
+          rejected[key] = "that voice isn't offered to this workspace";
+          continue;
+        }
         if (TOGGLE_KEYS.has(key)) {
           if (value !== "true" && value !== "false") { rejected[key] = 'must be "true" or "false"'; continue; }
           saved[key] = value;
@@ -238,6 +280,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   {
     name: "voice_setup",
     adminOnly: true,
+    platformOnly: true,
     description: "Check or repair the ElevenLabs side of AI phone calls using the saved Voice API Key. action: \"check\" (permissions, agent, call settings), \"create_agent\" (make a phone-ready agent on the key's account and save its ID), \"fix_agent\" (turn on phone audio, overrides, hang-up tools, language on the current agent), \"use_agent\" (save an existing agent ID from the check's agent list). To change the key, call update_settings with voiceApiKey first.",
     parameters: {
       type: "object",
@@ -491,12 +534,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       const l = Types.ObjectId.isValid(a.leadId) ? await Lead.findOne({ _id: a.leadId, agentId }).lean() : null;
       return l ? `Call ${l.fullName} (${l.phone || "no phone"}) with the AI voice agent` : `Call lead ${a.leadId}`;
     },
-    run: async (args: { leadId: string }, { agentId, req }) => {
+    run: async (args: { leadId: string }, { agentId, req, isPlatformAdmin }) => {
       if (!Types.ObjectId.isValid(args.leadId)) return { error: "Invalid lead id" };
       const lead = await Lead.findOne({ _id: args.leadId, agentId, deletedAt: null });
       if (!lead) return { error: "Lead not found" };
       const r = await placeAiCall({ agentId, lead, req });
-      return r.ok ? { calling: true, lead: lead.fullName, callId: String(r.call?._id) } : { error: r.error };
+      return r.ok ? { calling: true, lead: lead.fullName, callId: String(r.call?._id) } : { error: isPlatformAdmin ? r.error : customerCallError(r.error) };
     },
   },
   {
@@ -505,9 +548,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     parameters: { type: "object", properties: { phone: { type: "string" } }, required: ["phone"] },
     confirm: true,
     summarize: (a) => `Place an AI test call to ${a.phone}`,
-    run: async (args: { phone: string }, { agentId, req }) => {
+    run: async (args: { phone: string }, { agentId, req, isPlatformAdmin }) => {
       const r = await placeAiCall({ agentId, toNumber: args.phone, isTest: true, req });
-      return r.ok ? { calling: true, callId: String(r.call?._id) } : { error: r.error };
+      return r.ok ? { calling: true, callId: String(r.call?._id) } : { error: isPlatformAdmin ? r.error : customerCallError(r.error) };
     },
   },
   {

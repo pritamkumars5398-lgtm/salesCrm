@@ -22,6 +22,8 @@ export interface IOrganization extends Document {
    * a new company must never send from, or spend on, the platform's accounts.
    */
   usesPlatformCredentials: boolean;
+  /** bought top-up units per feature, used once the monthly plan limit runs out; never expire */
+  topUpCredits?: { callsMade?: number; messagesSent?: number; smsSent?: number; emailsSent?: number; leadsScraped?: number; assistantTokens?: number };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +36,14 @@ const OrganizationSchema = new Schema<IOrganization>(
     planExpiresAt: { type: Date, default: null },
     customLimits: { type: String, default: "" },
     usesPlatformCredentials: { type: Boolean, default: false },
+    topUpCredits: {
+      callsMade:    { type: Number, default: 0 },
+      messagesSent: { type: Number, default: 0 },
+      smsSent:      { type: Number, default: 0 },
+      emailsSent:   { type: Number, default: 0 },
+      leadsScraped: { type: Number, default: 0 },
+      assistantTokens: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );

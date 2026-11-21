@@ -1,4 +1,5 @@
 "use client";
+import { sourceLabel } from "@/lib/utils/lead-source";
 import { useEffect, useState } from "react";
 import {
   IconX, IconMail, IconPhone, IconBrandWhatsapp, IconMessage,
@@ -8,6 +9,7 @@ import {
 import LeadAttributesSection from "@/components/leads/LeadAttributesSection";
 import { useAppStore } from "@/store/useAppStore";
 import type { Lead, Channel } from "@/store/types";
+import { isComingSoonChannel } from "@/lib/constants/coming-soon";
 import StatusPill from "@/components/ui/Pill";
 
 const CHANNEL_META: Record<string, { label: string; Icon: React.ElementType; color: string; bg: string }> = {
@@ -322,7 +324,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 <button
                   onClick={() => handleCall("ai_call")}
                   disabled={calling}
-                  title="Dispatch real-time AI Voice Agent (Plivo + ElevenLabs)"
+                  title="Call this lead with your AI voice agent"
                   style={{
                     background: calling ? "var(--color-bg3)" : "rgba(223,42,42,0.1)",
                     border: "1px solid rgba(223,42,42,0.25)",
@@ -338,7 +340,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                   }}
                 >
                   <IconPhone size={14} className={calling ? "animate-pulse" : ""} />
-                  {calling ? "Dialing..." : "AI Call (Plivo)"}
+                  {calling ? "Dialing..." : "AI Call"}
                 </button>
                 <button
                   onClick={() => handleCall("manual")}
@@ -480,7 +482,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                 <option value="Google Maps">Google Maps</option>
                 <option value="JustDial">JustDial</option>
                 <option value="Manual">Manual</option>
-                <option value="Apify">Apify (Google Maps)</option>
+                <option value="Apify">Lead search</option>
                 <option value="Referral">Referral</option>
               </select>
             </div>
@@ -533,10 +535,12 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
                 {(["email", "whatsapp", "sms", "call"] as Channel[]).map((ch) => {
                   const active = form.channels.includes(ch);
+                  const soon = isComingSoonChannel(ch);
                   return (
-                    <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500, color: "var(--color-text)", cursor: "pointer" }}>
+                    <label key={ch} title={soon ? "SMS is coming soon" : undefined} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500, color: "var(--color-text)", cursor: soon ? "default" : "pointer", opacity: soon ? 0.5 : 1 }}>
                       <input
                         type="checkbox"
+                        disabled={soon}
                         checked={active}
                         onChange={(e) => {
                           const updated = e.target.checked
@@ -546,7 +550,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                         }}
                         style={{ cursor: "pointer" }}
                       />
-                      {ch.charAt(0).toUpperCase() + ch.slice(1)}
+                      {ch === "sms" ? "SMS" : ch.charAt(0).toUpperCase() + ch.slice(1)}{soon && " · soon"}
                     </label>
                   );
                 })}
@@ -601,7 +605,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     border: "1px solid var(--color-bg4)",
                   }}
                 >
-                  {lead.source === "Apify" ? "Apify (Google Maps)" : lead.source}
+                  {sourceLabel(lead.source)}
                 </span>
                 <span
                   style={{
@@ -788,7 +792,7 @@ export default function LeadDetailPanel({ lead, onClose, onStartOutreach }: Prop
                     Meta
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <Row Icon={IconLink} label="Source" value={lead.source === "Apify" ? "Apify (Google Maps)" : lead.source} />
+                    <Row Icon={IconLink} label="Source" value={sourceLabel(lead.source)} />
                     <Row Icon={IconCalendar} label="Added" value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""} />
                   </div>
                 </div>

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store/useAppStore";
 import Landing from "@/components/pages/Landing";
 import ToastContainer from "@/components/ui/Toast";
-import { hasServerSession } from "@/lib/auth";
+import { hasServerSession, homePath } from "@/lib/auth";
 
 export default function Root() {
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function Root() {
     hasServerSession().then((signedIn) => {
       if (signedIn) {
         setAuthed(true);
-        router.replace("/dashboard/default");
+        homePath().then((p) => router.replace(p));
       } else {
         setReady(true);
       }
@@ -56,7 +56,7 @@ export default function Root() {
         <Landing
           onAuth={(name, email) => {
             login(name, email);
-            router.push("/dashboard/default");
+            homePath().then((p) => router.push(p));
           }}
         />
       </div>

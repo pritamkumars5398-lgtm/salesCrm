@@ -3,6 +3,18 @@ import type { SyncRun } from "@/components/ui/SyncPanel";
 import type { AppState } from "../useAppStore";
 import { queryClient } from "@/lib/queryClient";
 
+export interface SyncOptions {
+  onLimitReached?: () => void;
+  /** put new leads into this group */
+  groupId?: string;
+  /** search for this instead of the business's usual keyword */
+  keyword?: string;
+  /** search these places instead of the saved ones */
+  locations?: string[];
+  /** roughly how many leads to fetch */
+  total?: number;
+}
+
 export interface SyncSlice {
   syncing: boolean;
   syncRuns: SyncRun[];
@@ -15,7 +27,7 @@ export interface SyncSlice {
    * component) so the progress panel keeps updating even when the user switches
    * tabs or navigates — the page can unmount without interrupting the sync.
    */
-  runApifySync: (agentId: string, opts?: { onLimitReached?: () => void }) => Promise<void>;
+  runApifySync: (agentId: string, opts?: SyncOptions) => Promise<void>;
   cancelSyncRun: (agentId: string, runId: string) => Promise<void>;
 }
 
@@ -44,13 +56,13 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
 
         const isApifyEnabled = settings.apifyScraperEnabled !== "false";
         const providers = [
-          { type: "openai", enabled: settings.openaiEnabled === "true", label: "OpenAI ChatGPT" },
-          { type: "anthropic", enabled: settings.anthropicEnabled === "true", label: "Anthropic Claude" },
-          { type: "gemini", enabled: settings.geminiEnabled === "true", label: "Google Gemini" }
+          { type: "openai", enabled: settings.openaiEnabled === "true", label: "AI search" },
+          { type: "anthropic", enabled: settings.anthropicEnabled === "true", label: "AI search" },
+          { type: "gemini", enabled: settings.geminiEnabled === "true", label: "AI search" }
         ];
 
         if (!isApifyEnabled && !providers.some((p) => p.enabled)) {
-          note("No lead source is turned on. Enable Apify scrapers or an LLM source in Settings → Sources.");
+          note("No lead source is turned on yet — your admin will set this up.");
           return;
         }
 
@@ -72,7 +84,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               const res = await fetch("/api/llm-scraper", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ agentId, providerType: provider.type })
+                body: JSON.stringify({ agentId, providerType: provider.type, groupId: opts.groupId, keyword: opts.keyword, locations: opts.locations, total: opts.total })
               });
               const json = await res.json();
               if (!res.ok) throw new Error(json.error || "LLM request failed");
@@ -99,7 +111,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
             const startRes = await fetch("/api/apify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ agentId }),
+              body: JSON.stringify({ agentId, keyword: opts.keyword, locations: opts.locations, total: opts.total }),
             });
             const start = await startRes.json().catch(() => ({}));
             if (!startRes.ok) {
@@ -107,14 +119,14 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
                 note("This month's lead limit is used up — upgrade the plan to sync more.");
                 opts.onLimitReached?.();
               } else {
-                note(`Apify couldn't start: ${start.error ?? `request failed (${startRes.status})`}`);
+                note(`Lead search couldn't start: ${start.error ?? `request failed (${startRes.status})`}`);
               }
               return;
             }
 
             const runs = (start.runs ?? []) as { runId: string; datasetId: string; search: string; scraperType: string }[];
             if (runs.length === 0) {
-              note("Apify didn't start any scraper run — check the scrapers in Settings → Apify Scrapers.");
+              note("Lead search didn't start — your admin can check the lead sources.");
               return;
             }
             if (start.warnings?.length) start.warnings.forEach((w: string) => showToast(w, "error"));
@@ -151,7 +163,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
                   const res = await fetch(`/api/apify?runId=${runId}&agentId=${agentId}`).catch(() => null);
                   const poll = res ? await res.json().catch(() => ({})) : {};
                   if (!res?.ok) {
-                    pollError = poll.error || "Lost contact with Apify";
+                    pollError = poll.error || "Lost contact with lead search";
                     if (++errors >= MAX_POLL_ERRORS) break;
                     continue;
                   }
@@ -172,9 +184,9 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               if (currentRun?.error === "Cancelled by user") continue;
               if (finalStatus !== "SUCCEEDED") {
                 const error = finalStatus === "STILL_RUNNING"
-                  ? "Still running on Apify after 10 min — press Sync again later to import it"
+                  ? "Still running after 10 min — press Sync again later to import it"
                   : finalStatus.startsWith("ERROR: ") ? finalStatus.slice(7)
-                    : `Apify run ended: ${finalStatus.toLowerCase()}`;
+                    : `Lead search ended: ${finalStatus.toLowerCase()}`;
                 patchRun(runId, { status: "failed", error });
                 continue;
               }
@@ -182,7 +194,7 @@ export const createSyncSlice: StateCreator<AppState, [], [], SyncSlice> = (set, 
               const res = await fetch("/api/apify", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ agentId, datasetId, scraperType }),
+                body: JSON.stringify({ agentId, datasetId, scraperType, groupId: opts.groupId }),
               }).catch(() => null);
               const imp = res ? await res.json().catch(() => ({})) : {};
               if (!res?.ok) {

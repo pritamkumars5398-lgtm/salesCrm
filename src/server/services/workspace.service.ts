@@ -209,7 +209,7 @@ export async function getOrganizationLimits(organizationId: string): Promise<Org
   return { planId, limits, purchasedPlan, expiresAt, expired };
 }
 
-export type UsageField = "leadsScraped" | "messagesSent" | "callsMade" | "emailsSent" | "smsSent";
+export type UsageField = "leadsScraped" | "messagesSent" | "callsMade" | "emailsSent" | "smsSent" | "assistantTokens";
 
 /** Usage summed over every workspace of the organization, including deleted ones. */
 export async function getOrganizationUsage(organizationId: string, month = currentMonth()): Promise<Record<UsageField, number>> {
@@ -224,6 +224,7 @@ export async function getOrganizationUsage(organizationId: string, month = curre
         callsMade: { $sum: "$callsMade" },
         emailsSent: { $sum: "$emailsSent" },
         smsSent: { $sum: "$smsSent" },
+        assistantTokens: { $sum: { $ifNull: ["$assistantTokens", 0] } },
       },
     },
   ]);
@@ -233,6 +234,7 @@ export async function getOrganizationUsage(organizationId: string, month = curre
     callsMade: row?.callsMade ?? 0,
     emailsSent: row?.emailsSent ?? 0,
     smsSent: row?.smsSent ?? 0,
+    assistantTokens: row?.assistantTokens ?? 0,
   };
 }
 

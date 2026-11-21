@@ -3,12 +3,25 @@ import { Types, PipelineStage } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Call } from "@/lib/models/Call";
 import { authorizeWorkspace } from "@/server/auth/access";
+import { callSlots } from "@/server/services/call.service";
+import { getSavedCalls } from "@/server/services/saved-calls.service";
+import { groupFilterById } from "@/server/services/lead-groups.service";
+import { Lead } from "@/lib/models/Lead";
 
 const STATUS_FILTERS: Record<string, string[]> = {
   live: ["queued", "ringing", "in_progress"],
   answered: ["completed"],
   missed: ["no_answer", "busy", "canceled", "voicemail"],
   failed: ["failed"],
+};
+
+/** Plain outcome groups the inbox filters by (the AI's call summary picks the raw value). */
+const OUTCOME_GROUPS: Record<string, string[]> = {
+  interested: ["interested", "meeting_requested", "high_intent", "engaged"],
+  callback: ["callback_requested"],
+  not_interested: ["not_interested"],
+  no_decision: ["no_decision", "partial_listen"],
+  wrong_number: ["wrong_number"],
 };
 
 function escapeRegex(s: string) {
@@ -18,7 +31,7 @@ function escapeRegex(s: string) {
 /**
  * Voice inbox: one row per lead that has been called (latest call first), with
  * per-lead totals, plus agent-wide call stats. Test calls are excluded.
- * GET ?agentId=&q=&status=all|live|answered|missed|failed
+ * GET ?agentId=&q=&status=all|live|answered|missed|failed|saved&outcome=interested|callback|not_interested|no_decision|wrong_number&sentiment=positive|neutral|negative
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -46,6 +59,22 @@ export async function GET(req: Request) {
     },
   ];
   if (STATUS_FILTERS[status]) pipeline.push({ $match: { "last.status": { $in: STATUS_FILTERS[status] } } });
+  const outcome = searchParams.get("outcome") || "";
+  const sentiment = searchParams.get("sentiment") || "";
+  if (OUTCOME_GROUPS[outcome]) pipeline.push({ $match: { "last.outcome": { $in: OUTCOME_GROUPS[outcome] } } });
+  if (["positive", "neutral", "negative"].includes(sentiment)) pipeline.push({ $match: { "last.sentiment": sentiment } });
+  if (status === "saved") {
+    // Leads with at least one saved (bookmarked) call.
+    const leadIds = [...new Set((await getSavedCalls(agentId)).map((s) => s.leadId))].filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    pipeline.push({ $match: { _id: { $in: leadIds } } });
+  }
+  const groupId = searchParams.get("groupId") || "";
+  if (groupId) {
+    // Only leads in this group (manual or smart).
+    const filter = await groupFilterById(agentId, groupId);
+    const ids = filter ? await Lead.find({ agentId, ...filter }).distinct("_id") : [];
+    pipeline.push({ $match: { _id: { $in: ids } } });
+  }
   pipeline.push(
     { $sort: { "last.createdAt": -1 } },
     { $lookup: { from: "leads", localField: "_id", foreignField: "_id", as: "lead" } },
@@ -97,5 +126,7 @@ export async function GET(req: Request) {
 
   const stats = statsAgg[0] ?? { calls: 0, answered: 0, live: 0, talkSec: 0 };
   delete (stats as { _id?: unknown })._id;
-  return NextResponse.json({ rows, stats });
+  // live lead calls vs. how many may run at once — the "Call selected" queue fills free lines from this
+  const slots = await callSlots(agentId);
+  return NextResponse.json({ rows, stats, slots });
 }

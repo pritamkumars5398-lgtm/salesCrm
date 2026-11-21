@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Agent } from "@/lib/models/Agent";
 import { Setting } from "@/lib/models/Setting";
-import { authorizeWorkspace } from "@/server/auth/access";
+import { authorizeWorkspace, deny } from "@/server/auth/access";
 import { getVoiceConfig } from "@/server/services/settings.service";
 import {
   TTS_MODELS, getAgentVoiceSetup, listAccountVoices, listAgentLlms, searchLibraryVoices, speakSample, updateAgentVoiceSetup,
@@ -12,6 +12,7 @@ import {
 async function context(req: Request, agentId: string | null) {
   const access = await authorizeWorkspace(req, agentId, { minRole: "admin" });
   if (!access.ok) return { error: access.response };
+  if (!access.user.isSuperadmin) return { error: deny(403, "Your admin sets this up for you.").response };
   const cfg = await getVoiceConfig(access.agentId);
   if (!cfg.elevenLabsApiKey || !cfg.elevenLabsAgentId) {
     return { error: NextResponse.json({ error: "Set the ElevenLabs API key and pick an agent first (Check & fix ElevenLabs above)." }, { status: 400 }) };

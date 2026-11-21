@@ -5,6 +5,8 @@ import {
   IconBrandWhatsapp, IconMail, IconPhone, IconMessage,
   IconMap, IconBrandLinkedin, IconConfetti, IconSparkles,
 } from "@tabler/icons-react";
+import SoonBadge from "@/components/ui/SoonBadge";
+import { isComingSoonChannel } from "@/lib/constants/coming-soon";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -95,18 +97,19 @@ function Dots({ total, current }: { total: number; current: number }) {
 // ─── option card (channels / sources) ────────────────────────────────────────
 
 function OptionCard({
-  id, label, desc, Icon, color, bg, selected, onToggle,
+  id, label, desc, Icon, color, bg, selected, onToggle, soon,
 }: {
   id: string; label: string; desc: string;
   Icon: React.ElementType; color: string; bg: string;
-  selected: boolean; onToggle: () => void;
+  selected: boolean; onToggle: () => void; soon?: boolean;
 }) {
   return (
     <button
       onClick={onToggle}
+      disabled={soon}
       style={{
-        display: "flex", alignItems: "center", gap: 14,
-        padding: "14px 16px", borderRadius: 14, cursor: "pointer",
+        display: "flex", alignItems: "center", gap: 14, opacity: soon ? 0.6 : 1,
+        padding: "14px 16px", borderRadius: 14, cursor: soon ? "default" : "pointer",
         background: selected ? `${color}0d` : "var(--color-bg)",
         border: `1.5px solid ${selected ? color : "var(--color-bg4)"}`,
         boxShadow: selected ? `0 0 0 3px ${color}18` : "none",
@@ -117,7 +120,7 @@ function OptionCard({
         <Icon size={18} style={{ color }} />
       </span>
       <div style={{ flex: 1 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0 }}>{label}</p>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", margin: 0, display: "flex", alignItems: "center", gap: 6 }}>{label}{soon && <SoonBadge label="Coming soon" />}</p>
         <p style={{ fontSize: 11.5, color: "var(--color-text3)", margin: "2px 0 0" }}>{desc}</p>
       </div>
       <div style={{
@@ -260,7 +263,7 @@ export default function Onboarding({ userName, userEmail, onComplete }: Onboardi
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {CHANNEL_OPTIONS.map((ch) => (
-                <OptionCard key={ch.id} {...ch} selected={data.channels.includes(ch.id)} onToggle={() => toggleArr("channels", ch.id)} />
+                <OptionCard key={ch.id} {...ch} soon={isComingSoonChannel(ch.id)} selected={!isComingSoonChannel(ch.id) && data.channels.includes(ch.id)} onToggle={() => !isComingSoonChannel(ch.id) && toggleArr("channels", ch.id)} />
               ))}
             </div>
           </div>

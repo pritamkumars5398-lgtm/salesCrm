@@ -1,9 +1,13 @@
 "use client";
 import { PLANS, type PlanId } from "@/lib/plans";
+import { FEATURE_LABEL, type TopUpField } from "@/lib/topups";
 
 export interface PaymentRow {
   _id: string;
-  planId: PlanId;
+  kind?: "plan" | "topup";
+  planId?: PlanId;
+  topUpField?: TopUpField;
+  topUpUnits?: number;
   amount: number;
   status: "paid" | "failed";
   periodStart?: string;
@@ -35,10 +39,14 @@ export default function PaymentHistory({ payments }: { payments: PaymentRow[] })
             {payments.map((p) => (
               <tr key={p._id} className="border-t border-bg4 text-text2">
                 <td className="px-4 py-2.5">{fmt(p.createdAt)}</td>
-                <td className="px-4 py-2.5">{PLANS[p.planId]?.name ?? p.planId}</td>
+                <td className="px-4 py-2.5">
+                  {p.kind === "topup"
+                    ? `Top-up · +${(p.topUpUnits ?? 0).toLocaleString("en-IN")} ${p.topUpField ? FEATURE_LABEL[p.topUpField].unit : ""}`
+                    : p.planId ? PLANS[p.planId]?.name ?? p.planId : "—"}
+                </td>
                 <td className="px-4 py-2.5">₹{p.amount.toLocaleString("en-IN")}</td>
                 <td className="px-4 py-2.5">
-                  {p.status === "paid" ? `${fmt(p.periodStart)} → ${fmt(p.periodEnd)}` : "—"}
+                  {p.kind === "topup" ? (p.status === "paid" ? "Never expires" : "—") : p.status === "paid" ? `${fmt(p.periodStart)} → ${fmt(p.periodEnd)}` : "—"}
                   {p.creditedDays > 0 && <span className="ml-1 text-text3">(+{p.creditedDays} days carried over)</span>}
                 </td>
                 <td className="px-4 py-2.5">

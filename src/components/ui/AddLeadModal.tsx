@@ -1,4 +1,5 @@
 "use client";
+import { sourceLabel } from "@/lib/utils/lead-source";
 import { useState, useRef } from "react";
 import {
   IconX, IconUserPlus, IconPlayerPlay, IconCloudUpload,
@@ -6,6 +7,7 @@ import {
 } from "@tabler/icons-react";
 import { useAppStore } from "@/store/useAppStore";
 import type { Channel } from "@/store/types";
+import { isComingSoonChannel } from "@/lib/constants/coming-soon";
 import { useEffect } from "react";
 import * as XLSX from "xlsx";
 
@@ -535,7 +537,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11.5px] font-medium" style={{ color: "var(--color-text2)" }}>Source</label>
                   <select className="form-input" value={form.source} onChange={(e) => set("source", e.target.value)}>
-                    {["Manual","LinkedIn","Google Maps","Apify","Referral"].map((s) => <option key={s}>{s}</option>)}
+                    {["Manual","LinkedIn","Google Maps","Apify","Referral"].map((s) => <option key={s} value={s}>{sourceLabel(s)}</option>)}
                   </select>
                 </div>
               </div>
@@ -545,15 +547,17 @@ export default function AddLeadModal({ open, onClose }: Props) {
                   {CHANNELS.map((ch) => (
                     <button
                       key={ch}
+                      disabled={isComingSoonChannel(ch)}
+                      title={isComingSoonChannel(ch) ? "SMS is coming soon" : undefined}
                       onClick={() => toggleChannel(ch)}
-                      className="px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors capitalize cursor-pointer"
+                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors capitalize ${isComingSoonChannel(ch) ? "cursor-default opacity-50" : "cursor-pointer"}`}
                       style={{
                         borderColor: form.channels.includes(ch) ? "#6c63ff" : "rgba(0,0,0,0.1)",
                         background: form.channels.includes(ch) ? "rgba(223,42,42,0.12)" : "var(--color-bg3)",
                         color: form.channels.includes(ch) ? "var(--color-accent2)" : "var(--color-text2)",
                       }}
                     >
-                      {ch}
+                      {isComingSoonChannel(ch) ? `${ch} · soon` : ch}
                     </button>
                   ))}
                 </div>
@@ -734,7 +738,7 @@ export default function AddLeadModal({ open, onClose }: Props) {
                             onChange={(e) => updateParsedLead(idx, "source", e.target.value)}
                           >
                             {["Manual", "LinkedIn", "Google Maps", "Apify", "Referral"].map((s) => (
-                              <option key={s} value={s}>{s}</option>
+                              <option key={s} value={s}>{sourceLabel(s)}</option>
                             ))}
                           </select>
                         </td>
