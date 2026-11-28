@@ -3,13 +3,13 @@
 set -euo pipefail
 
 # Your SalesCRM Ngrok Token
-NGROK_AUTHTOKEN="30Dibm8ltpf5Fkx59Ks6JIt7XjV_qSAKTaPN6Bnj9SpGmToL"
+NGROK_AUTHTOKEN="3Miw0cpx5LlfmSCj1zRyQTbAcPb_33pFFX7JRQp6KYjvzSmBq"
 PORT="3000"
 
 start_ngrok() {
   local cmd=(
     npx ngrok http "$PORT"
-    --domain "pleadingly-nonfortifiable-tyron.ngrok-free.dev"
+    --domain "anthill-unwired-widely.ngrok-free.dev"
     --authtoken "$NGROK_AUTHTOKEN"
     --log stdout
     --log-format logfmt

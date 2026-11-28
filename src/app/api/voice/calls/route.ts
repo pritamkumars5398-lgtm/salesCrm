@@ -31,7 +31,7 @@ function escapeRegex(s: string) {
 /**
  * Voice inbox: one row per lead that has been called (latest call first), with
  * per-lead totals, plus agent-wide call stats. Test calls are excluded.
- * GET ?agentId=&q=&status=all|live|answered|missed|failed|saved&outcome=interested|callback|not_interested|no_decision|wrong_number&sentiment=positive|neutral|negative
+ * GET ?agentId=&q=&status=all|live|answered|missed|failed|saved&outcome=interested|callback|not_interested|no_decision|wrong_number&sentiment=positive|neutral|negative&dateFrom=ISO&dateTo=ISO
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -41,9 +41,17 @@ export async function GET(req: Request) {
   const agentId = access.agentId;
   const q = (searchParams.get("q") || "").trim();
   const status = searchParams.get("status") || "all";
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
 
   await connectDB();
-  const match = { agentId: new Types.ObjectId(agentId), isTest: { $ne: true }, leadId: { $type: "objectId" } };
+  const match: Record<string, unknown> = { agentId: new Types.ObjectId(agentId), isTest: { $ne: true }, leadId: { $type: "objectId" } };
+  if (dateFrom || dateTo) {
+    const range: Record<string, Date> = {};
+    if (dateFrom) range.$gte = new Date(dateFrom);
+    if (dateTo) range.$lte = new Date(dateTo);
+    match.createdAt = range;
+  }
 
   const pipeline: PipelineStage[] = [
     { $match: match },
@@ -108,23 +116,44 @@ export async function GET(req: Request) {
     },
   );
 
-  const [rows, statsAgg] = await Promise.all([
+  // IST day boundaries (UTC offset +5:30 = 19800 s)
+  const IST_MS = 19800000;
+  const todayStart  = new Date(Math.floor((Date.now() + IST_MS) / 86400000) * 86400000 - IST_MS);
+  const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+  const baseMatch = { agentId: new Types.ObjectId(agentId), isTest: { $ne: true }, leadId: { $type: "objectId" } };
+
+  const [rows, statsAgg, dailyAgg] = await Promise.all([
     Call.aggregate(pipeline),
     Call.aggregate([
       { $match: match },
       {
         $group: {
           _id: null,
-          calls: { $sum: 1 },
-          answered: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
-          live: { $sum: { $cond: [{ $in: ["$status", STATUS_FILTERS.live] }, 1, 0] } },
-          talkSec: { $sum: { $ifNull: ["$durationSec", 0] } },
+          calls:      { $sum: 1 },
+          answered:   { $sum: { $cond: [{ $eq:  ["$status", "completed"] }, 1, 0] } },
+          live:       { $sum: { $cond: [{ $in:  ["$status", STATUS_FILTERS.live] }, 1, 0] } },
+          talkSec:    { $sum: { $ifNull: ["$durationSec", 0] } },
+          interested: { $sum: { $cond: [{ $in:  ["$outcome", OUTCOME_GROUPS.interested] }, 1, 0] } },
+          callback:   { $sum: { $cond: [{ $in:  ["$outcome", OUTCOME_GROUPS.callback] }, 1, 0] } },
+          notInterested: { $sum: { $cond: [{ $in: ["$outcome", OUTCOME_GROUPS.not_interested] }, 1, 0] } },
+        },
+      },
+    ]),
+    // Daily totals — always unfiltered so the chips reflect absolute day counts
+    Call.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: null,
+          todayCalls:     { $sum: { $cond: [{ $gte: ["$createdAt", todayStart] }, 1, 0] } },
+          yesterdayCalls: { $sum: { $cond: [{ $and: [{ $gte: ["$createdAt", yesterdayStart] }, { $lt: ["$createdAt", todayStart] }] }, 1, 0] } },
         },
       },
     ]),
   ]);
 
-  const stats = statsAgg[0] ?? { calls: 0, answered: 0, live: 0, talkSec: 0 };
+  const daily = dailyAgg[0] ?? { todayCalls: 0, yesterdayCalls: 0 };
+  const stats = { ...(statsAgg[0] ?? { calls: 0, answered: 0, live: 0, talkSec: 0, interested: 0, callback: 0, notInterested: 0 }), todayCalls: daily.todayCalls, yesterdayCalls: daily.yesterdayCalls };
   delete (stats as { _id?: unknown })._id;
   // live lead calls vs. how many may run at once — the "Call selected" queue fills free lines from this
   const slots = await callSlots(agentId);

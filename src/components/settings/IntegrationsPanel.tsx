@@ -29,6 +29,8 @@ interface Props {
   subtitle: string;
   /** open the Settings tab that fixes an integration (omit on the platform view) */
   onOpenTab?: (tab: string) => void;
+  /** when provided, clicking any card opens its setup directly (e.g. in a sidebar/drawer) */
+  onSelectCard?: (item: { key: string; name: string; settingsTab: string }) => void;
 }
 
 const STATUS_STYLE: Record<Integration["status"], { label: string; color: string; Icon: React.ElementType }> = {
@@ -70,7 +72,7 @@ function UsageBar({ line }: { line: UsageLine }) {
 }
 
 /** One place to see every API key: whose it is, whether it works, and how much is left. */
-export default function IntegrationsPanel({ endpoint, title, subtitle, onOpenTab }: Props) {
+export default function IntegrationsPanel({ endpoint, title, subtitle, onOpenTab, onSelectCard }: Props) {
   const [items, setItems] = useState<Integration[] | null>(null);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -118,8 +120,16 @@ export default function IntegrationsPanel({ endpoint, title, subtitle, onOpenTab
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {items?.map((item) => {
           const st = STATUS_STYLE[item.status];
+          const clickable = Boolean(onSelectCard);
           return (
-            <div key={item.key} className="flex flex-col gap-2 rounded-xl border border-bg4 bg-bg2 p-3.5">
+            <div
+              key={item.key}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={clickable ? () => onSelectCard?.({ key: item.key, name: item.name, settingsTab: item.settingsTab }) : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectCard?.({ key: item.key, name: item.name, settingsTab: item.settingsTab }); } } : undefined}
+              className={`flex flex-col gap-2 rounded-xl border border-bg4 bg-bg2 p-3.5 ${clickable ? "cursor-pointer transition-colors hover:border-text4" : ""}`}
+            >
               <div className="flex items-start gap-2">
                 <st.Icon size={16} style={{ color: st.color, flexShrink: 0, marginTop: 2 }} />
                 <div className="min-w-0 flex-1">

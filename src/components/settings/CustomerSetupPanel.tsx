@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconCheck, IconSettings } from "@tabler/icons-react";
+import { createPortal } from "react-dom";
+import { IconCheck, IconSettings, IconX } from "@tabler/icons-react";
 import { ADMIN_SETUP_SECTIONS } from "@/lib/constants/admin-settings";
 import IntegrationsPanel from "@/components/settings/IntegrationsPanel";
 import { useAppStore } from "@/store/useAppStore";
@@ -14,6 +15,14 @@ interface Customer {
 }
 
 const MASK = "••••••••";
+
+/** Map a provider health card to its setup section key in ADMIN_SETUP_SECTIONS. */
+function sectionForCard(item: { key: string; settingsTab: string }): string {
+  if (item.key === "plivo") return "calls";
+  if (ADMIN_SETUP_SECTIONS.some((s) => s.key === item.settingsTab)) return item.settingsTab;
+  if (ADMIN_SETUP_SECTIONS.some((s) => s.key === item.key)) return item.key;
+  return ADMIN_SETUP_SECTIONS[0].key;
+}
 
 /**
  * Superadmin only: pick a customer and one of their workspaces, then set up its
@@ -32,7 +41,9 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
   const withWorkspaces = useMemo(() => customers.filter((c) => c.agents.length > 0), [customers]);
   const [customerId, setCustomerId] = useState(fixedCustomerId ?? "");
   const [agentId, setAgentId] = useState("");
-  const [section, setSection] = useState(ADMIN_SETUP_SECTIONS[0].key);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const [stored, setStored] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -41,7 +52,26 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
   const [healthKey, setHealthKey] = useState(0);
 
   const customer = withWorkspaces.find((c) => c.id === customerId);
-  const current = ADMIN_SETUP_SECTIONS.find((s) => s.key === section)!;
+  const current = openSection ? ADMIN_SETUP_SECTIONS.find((s) => s.key === openSection) ?? null : null;
+
+  function openDrawer(sectionKey: string) {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setDraft({});
+    setOpenSection(sectionKey);
+    requestAnimationFrame(() => requestAnimationFrame(() => setDrawerOpen(true)));
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpenSection(null);
+      closeTimerRef.current = null;
+    }, 250);
+  }
 
   useEffect(() => {
     setAgentId(customer?.agents.find((a) => a.id === initialAgentId)?.id ?? customer?.agents[0]?.id ?? "");
@@ -55,6 +85,8 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
   useEffect(() => {
     setStored({});
     setDraft({});
+    setDrawerOpen(false);
+    setOpenSection(null);
     if (!agentId) return;
     setLoading(true);
     fetch(`/api/settings?agentId=${agentId}`)
@@ -64,7 +96,19 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
       .finally(() => setLoading(false));
   }, [agentId, showToast]);
 
+  useEffect(() => {
+    if (!openSection) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeDrawer(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openSection]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
   async function save() {
+    if (!current) return;
     const patch: Record<string, string> = {};
     for (const f of current.fields) {
       if (!(f.key in draft)) continue;
@@ -90,6 +134,7 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
       setStored(fresh);
       setDraft({});
       setHealthKey((k) => k + 1);
+      closeDrawer();
       showToast(`${current.title} saved${targets.length > 1 ? ` for ${targets.length} workspaces` : ""}`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Save failed", "error");
@@ -127,94 +172,123 @@ export default function CustomerSetupPanel({ customers, fixedCustomerId, initial
 
       {agentId && (
         <>
-          <div className="flex flex-wrap gap-1.5">
-            {ADMIN_SETUP_SECTIONS.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => { setSection(s.key); setDraft({}); }}
-                className="px-3 py-1.5 rounded-lg text-[12px] font-semibold cursor-pointer border"
-                style={{
-                  background: section === s.key ? "rgba(223,42,42,0.1)" : "var(--color-bg3)",
-                  color: section === s.key ? "#df2a2a" : "var(--color-text2)",
-                  borderColor: section === s.key ? "rgba(223,42,42,0.3)" : "var(--color-bg4)",
-                }}
-              >
-                {s.title}
-              </button>
-            ))}
-          </div>
-
-          {loading ? (
-            <p className="text-[13px] text-text3 m-0">Loading…</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {current.fields.map((f) => {
-                const saved = stored[f.key] ?? "";
-                const isSecret = f.type === "password";
-                return (
-                  <div key={f.key} className={`flex flex-col gap-1 ${f.type === "textarea" || f.type === "voices" ? "md:col-span-2" : ""}`}>
-                    <span className="text-[12px] font-semibold text-text2">{f.label}</span>
-                    {f.type === "voices" ? (
-                      <VoicesField
-                        agentId={agentId}
-                        provider={value("voiceProvider") || "Google Gemini"}
-                        raw={value(f.key)}
-                        reloadKey={stored.voiceApiKey ?? ""}
-                        defaultId={value("voiceId")}
-                        onDefault={(id) => setDraft((d) => ({ ...d, voiceId: id }))}
-                        onChange={(json) => setDraft((d) => ({ ...d, [f.key]: json }))}
-                      />
-                    ) : f.options ? (
-                      <select className="form-input text-[13px]" value={value(f.key) || f.options[0]} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}>
-                        {f.options.map((o) => <option key={o} value={o}>{o === "true" ? "Yes" : o === "false" ? "No" : o}</option>)}
-                      </select>
-                    ) : f.type === "textarea" ? (
-                      <textarea className="form-input text-[13px]" rows={4} placeholder={f.placeholder} value={value(f.key)} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))} />
-                    ) : (
-                      <input
-                        className="form-input text-[13px]"
-                        type={isSecret ? "password" : "text"}
-                        autoComplete="off"
-                        placeholder={isSecret ? (saved.startsWith(MASK) ? `Saved (${saved}) — type to replace` : "Not set") : f.placeholder}
-                        value={isSecret ? draft[f.key] ?? "" : value(f.key)}
-                        onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-                      />
-                    )}
-                    {f.hint && <span className="text-[11px] text-text3">{f.hint}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
-            {customer && customer.agents.length > 1 ? (
-              <label className="flex items-center gap-2 text-[12.5px] text-text2 cursor-pointer">
-                <input type="checkbox" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
-                Save to all {customer.agents.length} of this customer&rsquo;s workspaces
-              </label>
-            ) : <span />}
+          <IntegrationsPanel
+            key={`${agentId}-${healthKey}`}
+            endpoint={`/api/integrations/status?agentId=${agentId}`}
+            title="Is it working?"
+            subtitle="Live check of this workspace's keys with each provider — click any card to set up or update its keys."
+            onSelectCard={(item) => openDrawer(sectionForCard(item))}
+          />
+          <div className="flex justify-end">
             <button
               type="button"
-              onClick={save}
-              disabled={saving || loading}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white cursor-pointer disabled:opacity-50 border-none"
-              style={{ background: "linear-gradient(135deg,#df2a2a,#f24444)" }}
+              onClick={() => openDrawer("llm-scraper")}
+              className="text-[12px] text-text3 hover:text-text underline bg-transparent border-none cursor-pointer p-0"
             >
-              <IconCheck size={15} /> {saving ? "Saving…" : `Save ${current.title}`}
+              Lead sources — AI search settings
             </button>
           </div>
-
-          <div className="pt-4 border-t border-bg4">
-            <IntegrationsPanel
-              key={`${agentId}-${healthKey}`}
-              endpoint={`/api/integrations/status?agentId=${agentId}`}
-              title="Is it working?"
-              subtitle="Live check of this workspace's keys with each provider — balances and usage included."
-            />
-          </div>
         </>
+      )}
+
+      {agentId && current && typeof document !== "undefined" && createPortal(
+        <div
+          className={`fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-[1px] transition-opacity duration-250 ease-out ${drawerOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          onClick={closeDrawer}
+        >
+          <aside
+            className={`w-full max-w-xl h-full bg-bg2 border-l border-bg4 shadow-2xl flex flex-col transform transition-transform duration-250 ease-out ${drawerOpen ? "translate-x-0" : "translate-x-full"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 p-5 border-b border-bg4">
+              <div>
+                <h3 className="text-[15px] font-bold text-text m-0">{current.title}</h3>
+                <p className="text-[12px] text-text3 m-0 mt-0.5">Configure keys and settings for this workspace.</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close setup"
+                onClick={closeDrawer}
+                className="p-1.5 rounded-lg bg-bg3 border border-bg4 text-text2 hover:text-text cursor-pointer"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {loading ? (
+                <p className="text-[13px] text-text3 m-0">Loading…</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {current.fields.map((f) => {
+                    const saved = stored[f.key] ?? "";
+                    const isSecret = f.type === "password";
+                    return (
+                      <div key={f.key} className={`flex flex-col gap-1 ${f.type === "textarea" || f.type === "voices" ? "md:col-span-2" : ""}`}>
+                        <span className="text-[12px] font-semibold text-text2">{f.label}</span>
+                        {f.type === "voices" ? (
+                          <VoicesField
+                            agentId={agentId}
+                            provider={value("voiceProvider") || "Google Gemini"}
+                            raw={value(f.key)}
+                            reloadKey={stored.voiceApiKey ?? ""}
+                            defaultId={value("voiceId")}
+                            onDefault={(id) => setDraft((d) => ({ ...d, voiceId: id }))}
+                            onChange={(json) => setDraft((d) => ({ ...d, [f.key]: json }))}
+                          />
+                        ) : f.options ? (
+                          <select className="form-input text-[13px]" value={value(f.key) || f.options[0]} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}>
+                            {f.options.map((o) => <option key={o} value={o}>{o === "true" ? "Yes" : o === "false" ? "No" : o}</option>)}
+                          </select>
+                        ) : f.type === "textarea" ? (
+                          <textarea className="form-input text-[13px]" rows={4} placeholder={f.placeholder} value={value(f.key)} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))} />
+                        ) : (
+                          <input
+                            className="form-input text-[13px]"
+                            type={isSecret ? "password" : "text"}
+                            autoComplete="off"
+                            placeholder={isSecret ? (saved.startsWith(MASK) ? `Saved (${saved}) — type to replace` : "Not set") : f.placeholder}
+                            value={isSecret ? draft[f.key] ?? "" : value(f.key)}
+                            onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                          />
+                        )}
+                        {f.hint && <span className="text-[11px] text-text3">{f.hint}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between flex-wrap gap-3 p-4 border-t border-bg4 bg-bg2">
+              {customer && customer.agents.length > 1 ? (
+                <label className="flex items-center gap-2 text-[12.5px] text-text2 cursor-pointer">
+                  <input type="checkbox" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
+                  Save to all {customer.agents.length} of this customer&rsquo;s workspaces
+                </label>
+              ) : <span />}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeDrawer}
+                  className="px-3.5 py-2 rounded-lg text-[13px] font-semibold bg-bg3 border border-bg4 text-text2 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || loading}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white cursor-pointer disabled:opacity-50 border-none"
+                  style={{ background: "linear-gradient(135deg,#df2a2a,#f24444)" }}
+                >
+                  <IconCheck size={15} /> {saving ? "Saving…" : `Save ${current.title}`}
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>,
+        document.body
       )}
     </div>
   );

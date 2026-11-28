@@ -354,7 +354,10 @@ async function handlePlivoStream(plivoWs, req) {
   let plivoClosed = false;
   plivoWs.on("message", (raw) => (onPlivoMessage ? onPlivoMessage(raw) : queued.push(raw)));
   plivoWs.on("close", () => { plivoClosed = true; if (cleanup) cleanup("plivo-closed"); });
-  plivoWs.on("error", (err) => console.error("[TelephonyBridge] Plivo WebSocket error:", err.message));
+  plivoWs.on("error", (err) => {
+    console.error("[TelephonyBridge] Plivo WebSocket error:", err.message);
+    endCall(`Plivo connection error: ${err.message}`);
+  });
 
   let call, cfg, lead;
   try {
@@ -480,13 +483,21 @@ async function handlePlivoStream(plivoWs, req) {
     timers.push(setTimeout(() => { try { plivoWs.close(); } catch {} }, ok ? 5000 : 0));
   }
 
-  /** End the call after any queued agent audio has played out. */
+  /** End the call after any queued agent audio has played out, or immediately if an error occurred. */
   function endCall(errorMessage) {
     if (endRequested || finished) return;
     endRequested = true;
     if (errorMessage) {
       bridgeError = errorMessage;
-      console.error(`[TelephonyBridge] Ending call ${callId}: ${errorMessage}`);
+      console.error(`[TelephonyBridge] Ending call ${callId} immediately due to error: ${errorMessage}`);
+      // Immediately stop at this place: terminate ElevenLabs WS and clear all timers
+      if (elevenWs) {
+        try { elevenWs.terminate(); } catch {}
+      }
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+      hangupNow();
+      return;
     }
     if (!elevenReady && !geminiActive) {
       // The callee heard nothing from the agent — apologize instead of hanging up on silence.
@@ -597,24 +608,13 @@ async function handlePlivoStream(plivoWs, req) {
     ws.on("error", (err) => {
       lastError = err.message;
       console.error("[TelephonyBridge] ElevenLabs WebSocket error:", err.message);
+      // Immediately stop call at that place on ElevenLabs error
+      endCall(`ElevenLabs error: ${err.message}`);
     });
 
     ws.on("close", (code, reasonBuf) => {
       if (ws !== elevenWs || finished) return;
       const reason = (reasonBuf && reasonBuf.toString()) || lastError || `code ${code}`;
-      // ElevenLabs accepts the session (metadata) and only THEN closes it when an
-      // override isn't allowed — so "rejected" means closed before the agent spoke.
-      if (!agentSpoke && overrideLevel > 0 && elevenAttempts < 3) {
-        // Drop the language override first, then all of them.
-        elevenReady = false;
-        overrideLevel = overrideLevel >= 2 && speechLang ? 1 : 0;
-        console.warn(`[TelephonyBridge] ElevenLabs rejected the session (${reason}); retrying with ${overrideLevel ? "prompt/greeting only" : "the agent's own config"}.`);
-        bridgeError = overrideLevel
-          ? "Call language override was ignored — enable the language override on the ElevenLabs agent (Security tab)."
-          : "Lead-specific script, greeting and language were ignored — enable prompt, first message and language overrides on the ElevenLabs agent (Security tab).";
-        connectEleven();
-        return;
-      }
       if (!agentSpoke) {
         endCall(`ElevenLabs session failed: ${reason}`);
       } else {
@@ -670,6 +670,7 @@ async function handlePlivoStream(plivoWs, req) {
       addTurn("agent", text);
     } catch (err) {
       console.error("[TelephonyBridge] Gemini audio generation error:", err.message);
+      endCall(`Gemini audio generation error: ${err.message}`);
     }
   }
 
@@ -735,6 +736,7 @@ RESPONSE: <your response to caller>`;
       }
     } catch (err) {
       console.error("[TelephonyBridge] Gemini turn error:", err.message);
+      endCall(`Gemini turn error: ${err.message}`);
     } finally {
       isGenerating = false;
     }

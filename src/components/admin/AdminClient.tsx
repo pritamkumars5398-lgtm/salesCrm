@@ -316,7 +316,7 @@ export default function AdminClient({ id }: { id: string }) {
               </div>
               {/* Its keys + health */}
               {ws && (
-                <Card title={ws.name} sub="Choose a channel, fill in its keys and save. The check below shows whether they work.">
+                <Card title={ws.name} sub="Click any card below to set up or update its keys and check whether they work.">
                   <div className="flex flex-wrap gap-1">
                     {Object.keys(CHANNEL_LABEL).map((ch) => (
                       <span key={ch} className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: ws.setup[ch] ? "rgba(16,185,129,0.12)" : "var(--color-bg3)", color: ws.setup[ch] ? "#10b981" : "var(--color-text3)" }}>{ws.setup[ch] ? "✓" : "○"} {CHANNEL_LABEL[ch]}</span>

@@ -35,6 +35,11 @@ interface Stats {
   answered: number;
   live: number;
   talkSec: number;
+  interested: number;
+  callback: number;
+  notInterested: number;
+  todayCalls: number;
+  yesterdayCalls: number;
 }
 
 const FILTERS = [
@@ -47,6 +52,33 @@ const FILTERS = [
   { id: "saved", label: "★ Saved" },
 ] as const;
 type FilterId = (typeof FILTERS)[number]["id"];
+
+const DATE_PRESETS = [
+  { id: "", label: "All time" },
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "last7", label: "Last 7 days" },
+  { id: "last30", label: "Last 30 days" },
+] as const;
+type DatePreset = (typeof DATE_PRESETS)[number]["id"];
+
+/** Returns [from, to] ISO strings for a preset in Asia/Kolkata. */
+function presetRange(preset: DatePreset): [string, string] | [] {
+  const tz = "Asia/Kolkata";
+  const now = new Date();
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now); // "YYYY-MM-DD"
+  const startOfDay = (d: string) => new Date(`${d}T00:00:00+05:30`).toISOString();
+  const endOfDay = (d: string) => new Date(`${d}T23:59:59.999+05:30`).toISOString();
+  if (preset === "today") return [startOfDay(todayStr), endOfDay(todayStr)];
+  if (preset === "yesterday") {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    const ys = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(y);
+    return [startOfDay(ys), endOfDay(ys)];
+  }
+  if (preset === "last7") { const d = new Date(now); d.setDate(d.getDate() - 6); return [startOfDay(new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d)), endOfDay(todayStr)]; }
+  if (preset === "last30") { const d = new Date(now); d.setDate(d.getDate() - 29); return [startOfDay(new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d)), endOfDay(todayStr)]; }
+  return [];
+}
 
 function fmtTalkTime(sec: number) {
   const m = Math.round(sec / 60);
@@ -80,6 +112,9 @@ export default function VoiceInbox() {
   const [groupId, setGroupId] = useState("");
   const groupRef = useRef(groupId);
   groupRef.current = groupId;
+  const [datePreset, setDatePreset] = useState<DatePreset>("");
+  const datePresetRef = useRef(datePreset);
+  datePresetRef.current = datePreset;
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -132,6 +167,21 @@ export default function VoiceInbox() {
     let failed = 0;
     const first = await callSlots();
     setRun({ total: ids.length, done, failed, current: "", max: first.max });
+
+    /** Fetch the latest call row for a lead and return its error if it's an infrastructure failure. */
+    async function checkInfraError(leadId: string): Promise<string | null> {
+      try {
+        const res = await fetch(`/api/voice/calls?agentId=${agentId}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const row = (data.rows as CalledRow[]).find((r) => r.lead._id === leadId);
+        const err = row?.lastCall?.error || "";
+        // ElevenLabs / AI-agent infrastructure errors that make every subsequent call fail too.
+        if (err && /elevenlabs|not available|session failed|agent.*unavail|voice.*not|ai agent/i.test(err)) return err;
+      } catch { /* ignore */ }
+      return null;
+    }
+
     for (const id of ids) {
       if (stopRun.current) break;
       const lead = leadById.get(id)!;
@@ -151,8 +201,8 @@ export default function VoiceInbox() {
         if (!res?.ok) {
           failed++;
           const data = res ? await res.json().catch(() => ({})) : {};
-          // setup problems or plan limits stop the whole run instead of failing every lead
-          if (!res || res.status === 403 || res.status === 503 || /limit|not set up|isn't set up|configured|aren't ready/i.test(data.error || "")) {
+          // Setup problems, plan limits, or ElevenLabs errors → stop the whole run.
+          if (!res || res.status === 403 || res.status === 503 || /limit|not set up|isn't set up|configured|aren't ready|elevenlabs|not available|session failed/i.test(data.error || "")) {
             showToast(data.error || "Calling stopped — couldn't reach the server.", "error");
             stopRun.current = true;
           }
@@ -160,8 +210,15 @@ export default function VoiceInbox() {
           done++;
           setPicked((p) => { const n = new Set(p); n.delete(id); return n; });
           setOthers((prev) => prev.filter((l) => l._id !== id)); // called now: off the "Not called" list
-          await sleep(2500); // let the call register as live before filling the next line
+          await sleep(5000); // give the call enough time to connect (or fail fast) before next
           loadCalls(false);
+          // If the call that just connected failed due to an infra error (ElevenLabs unavailable,
+          // AI agent down…), every remaining lead will fail too — stop the run immediately.
+          const infraErr = await checkInfraError(id);
+          if (infraErr) {
+            showToast(`Calling stopped — AI agent error: ${infraErr}`, "error");
+            stopRun.current = true;
+          }
         }
       }
       if (!placed && !stopRun.current) { failed++; }
@@ -203,6 +260,9 @@ export default function VoiceInbox() {
       if (outcomeRef.current) qs.set("outcome", outcomeRef.current);
       if (sentimentRef.current) qs.set("sentiment", sentimentRef.current);
       if (groupRef.current) qs.set("groupId", groupRef.current);
+      const [dFrom, dTo] = presetRange(datePresetRef.current);
+      if (dFrom) qs.set("dateFrom", dFrom);
+      if (dTo) qs.set("dateTo", dTo);
       const res = await fetch(`/api/voice/calls?${qs}`);
       if (!res.ok) return;
       const data = await res.json();
@@ -248,14 +308,14 @@ export default function VoiceInbox() {
     if ((filter === "all" || filter === "uncalled") && !callFilterOn) loadOthers(1);
     else setOthers([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, filter, debouncedSearch, outcome, sentiment, groupId]);
+  }, [agentId, filter, debouncedSearch, outcome, sentiment, groupId, datePreset]);
 
   // Poll faster while any call is live so statuses and transcripts stay current.
   useEffect(() => {
     const id = setInterval(() => loadCalls(false), stats.live > 0 ? 4000 : 15000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, filter, debouncedSearch, stats.live, outcome, sentiment, groupId]);
+  }, [agentId, filter, debouncedSearch, stats.live, outcome, sentiment, groupId, datePreset]);
 
   // When the selected lead's latest call changes (ended, summary arrived…), refresh its history panel.
   useEffect(() => {
@@ -333,20 +393,31 @@ export default function VoiceInbox() {
                 style={{ background: "var(--color-bg3)", borderColor: "var(--color-bg4)", color: "var(--color-text)" }}
               />
             </div>
-            <div className="flex flex-wrap gap-1">
+            {/* Status pills — single scrollable row */}
+            <div className="flex gap-1 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
               {FILTERS.map(({ id, label }) => (
                 <button
                   key={id}
                   onClick={() => setFilter(id)}
-                  className="text-[11px] font-semibold px-2 py-[3px] rounded-full border-none cursor-pointer"
+                  className="text-[11px] font-semibold px-2.5 py-[3px] rounded-full border-none cursor-pointer flex-shrink-0"
                   style={{ background: filter === id ? `${ACCENT}1f` : "var(--color-bg3)", color: filter === id ? ACCENT : "var(--color-text3)" }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            {/* Group + how the latest call went, in one row */}
+            {/* Date · Group · Outcome · Mood — one compact row */}
             <div className="flex gap-1.5">
+              <select
+                value={datePreset}
+                onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+                className="flex-1 min-w-0 text-[11.5px] font-semibold px-2 py-1 rounded-md border cursor-pointer"
+                style={{ background: datePreset ? `${ACCENT}1f` : "var(--color-bg3)", borderColor: "var(--color-bg4)", color: datePreset ? ACCENT : "var(--color-text2)" }}
+              >
+                {DATE_PRESETS.map(({ id, label }) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
               {agentId && <GroupFilterSelect agentId={agentId} value={groupId} onChange={setGroupId} variant="pill" accent={ACCENT} className="flex-1" />}
               <select
                 value={outcome}
@@ -372,8 +443,8 @@ export default function VoiceInbox() {
                 <option value="neutral">😐 Neutral</option>
                 <option value="negative">🙁 Negative</option>
               </select>
-              {(callFilterOn || !!groupId) && (
-                <button type="button" title="Clear filters" onClick={() => { setOutcome(""); setSentiment(""); setGroupId(""); }} className="text-[11px] px-2 rounded-md border-none cursor-pointer" style={{ background: "var(--color-bg3)", color: "var(--color-text3)" }}>Clear</button>
+              {(callFilterOn || !!groupId || !!datePreset) && (
+                <button type="button" title="Clear filters" onClick={() => { setOutcome(""); setSentiment(""); setGroupId(""); setDatePreset(""); }} className="text-[11px] px-2 rounded-md border-none cursor-pointer flex-shrink-0" style={{ background: "var(--color-bg3)", color: "var(--color-text3)" }}>✕</button>
               )}
             </div>
           </div>

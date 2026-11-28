@@ -211,5 +211,21 @@ export const CUSTOMER_CARDS: SettingsCard[] = [
 
 /** Old customer tab names still used in links → the page that now holds them. */
 export const CUSTOMER_TAB_ALIASES: Record<string, string> = {
-  profile: "business", playbook: "business", fields: "leads", groups: "leads",
+  profile: "business",
+  playbook: "business",
+  fields: "leads",
+  groups: "leads",
+  knowledge: "knowledge",
+  team: "team",
+  keys: "channels",
+  channels: "channels",
+  ai: "channels",
+  voice: "channels",
+  calls: "channels",
+  whatsapp: "channels",
+  email: "channels",
+  sms: "channels",
+  calendly: "channels",
+  apify: "channels",
+  "llm-scraper": "channels",
 };
